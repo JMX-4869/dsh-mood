@@ -27,7 +27,8 @@ DSH 插件就是**一个包**。你那台机器上的 profile 长这样（`~/.ds
 // package.json
 {
   "dependencies": {
-    "dsh-mood": "^0.1.0"          // 或 "file:/本地路径" 或 "github:JMX-4869/dsh-mood"
+    // ⚠️ 别写 "^0.1.0" —— npm 上的 dsh-mood 是**别人的包**（名字被占了）。
+    "dsh-mood": "github:JMX-4869/dsh-mood"   // 或 "file:/你克隆下来的路径"
   },
   "dsh": {
     "profile": {
@@ -49,9 +50,11 @@ cd ~/.dsh/profiles/desktop && pnpm install
 
 **然后重启 DSH。**
 
-> **还没发到 npm。** 现在能用的来源是这三种写法：
-> `file:/本地路径`、`github:JMX-4869/dsh-mood`、或者直接把仓库克隆进 `node_modules/dsh-mood`。
-> 上了 npm 之后才能真正一条 `pnpm add dsh-mood` 装完。
+> **⚠️ 这个插件没有发布到 npm，而且 `dsh-mood` 这个 npm 名已经被别人占了**
+> （另一个人也在做 DSH 心情插件，2026-08 先把名字占住了）。
+>
+> **所以千万别写 `"dsh-mood": "^0.1.0"`** —— 那会装到**别人的包**。
+> 能用的来源只有这两种：`github:JMX-4869/dsh-mood` 或 `file:/你克隆下来的路径`。
 
 装完**不用配任何东西** —— 心情会自己开始变，当天 23:59 生成第一篇日记。
 ## 装完先看什么
