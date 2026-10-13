@@ -15,28 +15,45 @@
 
 ## 安装
 
-DSH 的插件就是「**一个目录 + 配置文件里两行**」。
+### 推荐：用 DSH 的插件面板
 
-```bash
-# 1. 放进当前 profile 的 node_modules
-#    （把 desktop 换成你实际在用的 profile 名）
-git clone https://github.com/JMX-4869/dsh-mood.git \
-  ~/.dsh/profiles/desktop/node_modules/dsh-mood
+侧边栏 → **插件** → 安装。面板会处理依赖和挂载，装完启用即可。
+
+### 手动装
+
+DSH 插件就是**一个包**。你那台机器上的 profile 长这样（`~/.dsh/profiles/<profile>/`）：
+
+```jsonc
+// package.json
+{
+  "dependencies": {
+    "dsh-mood": "^0.1.0"          // 或 "file:/本地路径" 或 "github:JMX-4869/dsh-mood"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": [ "dsh-mood" ]   // ← 加进 bundle 列表
+    }
+  }
+}
 ```
 
 ```yaml
-# 2. 编辑 ~/.dsh/profiles/desktop/cordis.yml，在插件清单里加两行
+# cordis.yml —— 插件清单里也加两行
 - id: dsh-mood
   name: dsh-mood
 ```
 
-**3. 重启 DSH。**
+```bash
+cd ~/.dsh/profiles/desktop && pnpm install
+```
 
-设置页左侧会多出「心情日记」「时事」「主动开口」三格。**装完不用配任何东西** ——
-心情会自己开始变，当天 23:59 生成第一篇日记。
+**然后重启 DSH。**
 
-> DSH 侧边栏的**插件面板**也能装，装完同样要在 `cordis.yml` 里启用。
+> **还没发到 npm。** 现在能用的来源是这三种写法：
+> `file:/本地路径`、`github:JMX-4869/dsh-mood`、或者直接把仓库克隆进 `node_modules/dsh-mood`。
+> 上了 npm 之后才能真正一条 `pnpm add dsh-mood` 装完。
 
+装完**不用配任何东西** —— 心情会自己开始变，当天 23:59 生成第一篇日记。
 ## 装完先看什么
 
 | 想看什么 | 去哪 |
