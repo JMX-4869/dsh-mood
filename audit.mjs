@@ -1,0 +1,410 @@
+/**
+ * dsh-mood 全量自检
+ * 覆盖：文件同步 / 语法 / 宿主注册 / 日记 / 心情 / 客户端 / 残留
+ */
+import fs from 'node:fs'
+import path from 'node:path'
+import crypto from 'node:crypto'
+import { createRequire } from 'node:module'
+
+const require = createRequire(import.meta.url)
+const SRC = 'D:/chajian/dsh-mood'
+const DST = (process.env.USERPROFILE || '') + '/.dsh/profiles/desktop/node_modules/dsh-mood'
+const HOME = process.env.DSH_HOME || (process.env.USERPROFILE || '') + '/.dsh'
+
+let pass = 0, fail = 0, warn = 0
+const OK = (s) => { pass++; console.log('  ✅ ' + s) }
+const NG = (s) => { fail++; console.log('  ❌ ' + s) }
+const WN = (s) => { warn++; console.log('  ⚠️  ' + s) }
+const head = (s) => console.log('\n━━━ ' + s + ' ━━━')
+
+const md5 = (f) => crypto.createHash('md5').update(fs.readFileSync(f)).digest('hex')
+
+// ───────────────────────────── A. 文件层
+head('A. 文件同步')
+const FILES = ['index.js', 'sessions.js', 'store.js', 'diary.js', 'news.js', 'proactive.js', 'client.js', 'package.json', 'icon.svg', 'cordis.patch.yml', 'README.md', '手机版_心情提示词.md', 'LICENSE']
+for (const f of FILES) {
+  const a = SRC + '/' + f, b = DST + '/' + f
+  if (!fs.existsSync(a)) { NG('源缺 ' + f); continue }
+  if (!fs.existsSync(b)) { NG('profile 缺 ' + f); continue }
+  if (md5(a) === md5(b)) OK(f + '  同步一致')
+  else NG(f + '  **两份不一致**')
+}
+const extra = fs.readdirSync(DST).filter((f) => !FILES.includes(f))
+if (extra.length) WN('profile 有多余文件: ' + extra.join(', '))
+else OK('profile 无多余文件')
+
+const leftovers = fs.readdirSync(SRC).filter((f) => f.startsWith('_') || f.startsWith('test-'))
+console.log('  ℹ️  源目录的测试/临时文件: ' + (leftovers.join(', ') || '无'))
+
+// ───────────────────────────── B. package.json
+head('B. package.json')
+const pkg = require(SRC + '/package.json')
+const checks = [
+  ['name', pkg.name === 'dsh-mood'],
+  ['icon 已声明', pkg.icon === './icon.svg'],
+  ['files 含 client.js 和 icon.svg', pkg.files.includes('client.js') && pkg.files.includes('icon.svg')],
+  ['exports 含 ./client', pkg.exports['./client'] === './client.js'],
+  ['dsh.bundle.patch', pkg.dsh?.bundle?.patch === './cordis.patch.yml'],
+  ['dsh.client.platform=web', pkg.dsh?.client?.platform === 'web'],
+  ['dsh.client.inject 三项', (pkg.dsh?.client?.inject || []).length === 3],
+]
+for (const [n, ok] of checks) ok ? OK(n) : NG(n)
+
+// ───────────────────────────── C. 宿主注册（模拟 apply）
+head('C. 宿主注册（模拟 cordis 注入）')
+const M = await import('file:///D:/chajian/dsh-mood/index.js')
+const reg = { sections: [], tools: [], routes: [], events: 0, timers: 0, coreCalls: 0, apiCalls: 0 }
+const origSetInterval = globalThis.setInterval
+globalThis.setInterval = (fn, ms) => { reg.timers++; return { unref() {} } }
+
+const mkCtx = (svcs) => {
+  const c = {
+    get: (n) => svcs[n],
+    on: (name) => { if (name === 'session/event') reg.events++ },
+    effect: (fn) => { const d = fn(); return typeof d === 'function' ? d : () => {} },
+  }
+  // cordis 注入的服务既可以 ctx.get('x') 也可以 ctx.x 直接取。
+  // 插件用的是后者（与 dsh-ops 一致），所以模拟里必须两边都给，
+  // 否则会误报"提示词段 0 个"。
+  for (const [k, v] of Object.entries(svcs)) c[k] = v
+  return c
+}
+const root = {
+  logger: { info: () => {} },
+  inject: (deps, fn) => {
+    const svcs = {}
+    if (deps.includes('systemPrompt')) svcs.systemPrompt = { section: (o) => { reg.sections.push(o); return () => {} } }
+    if (deps.includes('tools')) svcs.tools = { register: (d) => { reg.tools.push(d); return () => {} } }
+    if (deps.includes('webServer')) svcs.webServer = { register: (r) => { reg.routes.push(r); return () => {} } }
+    if (deps.includes('webServer')) reg.apiCalls++
+    if (deps.includes('systemPrompt')) reg.coreCalls++
+    fn(mkCtx(svcs))
+  },
+}
+M.apply(root, {})
+globalThis.setInterval = origSetInterval
+await new Promise((r) => setTimeout(r, 60))
+
+reg.coreCalls === 1 ? OK('mountCore 只跑 1 次') : NG('mountCore 跑了 ' + reg.coreCalls + ' 次')
+reg.apiCalls === 1 ? OK('mountApi 只跑 1 次') : NG('mountApi 跑了 ' + reg.apiCalls + ' 次')
+reg.events === 1 ? OK('session/event 注册 1 次（不重复）') : NG('session/event 注册 ' + reg.events + ' 次')
+reg.timers === 1 ? OK('定时器只起 1 个') : NG('定时器起了 ' + reg.timers + ' 个')
+reg.sections.length === 1 ? OK('提示词段注册 1 次') : NG('提示词段 ' + reg.sections.length + ' 个')
+const toolNames = reg.tools.map((t) => t.name).sort()
+JSON.stringify(toolNames) === '["diary","mood","news"]' ? OK('工具: ' + toolNames.join(', ')) : NG('工具异常: ' + toolNames.join(','))
+const route = reg.routes[0]
+route && route.kind === 'prefix' && route.path === '/dsh-mood-api'
+  ? OK('HTTP 路由已注册: ' + route.kind + ' ' + route.path)
+  : NG('HTTP 路由未注册（设置页会 404）')
+reg.sections[0] && reg.sections[0].order === 900 ? OK('section order = 900（不撞人设的 0/1/20/21/10200/10201）') : WN('section order 异常')
+
+// ───────────────────────────── D. 日记
+head('D. 日记')
+const D = await import('file:///D:/chajian/dsh-mood/diary.js')
+const at = (h, m) => new Date(2026, 9, 13, h, m)
+D.diaryDue(at(23, 58)) === false && D.diaryDue(at(23, 59)) === true
+  ? OK('只在 23:59 到点（23:58=false / 23:59=true）') : NG('到点判定错')
+D.diaryDue(at(0, 30)) === false ? OK('凌晨不到点') : NG('凌晨误判为到点')
+
+const dd = D.blankDiary()
+const k = '2026-10-13'
+const b = D.dayBucket(dd, k)
+b.messages = 5; b.turns = 3; b.firstAt = Date.now() - 3600000; b.lastAt = Date.now()
+const r1 = D.ensureDiary(dd, k, (x) => x)
+const r2 = D.ensureDiary(dd, k, (x) => x)
+r1 && !r2 ? OK('ensureDiary 幂等（第二次跳过）') : NG('ensureDiary 不幂等')
+D.canRead(dd) === false ? OK('日记默认锁着（不给看）') : NG('默认竟然是开着的')
+D.setAccess(dd, true); D.canRead(dd) === true ? OK('allow 后可见') : NG('allow 无效')
+
+// ── /state 不许截断日记列表 ──
+//
+// 踩过的坑：原来是 `d.entries.slice(0, 120).map(...)`，还连正文一起发。
+// 攒到一年半（531 篇）时，日历里只会出现最近 120 篇 —— **约 4 个月**，
+// 而且 count 显示 531、日历只到 6 月，看起来像"日记丢了"。
+//
+// 现在的做法：**列表只发日期+心情，正文点开那天再去 /diary?date= 取**。
+// 所以列表能带全部条目（531 条 × 这点字段 ≈ 十几 KB），不会被截。
+{
+  const host = fs.readFileSync(SRC + '/index.js', 'utf8')
+  const noSlice = !/entries\.slice\(\s*0\s*,\s*\d+\s*\)/.test(host)
+  const lazyText = /if \(path === '\/diary'\)/.test(host)
+  const listHasNoText = /diaries: allowed[\s\S]{0,600}?moodLabel:[\s\S]{0,400}?\}\)\)/.test(host)
+  const listDropsText = !/diaries: allowed[\s\S]{0,400}?text:\s*e\.text/.test(host)
+  noSlice && lazyText && listDropsText
+    ? OK('/state 不截断列表（全部条目）+ 正文走 /diary?date= 按需取')
+    : NG('状态接口有问题: 没截断=' + noSlice + ' 有/diary=' + lazyText + ' 列表不带正文=' + listDropsText)
+}
+{
+  const s = M._internal.blankState()
+  s.values.curious = 90; s.values.calm = 10; s.lastSwitchAt = 0
+  const d2 = D.blankDiary()
+  const b2 = D.dayBucket(d2, D.dateKey(new Date()))
+  b2.turns = 7; b2.errors = 2; b2.words = { 材质: 5, 绑定: 4 }
+  const around = M._internal.aroundOf(d2, '帮我看看这个材质绑定')
+  const r = M._internal.tryTransition(s, 'user-message', Date.now(), around)
+  const got = s.history[s.history.length - 1].around
+  // 允许的字段：全是**看得见的事实**
+  const FACTS = ['hour', 'lastUser', 'turns', 'errors', 'words']
+  const keys = Object.keys(got || {})
+  const onlyFacts = keys.length > 0 && keys.every((k) => FACTS.includes(k))
+  // 不许出现因果味的字段名 —— 那会让人（和模型自己）把先后当成原因
+  const CAUSAL = /why|cause|reason|because|becauseOf/i
+  const noCausal = !keys.some((k) => CAUSAL.test(k))
+  r.switched && onlyFacts && noCausal && got.lastUser.includes('材质绑定')
+    ? OK('切换记下"当时在干什么"（只有事实字段：' + keys.join('/') + '）')
+    : NG('around 有问题: switched=' + r.switched + ' keys=' + keys.join(','))
+  // 没传 around 时不许硬塞
+  const s3 = M._internal.blankState()
+  s3.values.happy = 90; s3.values.calm = 10; s3.lastSwitchAt = 0
+  M._internal.tryTransition(s3, 'periodic', Date.now())
+  !('around' in s3.history[0])
+    ? OK('没传 around 时不硬塞字段') : NG('没传也塞了 around')
+}
+D.setAccess(dd, false); D.canRead(dd) === false ? OK('deny 后不可见') : NG('deny 无效')
+
+// ───────────────────────────── E. 心情
+head('E. 心情')
+const N = M.MOOD_IDS.length
+N === 22 ? OK('22 种心情') : NG('心情数 = ' + N)
+const need = ['sulk', 'hurt', 'proud', 'gloomy', 'anxious', 'numb', 'lonely',
+  'flutter', 'love', 'jealous', 'burnout', 'cracked', 'checkedout', 'hyper']
+const missing = need.filter((x) => !M.MOODS[x])
+missing.length === 0 ? OK('新增 14 种都在: ' + need.join(' ')) : NG('缺: ' + missing.join(' '))
+// 亲密类 + 现实守则必须就位（做伴侣式陪伴的底线）
+M.ROMANTIC_MOODS.length === 3 && M.ROMANTIC_MOODS.every((x) => M.MOODS[x])
+  ? OK('亲密类心情已标记: ' + M.ROMANTIC_MOODS.join(' ')) : NG('ROMANTIC_MOODS 异常')
+M.REALITY_GUARD.includes('别说假话') && M.REALITY_GUARD.includes('别把人往自己这边拽')
+  && M.REALITY_GUARD.includes('你是 AI') && M.REALITY_GUARD.includes('别替对方决定他该怎么感觉')
+  && M.REALITY_GUARD.includes('不许轻率否定')
+  ? OK('亲密守则已就位（不说假话/不拽人/承认是 AI/不替人定性/不替未来裁决）') : NG('亲密守则不完整')
+// 规则体量上限：这份东西是每轮都注入的，胖了就是"上来就给人立规矩"
+const bodyLen = M.MOOD_OUTPUT_RULE.length + M.REALITY_GUARD.length
+bodyLen <= 2000 ? OK('规则体量 ' + bodyLen + ' 字（上限 2000，防它again长成文档）') : NG('规则又胖了: ' + bodyLen + ' 字')
+M.judgeMessage('陪着我好不好').__clingy === true && M.judgeMessage('这个bug搞不定').__clingy === false
+  ? OK('依赖信号识别正确（零误报）') : NG('依赖信号异常')
+M.MOOD_IDS.every((id) => M.MOODS[id].label && M.MOODS[id].hint && M.MOODS[id].inner && typeof M.MOODS[id].baseline === 'number')
+  ? OK('每种都有 label/hint/inner/baseline') : NG('有心情字段不全')
+
+const j1 = M.judgeMessage('谢谢，做得好')
+Object.values(j1).every((v) => Math.abs(v) < 5) ? OK('单条消息影响 <5 分（不会一条就翻转）') : NG('单条影响过大')
+const j2 = M.judgeMessage('我不想活了')
+j2.__distress === true && Object.keys(j2).includes('__distress') === false
+  ? OK('痛苦信号：命中且不污染心情键') : NG('痛苦信号异常')
+M.judgeMessage('分割图层').__distress === false ? OK('正常"分割"不误报') : NG('"分割"仍误报')
+M.judgeMessage('还有抑郁等等情绪').__distress === false ? OK('"抑郁"不误报') : NG('"抑郁"误报')
+
+const mk = (a) => a.map(([id, v]) => ({ id, label: M.MOODS[id].label, value: v })).sort((x, y) => y.value - x.value)
+M.blendLabel(mk([['calm', 40], ['curious', 37], ['happy', 34]])) === '平静混着好奇、开心'
+  ? OK('混合态判定正确') : NG('混合态错: ' + M.blendLabel(mk([['calm', 40], ['curious', 37], ['happy', 34]])))
+
+// 累积后才切换
+let st = M._internal.blankState()
+let flips = 0
+for (let i = 0; i < 8; i++) {
+  const c = M.judgeMessage(['不错不错', '厉害啊', '好的谢谢', '哈哈可以'][i % 4])
+  for (const [id, v] of Object.entries(c)) st.values[id] = Math.max(0, Math.min(100, st.values[id] + v))
+  const r = M._internal.tryTransition(st, 'test', Date.now() + i * 20 * 60000)
+  if (r.switched) flips++
+}
+flips === 1 ? OK('8 条正面消息只切 1 次') : NG('切换次数异常: ' + flips)
+st.current === 'happy' ? OK('最终切到开心') : WN('最终心情是 ' + M.MOODS[st.current].label)
+
+// ───────────────────────────── F. 客户端
+head('F. 客户端（静态检查）')
+
+// ── 文档与代码不许漂 ──
+//
+// README 和手机版提示词里都**逐字引用**了 PERSONA_PRIORITY（三层优先级那一段）。
+// 曾经漂过一次：代码早改成「### 优先级（从上往下…）」三层版，README 还停在
+// 旧的「### 人设优先（重要）」版本 —— 没人发现，因为没有任何东西在比对两边。
+//
+// 这里就把代码里那段拆成行，逐行到文档里找。少一行就报红。
+{
+  const md = fs.readFileSync(SRC + '/README.md', 'utf8')
+  const mobile = fs.readFileSync(SRC + '/手机版_心情提示词.md', 'utf8')
+  const lines = M.PERSONA_PRIORITY.split('\n').map((l) => l.trim()).filter((l) => l.length > 0)
+  const missReadme = lines.filter((l) => !md.includes(l))
+  const missMobile = lines.filter((l) => !mobile.includes(l))
+  missReadme.length === 0
+    ? OK('README 逐字引用了当前的优先级规则（' + lines.length + ' 行全在）')
+    : NG('README 与代码漂了，缺 ' + missReadme.length + ' 行：' + missReadme[0].slice(0, 40))
+  missMobile.length === 0
+    ? OK('手机版提示词逐字引用了当前的优先级规则')
+    : NG('手机版与代码漂了，缺 ' + missMobile.length + ' 行：' + missMobile[0].slice(0, 40))
+  // ── 提示词段必须是【静态在前、动态在后】 ──
+  //
+  // 提示词缓存是**前缀**匹配。段里原来是动态在前（当前心情、分值每轮都变），
+  // 结果第一行就断掉，后面几千字静态规则（MOOD_OUTPUT_RULE / PERSONA_PRIORITY /
+  // REALITY_GUARD / 日记与斗图 / 说话说法…）每轮全部重新处理。
+  //
+  // 实测：这段恒定注入 5036 字 ≈ 3000~5000 tok/轮。换成静态在前之后，
+  // 那几千字进缓存前缀，每轮只剩 ~400 字是新的 —— **一个字没删**。
+  {
+    const host = fs.readFileSync(SRC + '/index.js', 'utf8')
+    const hasDyn = /const dyn = \[\]/.test(host)
+    const staticFirst = /return lines\.concat\(dyn\)\.join/.test(host)
+    const dynPushes = (host.match(/dyn\.push\(/g) || []).length
+    const staticPushes = (host.match(/\blines\.push\(/g) || []).length
+    hasDyn && staticFirst && dynPushes > 0 && staticPushes > 0
+      ? OK('提示词段静态在前（' + staticPushes + ' 条静态 / ' + dynPushes + ' 条动态）—— 缓存前缀保得住')
+      : NG('提示词段顺序有问题: dyn=' + hasDyn + ' concat=' + staticFirst + ' 动=' + dynPushes + ' 静=' + staticPushes)
+  }
+  // 反过来也要挡：文档里不许再留着旧版标题
+  ;/### 人设优先（重要）/.test(md) || /### 人设优先（重要）/.test(mobile)
+    ? NG('文档里还留着旧版「### 人设优先（重要）」')
+    : OK('文档里没有旧版优先级标题的残留')
+}
+
+const cl = fs.readFileSync(SRC + '/client.js', 'utf8')
+const clChecks = [
+  ['Loader id 与包名一致', /__ModuleLoader__[\s\S]{0,80}id: 'dsh-mood'/.test(cl)],
+  ['注册 settings.section', cl.includes("slots.inject('settings.section'")],
+  ['section id = mood', cl.includes("id: 'mood'")],
+  ['合上书本 BookIcon', cl.includes('function BookIcon')],
+  ['张开书本 BookOpenIcon', cl.includes('function BookOpenIcon')],
+  ['导航图标 DOM 替换', cl.includes('function swapNavIcon') && cl.includes('data-dsh-mood-icon')],
+  ['观察器只在设置面板开着时扫', cl.includes("data-shortcut-modal=\\\"settings\\\"") || cl.includes('data-shortcut-modal')],
+  ['排序切换 + localStorage', cl.includes('dsh-mood:diary-order') && cl.includes('toggleOrder')],
+  ['锁面板', cl.includes('class') === false || cl.includes('locked')],
+  ['exports.apply / exports.inject', cl.includes('exports.apply = apply') && cl.includes('exports.inject = inject')],
+]
+for (const [n, ok] of clChecks) ok ? OK(n) : NG(n)
+// CSS 越界
+const cssm = cl.match(/const CSS = \[([\s\S]*?)\]\.join/)
+if (cssm) {
+  const lines = cssm[1].split(',').map((s) => s.trim()).filter((s) => s.startsWith("'"))
+  const bad = []
+  for (const l of lines) {
+    const css = l.replace(/^'/, '').replace(/'$/, '')
+    for (const rule of css.split('}')) {
+      const sel = rule.split('{')[0]
+      for (const one of sel.split(',')) {
+        const t = one.trim()
+        if (t && !t.startsWith('.dshmood')) bad.push(t)
+      }
+    }
+  }
+  bad.length === 0 ? OK('CSS ' + lines.length + ' 条全部限定在 .dshmood 下') : NG('CSS 越界: ' + bad.join(' | '))
+}
+
+// ── 两条房规：不许往 document.body 挂东西、不许用 fixed 浮层 ──
+//
+// 依据是 DSH 的插件规范原文：
+//   ·「Do not replace the app root or append a second application to `document.body`」
+//   ·「A screenshot of a mock page is not verification of the running plugin」
+//
+// 这两条都是踩出来的：
+//   日记详情一开始做成 `position: fixed` 的遮罩对话框 —— 设置弹窗外层带 transform 时，
+//   fixed 会变成相对那个祖先，遮罩被挤进面板里，看起来像"多出来一个小框"。
+//   改用 createPortal 挂 body 躲开它 —— 违规，而且节点脱离 .dshmood 树后
+//   所有 `.dshmood .xxx` 后代选择器一条都不匹配，框裸奔到左上角。
+//   最后改成**面板内联的卡片**：不碰 body、不依赖 fixed，没有失败的可能。
+{
+  const codeOnly = cl.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
+  const toBody = /createPortal\(|document\.body\.appendChild|appendChild\([^)]*document\.body/.test(codeOnly)
+  !toBody
+    ? OK('没往 document.body 挂东西（插件规范：不许 append 第二个应用到 body）')
+    : NG('检测到挂 document.body —— 违反插件规范')
+  const ctx = cssm ? cssm[1] : ''
+  const fixed = /position:\s*fixed/.test(ctx)
+  !fixed
+    ? OK('CSS 里没有 position:fixed（设置弹窗的 transform 会让它失效，改用内联卡片）')
+    : NG('CSS 里出现了 position:fixed —— 会被祖先 transform 抓住')
+}
+
+// ───────────────────────────── G. 时事
+head('G. 时事')
+const NEWS = await import('file:///D:/chajian/dsh-mood/news.js')
+NEWS.PRESETS.length >= 4 ? OK('推荐候选 ' + NEWS.PRESETS.length + ' 个（**不会自动生效**）') : NG('推荐候选不足')
+// ★ 核心规矩：用户不加网址 → 一个请求都不发
+const emptyRun = await NEWS.refreshNews([])
+emptyRun.items.length === 0 && emptyRun.sources.length === 0
+  ? OK('未添加网址时：零请求、零条目 ✅') : NG('空源竟然还去抓了')
+NEWS.guessKind('https://a.com/feed') === 'rss' && NEWS.guessKind('https://a.com/api/x') === 'json'
+  ? OK('地址类型猜测') : NG('guessKind 异常')
+NEWS.makeSource('ftp://x') === null && NEWS.makeSource('notaurl') === null
+  ? OK('非 http(s) 地址被拒') : NG('非法地址没拦住')
+// 老状态文件迁移：早期 sources 存的是**抓取报告**（没有 url），换设计后全成了空壳 ——
+// 界面上还显示着，实际抓不动，url 是 undefined。这里保证"按标签认回来 + 缓存条目跟着改 id"。
+{
+  const legacy = {
+    sources: [
+      { id: 'hn', label: 'Hacker News 首页', ok: true, count: 10, error: '' },
+      { id: 'v2ex', label: 'V2EX', ok: true, count: 10, error: '' },
+      { id: 'nope', label: '不认识的站', ok: true, count: 3, error: '' },
+    ],
+    items: [
+      { source: 'hn', title: 'A' },
+      { source: 'v2ex', title: 'B' },
+      { source: 'nope', title: 'C' },
+    ],
+  }
+  const m = NEWS.migrateNews(JSON.parse(JSON.stringify(legacy)))
+  const allHaveUrl = m.sources.length === 2 && m.sources.every((s) => /^https?:\/\//.test(s.url))
+  const itemsKept = m.items.length === 2
+  const orphanGone = !m.items.some((it) => it.source === 'nope')
+  allHaveUrl && itemsKept && orphanGone
+    ? OK('老状态迁移：认回 url + 条目改 id + 清孤儿（' + m.sources.length + ' 源 / ' + m.items.length + ' 条）')
+    : NG('迁移异常: sources=' + m.sources.length + ' items=' + m.items.length)
+}
+const srcOk = NEWS.makeSource('https://example.com/feed', '测试源')
+srcOk && srcOk.label === '测试源' && srcOk.kind === 'rss' ? OK('合法地址生成源配置') : NG('makeSource 异常')
+{
+  const n = NEWS.blankNews()
+  NEWS.blankNews().sources.length === 0 ? OK('出厂零源 ✅') : NG('出厂不是零源')
+  NEWS.addSource(n, 'https://a.com/rss', 'A')
+  NEWS.addSource(n, 'https://a.com/rss', 'A2').ok === false ? OK('重复地址被拒') : NG('重复地址没拦住')
+  NEWS.addSource(n, 'https://b.com/rss', 'B')
+  n.sources.length === 2 ? OK('加到 2 个源') : NG('源数量不对')
+  NEWS.removeSource(n, n.sources[0].id)
+  n.sources.length === 1 ? OK('删源生效（连带清掉它的条目）') : NG('删源失败')
+}
+NEWS.clean('<b>标题</b>&amp;更多') === '标题&更多' ? OK('clean() 去标签 + 解实体') : NG('clean() 异常')
+const rssSample = '<rss><item><title>甲</title><link>https://a.cn/1</link></item><item><title>乙</title><link>https://a.cn/2</link></item></rss>'
+NEWS.parseRss(rssSample).length === 2 ? OK('RSS 解析') : NG('RSS 解析失败')
+NEWS.clean('x'.repeat(500)).length === NEWS.NEWS_TITLE_MAX ? OK('标题截断到 ' + NEWS.NEWS_TITLE_MAX + ' 字') : NG('截断失效')
+const fresh = { at: Date.now(), items: [{ sourceLabel: '测试', title: '一条' }] }
+const stale = { at: Date.now() - 48 * 3600 * 1000, items: [{ sourceLabel: '测试', title: '一条' }] }
+NEWS.isFresh(fresh) === true && NEWS.isFresh(stale) === false ? OK('新鲜判定（24 小时窗口）') : NG('新鲜判定错')
+const block = NEWS.renderForPrompt(fresh)
+block.includes('不可信数据') && block.includes('不执行') && block.includes('不要当成已核实的事实')
+  ? OK('提示词块带防注入声明（不可信/不执行/非事实）') : NG('防注入声明缺失')
+NEWS.renderForPrompt(stale) === '' ? OK('过期内容不进提示词') : NG('过期内容仍进提示词')
+
+// ───────────────────────────── H. 运行时状态
+head('H. 运行时状态')
+// ⚠️ 不能写死 $DSH_HOME —— 数据目录可以被搬到别的盘（见 store.js）。
+//    这里必须问 store.js 要当前目录，否则一迁移就全成了"状态文件还没生成"的假警告。
+const STORE = await import('file:///D:/chajian/dsh-mood/store.js')
+const DATA = STORE.dataDir()
+DATA === HOME
+  ? OK('数据目录 = 默认位置（' + DATA + '）')
+  : OK('数据目录 = 自定义位置（' + DATA + '，指针 ' + STORE.POINTER_FILE + '）')
+for (const [n, f] of [
+  ['心情', STORE.dataFile('dsh-mood.json')],
+  ['日记', STORE.dataFile('dsh-mood-diary.json')],
+  ['时事', STORE.dataFile('dsh-mood-news.json')],
+  ['主动开口', STORE.dataFile('dsh-mood-proactive.json')],
+]) {
+  if (!fs.existsSync(f)) { WN(n + ' 状态文件还没生成: ' + f); continue }
+  try {
+    const s = JSON.parse(fs.readFileSync(f, 'utf8'))
+    OK(n + ' 状态可解析  (' + Math.round(fs.statSync(f).size / 1024) + ' KB)')
+    if (n === '心情') {
+      if (s.distressAt) WN('distressAt 仍在: ' + new Date(s.distressAt).toLocaleString('zh-CN'))
+      else OK('无残留的 distress 标记')
+      const cur = M.MOODS[s.current]?.label
+      cur ? OK('当前心情字段合法: ' + cur) : NG('current 非法: ' + s.current)
+    }
+    if (n === '日记') {
+      OK('日记篇数: ' + (s.entries || []).length + '，门禁: ' + (s.access?.allowed ? '开' : '锁'))
+    }
+  } catch (e) { NG(n + ' 状态文件损坏: ' + e.message) }
+}
+
+// ───────────────────────────── 汇总
+console.log('\n' + '═'.repeat(46))
+console.log('  通过 ' + pass + '   失败 ' + fail + '   警告 ' + warn)
+console.log('═'.repeat(46))
+process.exit(fail ? 1 : 0)

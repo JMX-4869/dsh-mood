@@ -1,0 +1,73 @@
+{
+  "name": "dsh-mood",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness 心情插件：22 种心情各有数值，每 3~6 小时自动判定，用户消息小幅累积加减分，达到余量才切换，支持混合心情；把当前心情注入提示词，影响回复语气和深度思考里的内心话。附带每天 23:59 自动生成的心情日记、用户自配来源的时事、可选的主动开口，以及可迁移到任意盘的数据目录。",
+  "type": "module",
+  "main": "index.js",
+  "icon": "./icon.svg",
+  "files": [
+    "LICENSE",
+    "README.md",
+    "client.js",
+    "cordis.patch.yml",
+    "diary.js",
+    "icon.svg",
+    "index.js",
+    "news.js",
+    "proactive.js",
+    "sessions.js",
+    "store.js",
+    "手机版_心情提示词.md"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./store": "./store.js",
+    "./diary": "./diary.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json",
+    "./news": "./news.js",
+    "./proactive": "./proactive.js",
+    "./sessions": "./sessions.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "*"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "dsh",
+    "deepseek-harness",
+    "deepseek",
+    "mood",
+    "emotion",
+    "persona",
+    "prompt",
+    "agent",
+    "心情"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JMX-4869/dsh-mood.git"
+  },
+  "homepage": "https://github.com/JMX-4869/dsh-mood#readme",
+  "bugs": {
+    "url": "https://github.com/JMX-4869/dsh-mood/issues"
+  },
+  "author": "一叶子秋 <245824865+JMX-4869@users.noreply.github.com>"
+}

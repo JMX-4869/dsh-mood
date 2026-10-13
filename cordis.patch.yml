@@ -1,0 +1,6 @@
+# dsh-mood bundle patch
+# 纯 insert(id/name)，可热挂载免重启。
+# name 必须是实际包名，cordis 按 name import。
+- insert:
+    - id: dsh-mood
+      name: dsh-mood

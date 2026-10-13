@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"
+     fill="none" stroke="#000000" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+  <style>
+    /* 黑线条。深色主题下纯黑会看不见，跟着系统配色换成浅灰 —— 形状不变。 */
+    @media (prefers-color-scheme: dark) {
+      path { stroke: #e6e6e6; }
+    }
+  </style>
+  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+</svg>

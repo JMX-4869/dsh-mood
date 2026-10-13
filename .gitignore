@@ -1,0 +1,33 @@
+# 依赖 / 构建产物 —— 一概不进仓库
+node_modules/
+.pnpm-store/
+*.log
+npm-debug.log*
+
+# 本地测试用的临时沙盒和脚本（我自己跑验证用的，不该跟着发布）
+_sb/
+_sb2/
+_g/
+_e/
+_sandbox/
+_*.mjs
+*.mjs.bak
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 备份 / 半成品
+*.bak
+*.tmp
+*.replaced-*
+
+# ⚠️ 绝不进仓库：那是运行时数据，而且含隐私
+dsh-mood.json
+dsh-mood-diary.json
+dsh-mood-news.json
+dsh-mood-proactive.json
+dsh-mood-store.json

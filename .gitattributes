@@ -1,0 +1,15 @@
+# 一律 LF。
+#
+# 不加这个的话，Windows 上 `core.autocrlf=true` 会把换行弄成 CRLF，
+# 别人（Linux/macOS）拉下来满屏 diff，而内容其实一个字没改。
+* text=auto eol=lf
+
+# 二进制/图形 —— 不要做换行转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
