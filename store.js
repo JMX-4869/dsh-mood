@@ -34,6 +34,7 @@ export const DATA_FILES = [
   'dsh-mood-news.json',
   'dsh-mood-proactive.json',
   'dsh-mood-memory.jsonl',
+  'dsh-mood-taste.json',
 ]
 
 /**
@@ -47,6 +48,7 @@ export const FILE_KEYS = {
   'dsh-mood-proactive.json': 'proactive',
   // 硬盘记忆是 jsonl（一行一条），不是 json —— 但键名照旧走这套
   'dsh-mood-memory.jsonl': 'memory',
+  'dsh-mood-taste.json': 'taste',
 }
 
 /** 短键 → 人话（界面上用） */
@@ -56,6 +58,7 @@ export const KEY_LABELS = {
   news: '时事',
   proactive: '主动开口',
   memory: '硬盘记忆',
+  taste: '品味库',
 }
 
 /** 每个文件"应该由哪个面板管"（界面上分组用） */
@@ -65,6 +68,7 @@ export const KEY_OWNER = {
   news: 'news',
   proactive: 'proactive',
   memory: 'memory',
+  taste: 'taste',
 }
 
 const normDir = (d) => {

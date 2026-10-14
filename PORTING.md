@@ -11,7 +11,7 @@
 
 | 层 | 文件 | 大小 | DSH 依赖 | 怎么办 |
 |---|---|---|---|---|
-| **逻辑** | `store.js` `diary.js` `news.js` `proactive.js` `memory.js` `frames.js` | 129 KB | **0 处** | **原样搬，一行不改** |
+| **逻辑** | `store.js` `diary.js` `news.js` `proactive.js` `memory.js` `frames.js` `taste.js` | 169 KB | **0 处** | **原样搬，一行不改** |
 | 逻辑（边缘） | `sessions.js` | 7 KB | 2 处 | 改两行 |
 | **接线** | `index.js` | 99 KB | 25 处 | 照着重写 |
 | **界面** | `client.js` | 71 KB | 44 处 | 重写 |
@@ -28,7 +28,7 @@
 
 ## 二、已验证：那 5 个模块真的能脱离 DSH 跑
 
-把 `store.js` / `diary.js` / `news.js` / `proactive.js` / `memory.js` / `frames.js`（**129 KB**）拷到一个**空目录**
+把 `store.js` / `diary.js` / `news.js` / `proactive.js` / `memory.js` / `frames.js`（**169 KB**）拷到一个**空目录**
 （没有 `dsh-mood`、没有 `@deepseek-ai`、没有 `package.json`），然后：
 
 ```
@@ -95,6 +95,23 @@ batchDir(baseDir, stamp) / ensureDir(p)
 
 ⚠️ ffmpeg 9 把 `-vsync` 删了，要用 `-fps_mode passthrough`。
 
+### `taste.js` → 依赖 `./store.js`
+
+```
+tasteFile() / TAG_DIMS / SEED_PRINCIPLES
+blankTaste() / migrateTaste(t) / loadTaste() / saveTaste(t)
+addPrinciple / editPrinciple / removePrinciple
+addItem / updateItem / removeItem    条目带 myRead / reaction / lesson（学习三件套）
+setSummary(t, note, fromCount) / summaryStale(t) / stats(t)
+renderFull(t) / renderForPrompt(t, opts) / fmtItem(x)
+```
+
+**品味库**：存的是「我的读法 → 收到的反馈 → 我学到什么」，每轮注入提示词。
+
+⚠️ 它**不是**一套让模型照抄的规则。文件头那段「学习 ≠ 模仿」是这个模块的立身之本：
+记住"他说过这个俗"然后见到类似的就说俗，那不是有品味，是复读。
+所以条目必须按 `myRead → reaction → lesson` 的顺序存 —— 先有我的判断，才有反馈的意义。
+
 ### `news.js` → 依赖 `./store.js` `./frames.js`
 
 ```
@@ -109,6 +126,8 @@ ytDlpCandidates() / findYtDlp() / vttToText(vtt) / fetchVideoTranscript(url, max
 parseRss(text, limit) / parseJsonAny(json, limit) / guessKind(url) / makeSource(url, label)
 fetchVideoFrames(url, opts) / framesBaseDir() / clearFrames()
 lastYtError                     上一次 yt-dlp 枚举失败的原因（风控 / 没装）
+bilibiliComments(url, max)      bilibili 评论（**走 API**，页面 HTML 里没有）
+lastBiliCommentError            上一次评论抓取为什么没拿到（空 = 没失败过）
 PRESETS / fetchOne(src) / refreshNews(sources, now)
 blankNews() / migrateNews(n) / loadNews() / saveNews(n)
 addSource / removeSource / isFresh(n, now) / ageMinutes(n, now) / renderForPrompt(n, max)

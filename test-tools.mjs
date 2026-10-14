@@ -51,11 +51,15 @@ await new Promise((r) => setTimeout(r, 30))
 
 // ══════════════════════════════════════════════════════════════
 console.log('════ 提示词段 ════')
-ok('注册了 1 段', got.sections.length === 1, got.sections.length + ' 段')
-const sec = got.sections[0]
-ok('段名是 dsh-mood/state', sec && sec.name === 'dsh-mood/state', sec && sec.name)
+// ⚠️ 不要写死成数量和下标 —— 加一段（品味）就全红了。按**名字**找。
+ok('提示词段都注册了', got.sections.length >= 2, got.sections.length + ' 段: ' + got.sections.map((x) => x.name).join(', '))
+const sec = got.sections.find((x) => x && x.name === 'dsh-mood/state')
+ok('心情段在（dsh-mood/state）', !!sec, sec && sec.name)
+const secT = got.sections.find((x) => x && x.name === 'dsh-mood/taste')
+ok('品味段在（dsh-mood/taste）', !!secT, secT && secT.name)
+ok('品味排在心情前面（缓存友好）', !!secT && !!sec && secT.order < sec.order, (secT && secT.order) + ' vs ' + (sec && sec.order))
 ok('interpolate: false（正文里有 {{}} 也不该被替换）', sec && sec.interpolate === false)
-ok('order = 900（不撞人设的 0/1/20/21/10200/10201）', sec && sec.order === 900, sec && String(sec.order))
+ok('order 在 800~999（不撞人设的 0/1/20/21/10200/10201）', sec && sec.order >= 800 && sec.order < 1000, sec && String(sec.order))
 
 let text = ''
 try { text = sec.text() } catch (e) { fail++; console.log('  ❌ text() 抛错: ' + e.message) }
@@ -83,7 +87,11 @@ ok('内心语气那行没被拼歪', !/。。/.test(text) && /^内心语气：/m
 // ══════════════════════════════════════════════════════════════
 console.log()
 console.log('════ 工具 ════')
-ok('4 个工具', got.tools.length === 4, got.tools.map((t) => t.name).join(','))
+// ⚠️ 别写死数量：加一个工具就红。断言"该有的都在"就够了。
+const WANT = ['mood', 'diary', 'news', 'memory', 'taste']
+const names = got.tools.map((t) => t.name)
+ok('工具齐全（' + WANT.length + ' 个）', WANT.every((x) => names.includes(x)), names.join(','))
+ok('没有多余工具', names.length === WANT.length, names.join(','))
 for (const t of got.tools) {
   const label = t.name.padEnd(8)
   ok(label + ' 有 description / parameters / execute',

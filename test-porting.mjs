@@ -18,7 +18,7 @@ import fs from 'node:fs'
 
 const SRC = 'D:/chajian/dsh-mood'
 const doc = fs.readFileSync(SRC + '/PORTING.md', 'utf8')
-const MODS = ['store.js', 'diary.js', 'news.js', 'proactive.js', 'memory.js', 'frames.js', 'sessions.js']
+const MODS = ['store.js', 'diary.js', 'news.js', 'proactive.js', 'memory.js', 'frames.js', 'taste.js', 'sessions.js']
 // 声称"零 DSH 依赖"的那些 —— 除了 sessions.js（它有 2 处，得改两行）。
 // ⚠️ 别写成 `slice(0, 5)`：加了 frames.js 之后它会被漏在统计外，体积对不上就报红。
 const CORE = MODS.filter((f) => f !== 'sessions.js')

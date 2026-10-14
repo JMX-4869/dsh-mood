@@ -42,6 +42,16 @@ import {
   isFresh as newsFresh, ageMinutes as newsAge, renderForPrompt as renderNews,
   fetchVideoFrames as newsFrames,
 } from './news.js'
+// 品味库：跨会话的审美档案。和心情同一个思路（注入提示词），
+// 但相反的地方在于 —— 心情每 3~6 小时自己变，品味只在主人改它的时候变。
+import {
+  tasteFile, TAG_DIMS,
+  loadTaste, saveTaste,
+  addPrinciple, editPrinciple, removePrinciple,
+  addItem, updateItem, removeItem,
+  setSummary, summaryStale, stats as tasteStats,
+  renderFull as renderTasteFull, renderForPrompt as renderTaste,
+} from './taste.js'
 // 主动开口：默认关。投递走 sessionController.prompt（官方那条路），
 // 投的是"插件提醒"框，不伪造用户的话 —— 说不说由模型自己决定。
 import {
@@ -1308,6 +1318,17 @@ export function apply(root, rawConfig) {
     saveState(state)
   }
 
+  // ---------------- 品味：一份跨会话的审美档案 ----------------
+  //
+  // ★ 它和心情走**同一个思路**，但目的相反：
+  //   心情是"我现在什么状态"，每 3~6 小时自己变；
+  //   品味是"我该按什么尺子看东西"，只在主人改它的时候变。
+  //
+  //   为什么要注入提示词而不是"给个查询工具"：
+  //   只有工具的话，它是**我记得去查** —— 而没有人会在每次看图之前先查一遍自己的品味。
+  //   真正有品味的人是一**直**带着那把尺子的。
+  let taste = loadTaste()
+
   // ---------------- 日记：每天一篇，23:59 生成 ----------------
   let diary = loadDiary()
   const moodLabel = (id) => (MOODS[id] ? MOODS[id].label : id)
@@ -1511,7 +1532,28 @@ export function apply(root, rawConfig) {
   //      · 两遍的 ctx 都没有 webServer → HTTP 路由从没注册 → 设置页一直 404
   //    现在拆成两个各管一半的函数，各自只跑一次。
   const mountCore = (ctx) => {
-    // 1) 系统提示词一节：让模型随时知道自己什么心情
+    // 1) 系统提示词两节：**先品味，后心情**。
+    //
+    //    ⚠️ 顺序是照**缓存**定的，不是照重要性定的。
+    //    提示词缓存是**前缀**匹配 —— 排在前面的东西一变，后面全部作废。
+    //    品味只在你改它的时候变（几天一次），心情每 3~6 小时自己变。
+    //    所以稳的排前面：品味 890、心情 900。
+    if (ctx.systemPrompt && typeof ctx.systemPrompt.section === 'function') {
+      ctx.effect(() => ctx.systemPrompt.section({
+        name: 'dsh-mood/taste',
+        order: 890,
+        interpolate: false,
+        text: () => {
+          try { return renderTaste(taste, { maxPrinciples: 14, maxItems: 8 }) } catch (e) {
+            // 品味段出错绝不能把提示词整条带崩 —— 少一段判断，好过整轮没有上下文
+            try { log('dsh-mood 品味段生成失败：' + ((e && e.message) || e)) } catch {}
+            return ''
+          }
+        },
+      }), 'dsh-mood taste section')
+    }
+
+    // 2) 系统提示词一节：让模型随时知道自己什么心情
     if (ctx.systemPrompt && typeof ctx.systemPrompt.section === 'function') {
       ctx.effect(() => ctx.systemPrompt.section({
         name: 'dsh-mood/state',
@@ -2337,6 +2379,151 @@ export function apply(root, rawConfig) {
         ctx.effect(() => tools.register(newsDef), 'dsh-mood news tool')
       }
 
+      // 4.7) taste 工具 —— 品味库
+      //
+      // ⚠️ 和 memory / news 不同：**这个库已经每轮注入提示词了**（见上面第 1 节）。
+      //    所以这个工具不是"用来查的"，是**用来改的** ——
+      //    主人说"这个俗"、我打了个标想让他确认、库大了要重压，都走它。
+      //
+      //    也正因为已经注入了，别再让它一次性吐几千字 —— 那会把上下文挤掉。
+      try {
+        const tasteDef = defineTool({
+          name: 'taste',
+          description:
+            '品味库 —— 跨会话的审美档案。**它已经每轮注入你的提示词了**，' +
+            '这个工具是用来**改它**的，不是用来读它的。\n' +
+            'action=list 看全库；action=rule 加一条原则/规则；action=add 加一个带正反例的条目；\n' +
+            'action=edit 改；action=confirm 确认一条我打的标；action=remove 删；action=summarize 写摘要。\n' +
+            '⚠️ **谁说的要标清楚**：by=owner（主人亲口）/ other（主人认可的外来判断，比如 Claude 说的）/ ' +
+            'me（我自己的判断）。这个字段决定它在提示词里的分量，标错等于把我的主张冒充成他的。\n' +
+            '⚠️ **主人的原话要收进 said** —— 那是这个库里最有信息量的东西，' +
+            '比你自己概括出来的规则有用得多。\n' +
+            '⚠️ 加条目时 `confirmed` 默认是 false：打标是**我的判断**，可能读偏。' +
+            '主人确认之前，摘要把它们标成"待确认"。',
+          parameters: {
+            action: {
+              type: 'string',
+              enum: ['list', 'rule', 'add', 'edit', 'confirm', 'remove', 'summarize'],
+              description: 'list=看全库；rule=加原则；add=加条目；edit=改；confirm=确认；remove=删；summarize=写摘要',
+            },
+            text: { type: 'string', description: 'rule/summarize 时必填：原则或规则的内容、摘要正文' },
+            why: { type: 'string', description: 'rule：为什么（可空）' },
+            unless: { type: 'string', description: 'rule：**什么情况下这条不适用**（强烈建议填）' },
+            by: { type: 'string', enum: ['owner', 'other', 'me'], description: '谁说的（默认 owner）' },
+            ref: { type: 'string', description: 'add：指代（文件名 / 网址 / 简短描述）' },
+            kind: { type: 'string', enum: ['good', 'bad'], description: 'add：正例还是反例（默认 good）' },
+            said: { type: 'string', description: 'add/edit：**主人对它的原话** —— 最该收的东西' },
+            note: { type: 'string', description: 'add/edit：我自己的说明（可空）' },
+            tags: { type: 'object', description: 'add/edit：按维度打标，键取 style/color/comp/type/texture/mood/density' },
+            id: { type: 'string', description: 'edit/confirm/remove 时必填：条目或原则的 id，先 list 看' },
+            target: { type: 'string', enum: ['principle', 'item'], description: 'edit/remove 时指明改哪个（默认按 id 前缀猜）' },
+          },
+          output: {
+            schema: { type: 'json' },
+            render: (_args, value) => [{ type: 'text', text: value.message }],
+          },
+          async execute(args) {
+            try {
+              const action = args && args.action ? String(args.action) : 'list'
+              const tk = taste           // ← **模块级那份活的**，改它就等于改了注入源
+              const save = () => { if (!saveTaste(tk)) throw new Error('写盘失败（看日志）') }
+
+              if (action === 'list') {
+                const s = tasteStats(tk)
+                const st = summaryStale(tk)
+                return {
+                  ok: true,
+                  message: renderTasteFull(tk) +
+                    '\n\n（' + (st.stale ? '⚠️ 该重压了：' + st.why : '摘要是最新的') + '）',
+                }
+              }
+
+              if (action === 'rule') {
+                const r = addPrinciple(tk, String(args.text || ''), {
+                  why: args.why, unless: args.unless, by: args.by,
+                })
+                if (!r.ok) return { ok: false, message: r.error }
+                save()
+                const w = { owner: '主人亲口', other: '外部判断（他认可的）', me: '我自己的判断' }[r.principle.by]
+                return {
+                  ok: true,
+                  message: `加了一条原则（[${r.principle.id}]，算「${w}」）：\n  ${r.principle.text}\n\n` +
+                    '⚠️ 记得在回复里说一声你加了什么，别偷偷往库里塞东西。',
+                }
+              }
+
+              if (action === 'add') {
+                const r = addItem(tk, {
+                  ref: args.ref, kind: args.kind, tags: args.tags,
+                  note: args.note, said: args.said, by: args.by,
+                })
+                if (!r.ok) return { ok: false, message: r.error }
+                save()
+                return {
+                  ok: true,
+                  message: `收了 [${r.item.id}]（${r.item.kind === 'good' ? '正例' : '反例'}）：${r.item.ref}\n` +
+                    (r.item.said ? `  主人说过：「${r.item.said}」\n` : '') +
+                    '\n⚠️ 这条现在标着**待确认** —— 打标是你的判断，可能读偏。' +
+                    '在回复里说出来，让他看一眼再改。',
+                }
+              }
+
+              if (action === 'edit') {
+                const id = String(args.id || '').trim()
+                if (!id) return { ok: false, message: '要 id，先 list 看。' }
+                const isP = String(args.target || '') === 'principle' || (!args.target && id.startsWith('p'))
+                const r = isP
+                  ? editPrinciple(tk, id, { text: args.text, why: args.why, unless: args.unless })
+                  : updateItem(tk, id, { kind: args.kind, note: args.note, said: args.said, tags: args.tags })
+                if (!r.ok) return { ok: false, message: r.error }
+                save()
+                // 改过原则就自动算成他的 —— 说清楚，免得他以为还是我那条
+                return {
+                  ok: true,
+                  message: '改好了 [${id}]'.replace('${id}', id) + (isP ? '（改过之后这条算「主人亲口」的）' : ''),
+                }
+              }
+
+              if (action === 'confirm') {
+                const id = String(args.id || '').trim()
+                if (!id) return { ok: false, message: '要 id，先 list 看。' }
+                if (id.startsWith('p')) return { ok: false, message: '原则没有"待确认"这回事 —— 那是条目的字段。' }
+                const r = updateItem(tk, id, { confirmed: true })
+                if (!r.ok) return { ok: false, message: r.error }
+                save()
+                return { ok: true, message: `[${id}] 标成已确认了 —— 从现在起它算主人的口味，不再是我的猜测。` }
+              }
+
+              if (action === 'remove') {
+                const id = String(args.id || '').trim()
+                if (!id) return { ok: false, message: '要 id，先 list 看。' }
+                const isP = String(args.target || '') === 'principle' || (!args.target && id.startsWith('p'))
+                const r = isP ? removePrinciple(tk, id) : removeItem(tk, id)
+                if (!r.ok) return { ok: false, message: r.error }
+                save()
+                return { ok: true, message: `删掉了 [${id}]。` }
+              }
+
+              // summarize
+              const s = tasteStats(tk)
+              const r = setSummary(tk, String(args.text || ''), s.principlesOn + s.items)
+              if (!r.ok) return { ok: false, message: r.error }
+              save()
+              return {
+                ok: true,
+                message: `摘要写好了（${r.summary.text.length} 字，记下当时库里有 ${r.summary.fromCount} 条）。\n` +
+                  '库再涨三成的时候它会提醒你重写。',
+              }
+            } catch (err) {
+              return { ok: false, message: 'taste 工具出错：' + ((err && err.message) || err) }
+            }
+          },
+        })
+        ctx.effect(() => tools.register(tasteDef), 'dsh-mood taste tool')
+      } catch (err) {
+        try { log('dsh-mood 注册 taste 工具失败：' + ((err && err.message) || err)) } catch {}
+      }
+
       // 4.6) memory 工具 —— 翻查硬盘上的旧对话
       //
       // **不自动注入提示词。** 归档可能几个月、几万条，每轮自动塞几条既贵又容易塞错东西。
@@ -2636,6 +2823,69 @@ export function apply(root, rawConfig) {
                   state.persona = NEXT
                   saveState(state)
                   return send({ ok: true, own: NEXT, source: personaSource() })
+                })
+              }
+              return send({ ok: false, error: '只支持 GET / POST' }, 405)
+            }
+            // ---- 品味库 ----
+            //
+            // GET  /taste                    → 全库 + 统计 + 摘要状态
+            // POST /taste {action:...}       → 改库
+            //
+            // ⚠️ 这个库**每轮都注入提示词**，所以改动立刻生效 ——
+            //    不需要重启，也不要"保存"按钮那种东西。
+            if (path === '/taste') {
+              if (req.method === 'GET') {
+                return send({
+                  ok: true,
+                  stats: tasteStats(taste),
+                  summary: taste.summary,
+                  summaryStale: summaryStale(taste),
+                  dims: TAG_DIMS,
+                  principles: taste.principles,
+                  items: taste.items,
+                })
+              }
+              if (req.method === 'POST') {
+                return readBody(req, (body, err) => {
+                  if (err) return send({ ok: false, error: 'body 不是合法 JSON' }, 400)
+                  const a = String(body.action || '')
+                  const done = () => {
+                    if (!saveTaste(taste)) return send({ ok: false, error: '写盘失败（看日志）' }, 500)
+                    return send({ ok: true, stats: tasteStats(taste), summary: taste.summary,
+                      principles: taste.principles, items: taste.items })
+                  }
+                  let r
+                  if (a === 'addPrinciple') {
+                    r = addPrinciple(taste, body.text, { why: body.why, unless: body.unless, by: body.by })
+                  } else if (a === 'editPrinciple') {
+                    r = editPrinciple(taste, String(body.id || ''), {
+                      text: body.text, why: body.why, unless: body.unless, on: body.on,
+                    })
+                  } else if (a === 'delPrinciple') {
+                    r = removePrinciple(taste, String(body.id || ''))
+                  } else if (a === 'addItem') {
+                    r = addItem(taste, {
+                      ref: body.ref, kind: body.kind, tags: body.tags, note: body.note,
+                      said: body.said, myRead: body.myRead, reaction: body.reaction,
+                      lesson: body.lesson, domain: body.domain,
+                    })
+                  } else if (a === 'editItem') {
+                    r = updateItem(taste, String(body.id || ''), {
+                      kind: body.kind, note: body.note, said: body.said, tags: body.tags,
+                      myRead: body.myRead, reaction: body.reaction, lesson: body.lesson,
+                      domain: body.domain, confirmed: body.confirmed,
+                    })
+                  } else if (a === 'delItem') {
+                    r = removeItem(taste, String(body.id || ''))
+                  } else if (a === 'summary') {
+                    const s = tasteStats(taste)
+                    r = setSummary(taste, String(body.text || ''), s.principlesOn + s.items)
+                  } else {
+                    return send({ ok: false, error: '未知 action：' + a }, 400)
+                  }
+                  if (r && r.ok === false) return send({ ok: false, error: r.error }, 400)
+                  return done()
                 })
               }
               return send({ ok: false, error: '只支持 GET / POST' }, 405)

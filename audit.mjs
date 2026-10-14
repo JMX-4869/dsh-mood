@@ -22,7 +22,7 @@ const md5 = (f) => crypto.createHash('md5').update(fs.readFileSync(f)).digest('h
 
 // ───────────────────────────── A. 文件层
 head('A. 文件同步')
-const FILES = ['index.js', 'frames.js', 'sessions.js', 'store.js', 'memory.js', 'diary.js', 'news.js', 'proactive.js', 'client.js', 'package.json', 'icon.svg', 'cordis.patch.yml', 'README.md', 'CHANGELOG.md', 'PORTING.md', '手机版_心情提示词.md', 'LICENSE']
+const FILES = ['index.js', 'taste.js', 'frames.js', 'sessions.js', 'store.js', 'memory.js', 'diary.js', 'news.js', 'proactive.js', 'client.js', 'package.json', 'icon.svg', 'cordis.patch.yml', 'README.md', 'CHANGELOG.md', 'PORTING.md', '手机版_心情提示词.md', 'LICENSE']
 for (const f of FILES) {
   const a = SRC + '/' + f, b = DST + '/' + f
   if (!fs.existsSync(a)) { NG('源缺 ' + f); continue }
@@ -92,18 +92,29 @@ reg.coreCalls === 1 ? OK('mountCore 只跑 1 次') : NG('mountCore 跑了 ' + re
 reg.apiCalls === 1 ? OK('mountApi 只跑 1 次') : NG('mountApi 跑了 ' + reg.apiCalls + ' 次')
 reg.events === 1 ? OK('session/event 注册 1 次（不重复）') : NG('session/event 注册 ' + reg.events + ' 次')
 reg.timers === 1 ? OK('定时器只起 1 个') : NG('定时器起了 ' + reg.timers + ' 个')
-reg.sections.length === 1 ? OK('提示词段注册 1 次') : NG('提示词段 ' + reg.sections.length + ' 个')
+// ⚠️ 别写死成数量（原来是 `=== 1`，加一段就红）—— 按**名字**查。
+const secOf = (nm) => reg.sections.find((x) => x && x.name === nm)
+const secTaste = secOf('dsh-mood/taste')
+const secState = secOf('dsh-mood/state')
+secState ? OK('心情段已注册') : NG('心情段没注册')
+secTaste ? OK('品味段已注册（共 ' + reg.sections.length + ' 段）') : NG('品味段没注册')
+// 品味要排在心情**前面** —— 缓存是前缀匹配，心情每几小时变一次，该排后面。
+(secTaste && secState && secTaste.order < secState.order)
+  ? OK('品味(' + secTaste.order + ') 排在心情(' + secState.order + ') 前面（缓存友好）')
+  : NG('品味段的顺序不对')
 const toolNames = reg.tools.map((t) => t.name).sort()
 // ⚠️ 别写死成某个数组 —— 加一个工具就要改这里，是同一类"硬编码期望"的坑
 //    （之前写死「22 种心情」，扩到 33 之后也炸过一次）。
-const WANT_TOOLS = ['diary', 'memory', 'mood', 'news']
+const WANT_TOOLS = ['diary', 'memory', 'mood', 'news', 'taste']
 const gotAllTools = WANT_TOOLS.every((x) => toolNames.includes(x)) && toolNames.length === WANT_TOOLS.length
 gotAllTools ? OK('工具: ' + toolNames.join(', ')) : NG('工具异常: ' + toolNames.join(','))
 const route = reg.routes[0]
 route && route.kind === 'prefix' && route.path === '/dsh-mood-api'
   ? OK('HTTP 路由已注册: ' + route.kind + ' ' + route.path)
   : NG('HTTP 路由未注册（设置页会 404）')
-reg.sections[0] && reg.sections[0].order === 900 ? OK('section order = 900（不撞人设的 0/1/20/21/10200/10201）') : WN('section order 异常')
+reg.sections.every((x) => x && x.order >= 800 && x.order < 1000)
+  ? OK('各段 order 都在 800~999（不撞人设的 0/1/20/21/10200/10201）')
+  : WN('section order 异常: ' + reg.sections.map((x) => x.order).join(','))
 
 // ───────────────────────────── D. 日记
 head('D. 日记')

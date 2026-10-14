@@ -152,8 +152,16 @@ export async function fetchDetail(item) {
 
   if (kind === 'video') {
     const t = await fetchVideoTranscript(url)
+    // ⚠️ **评论和字幕是两件事，别绑在一起。**
+    //    原来这里是"字幕拿到了就直接 return，comments 给空数组" ——
+    //    于是抓到字幕的视频**一条评论都不看**。而主人明确说过「评论区也要看」：
+    //    视频底下那些话往往是"别人怎么反应"的一手材料。
+    const cmt = await bilibiliComments(url, 6)
     if (t.text) {
-      return { kind: 'video', title: t.title || '', excerpt: t.text, comments: [], note: t.note }
+      return {
+        kind: 'video', title: t.title || '', excerpt: t.text, comments: cmt,
+        note: t.note + (cmt.length ? '，另有 ' + cmt.length + ' 条评论' : ''),
+      }
     }
     // 字幕拿不到，退回页面简介 —— 并明确标注
     const html = await fetchText(url)
@@ -162,7 +170,8 @@ export async function fetchDetail(item) {
       kind: 'video',
       title: clean((String(html).match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1]),
       excerpt: desc || '',
-      comments: pickComments(html, 4),
+      // bilibili 走 API（HTML 里没有），别的站退回启发式
+      comments: cmt.length ? cmt : pickComments(html, 4),
       note: t.note || (desc ? '只拿到简介（没拿到字幕）' : '只拿到标题（没拿到字幕）'),
     }
   }
@@ -209,6 +218,81 @@ export async function enrichItems(items, max = DETAIL_MAX_ITEMS) {
  *   3. 丢掉太短、太像样板（时间/点赞数/@某人）的
  * 拿不到就返回空数组 —— **不要为了凑数硬塞**。
  */
+/**
+ * bilibili 的评论 —— **必须走 API，页面 HTML 里没有**。
+ *
+ * ⚠️ 实测：视频页 420 KB HTML 里搜不到评论容器（评论是 JS 加载的），
+ *    拿启发式去抠只会得到垃圾（那次抠出来的是「Key725 发消息 <div ti」）。
+ *    而公开的评论接口直接给真评论：
+ *      GET https://api.bilibili.com/x/v2/reply?type=1&oid=<aid>&pn=1&sort=2
+ *    oid 是 **aid**（不是 BV 号）—— 先用 view 接口把 BV 换成 aid。
+ *
+ * 主人说过一句「评论区也要看」—— 视频底下那些话往往比视频本身更有信息量，
+ * 而且是**别人的判断**（正好是品味库里 `by: other` 那种材料）。
+ */
+// 上一次 bilibili 评论抓取为什么没拿到（空 = 没失败过）。
+// ⚠️ 留这个是因为第一版把错误整个吞了（`catch { return [] }`）——
+//    结果"评论是空的"和"被风控挡了"长得一模一样，只能靠临时打日志才查出来。
+export let lastBiliCommentError = ''
+
+export async function bilibiliComments(url, max = 6) {
+  const u = String(url || '')
+  const bv = (u.match(/\/video\/(BV[0-9A-Za-z]+)/) || [])[1]
+  const av = (u.match(/\/video\/av(\d+)/) || [])[1]
+  if (!bv && !av) { lastBiliCommentError = ''; return [] }
+  // ⚠️ **UA 要，referer 不要** —— 这条是实测出来的，很反直觉：
+  //    带 referer 请求 view 接口 → **HTTP 412 风控**；去掉就 200。
+  //    猜是"带着 referer 却没有 cookie"在它眼里比"什么都不带"更可疑 ——
+  //    像个浏览器，却少了浏览器该有的东西。
+  //    而 reply 接口带 referer 是正常的（实测 200）。两个接口规矩不一样，别想当然共用。
+  const UA = { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+  const WITH_REF = { ...UA, referer: 'https://www.bilibili.com/' }
+  lastBiliCommentError = ''
+  try {
+    let aid = av || ''
+    if (!aid && bv) {
+      const v = await fetch('https://api.bilibili.com/x/web-interface/view?bvid=' + encodeURIComponent(bv), { headers: UA, redirect: 'follow' })
+      const vj = await jsonOrNull(v)
+      aid = String((vj && vj.data && vj.data.aid) || '')
+      if (!aid) {
+        // 风控时先退回"抓页面自己抠 aid"—— 实测这条路在 view 被挡时仍然通
+        try {
+          const page = await (await fetch(u, { headers: UA, redirect: 'follow' })).text()
+          aid = String((page.match(/"aid":\s*(\d+)/) || [])[1] || '')
+        } catch { /* 还是拿不到就算了 */ }
+      }
+    }
+    if (!aid) { lastBiliCommentError = '拿不到 aid（view 接口被挡、页面也没抠到）'; return [] }
+    // sort=2 是"按热度"—— 置顶和高赞在前，比按时间有用
+    const r = await fetch('https://api.bilibili.com/x/v2/reply?type=1&oid=' + aid + '&pn=1&ps=' + (max * 2) + '&sort=2', { headers: WITH_REF, redirect: 'follow' })
+    const j = await jsonOrNull(r)
+    if (!j) { lastBiliCommentError = '评论接口回了非 JSON（多半是风控，HTTP ' + r.status + '）'; return [] }
+    if (j.code !== 0) { lastBiliCommentError = '评论接口 code=' + j.code + ' ' + (j.message || ''); return [] }
+    const out = []
+    const seen = new Set()
+    for (const rep2 of ((j.data && j.data.replies) || [])) {
+      const t = clean((rep2.content && rep2.content.message) || '').replace(/\s+/g, ' ').trim()
+      if (t.length < 4 || seen.has(t)) continue   // 太短的（"蒙了"）没信息量
+      seen.add(t)
+      out.push(t.slice(0, 200))
+      if (out.length >= max) break
+    }
+    return out
+  } catch (e) {
+    lastBiliCommentError = '抛错：' + String((e && e.message) || e)
+    return []
+  }
+}
+
+/** 拿 JSON；拿到 HTML（风控页）就返回 null —— 别让 `json()` 抛在调用方看不懂的地方。 */
+async function jsonOrNull(res) {
+  try {
+    const t = await res.text()
+    if (!t.trimStart().startsWith('{')) return null
+    return JSON.parse(t)
+  } catch { return null }
+}
+
 export function pickComments(html, max = 5) {
   try {
     const s = String(html || '')
@@ -330,14 +414,32 @@ export async function fetchVideoTranscript(url, maxChars = DETAIL_CHARS) {
   }
 
   const title = clean(meta.title)
+  // 选哪条字幕轨。
+  //
+  // ⚠️ **这里踩过一个正则的坑。** 第一版写的是：
+  //      /^zh|^zh-Hans|^zh-CN/i     ← 想让简体优先
+  //    但 `^zh` 已经把**所有** zh 打头的都匹配了（含 zh-Hant 繁体），
+  //    三个条件里第一个就通吃 —— 你以为在排队，其实头一个就把路占了。
+  //    实测后果：一个英文视频，拿回来的是**自动翻译成繁体**的字幕，
+  //    原话丢了、还多一层翻译误差。
+  //
+  // 现在的偏好：简体中文 → 笼统的 zh → **原语言** → 英文 → 繁体 → 其它。
+  //    把「原语言」排在英文前面，是因为**翻译会丢说话人的原话**，
+  //    而读原文比读二手转述靠谱得多（主人说过一句很像的话：不能模仿）。
   const pickTrack = (bag) => {
     if (!bag || typeof bag !== 'object') return null
     const keys = Object.keys(bag)
-    // 中文优先，其次英文，最后随便挑一个
-    const order = keys.filter((k) => /^zh|^zh-Hans|^zh-CN/i.test(k))
-      .concat(keys.filter((k) => /^en/i.test(k)))
-      .concat(keys)
-    for (const k of order) {
+    const lang = String(meta.language || '').toLowerCase().slice(0, 2)
+    const rank = (k) => {
+      const u = String(k).toLowerCase()
+      if (/^zh-(hans|cn|sg)/.test(u)) return 0        // 简体
+      if (u === 'zh') return 1                       // 笼统的中文
+      if (lang && u.startsWith(lang)) return 2        // 原语言
+      if (/^en/.test(u)) return 3
+      if (/^zh/.test(u)) return 4                     // 繁体也是中文，但排后面
+      return 5
+    }
+    for (const k of keys.slice().sort((a, b) => rank(a) - rank(b))) {
       const arr = bag[k]
       if (!Array.isArray(arr)) continue
       const v = arr.find((x) => x && x.ext === 'vtt') || arr.find((x) => x && x.url)
@@ -345,7 +447,9 @@ export async function fetchVideoTranscript(url, maxChars = DETAIL_CHARS) {
     }
     return null
   }
+  // 手动字幕优先于自动字幕（自动的是机器识别的，还有可能是机器翻译的）
   const track = pickTrack(meta.subtitles) || pickTrack(meta.automatic_captions)
+  const trackLang = track && track.name ? String(track.name) : ''
   if (!track) {
     return {
       text: '', title,
@@ -358,7 +462,8 @@ export async function fetchVideoTranscript(url, maxChars = DETAIL_CHARS) {
     return {
       text,
       title,
-      note: meta.subtitles && Object.keys(meta.subtitles).length ? '字幕' : '自动字幕（可能有误差）',
+      note: (meta.subtitles && Object.keys(meta.subtitles).length ? '字幕' : '自动字幕（可能有误差）') +
+        (trackLang ? '（' + trackLang + '）' : ''),
     }
   } catch (e) {
     return { text: '', title, note: '字幕下载失败：' + String((e && e.message) || e) }

@@ -60,7 +60,7 @@ globalThis.setInterval = () => { ivalCount++; return { unref() {} } }
 M.apply(root, {})
 globalThis.setInterval = origSetInterval
 
-ok('apply 跑通，注册了 4 个工具', got.tools.length === 4, got.tools.map((t) => t.name).join(','))
+ok('apply 跑通，四个工具都在', ['mood', 'diary', 'news', 'memory'].every((x) => got.tools.map((t) => t.name).includes(x)), got.tools.map((t) => t.name).join(','))
 ok('session/event 监听注册了', got.events.length === 1, got.events.length + ' 个')
 ok('定时器没真的起（测试环境）', ivalCount === 1, ivalCount + '')
 
