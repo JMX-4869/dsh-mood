@@ -31,10 +31,16 @@
     "memory": [
       "bytes",
       "count",
+      "daysLeft",
+      "maxBytes",
       "newest",
       "oldest",
+      "onlyUser",
       "path",
-      "sessions"
+      "perDayBytes",
+      "sessions",
+      "trimmed",
+      "usedRatio"
     ],
     "persona": [
       "effective",
@@ -175,10 +181,16 @@
     "stats": [
       "bytes",
       "count",
+      "daysLeft",
+      "maxBytes",
       "newest",
       "oldest",
+      "onlyUser",
       "path",
-      "sessions"
+      "perDayBytes",
+      "sessions",
+      "trimmed",
+      "usedRatio"
     ],
     "recent0": [
       "id",
@@ -209,10 +221,16 @@
     "stats": [
       "bytes",
       "count",
+      "daysLeft",
+      "maxBytes",
       "newest",
       "oldest",
+      "onlyUser",
       "path",
-      "sessions"
+      "perDayBytes",
+      "sessions",
+      "trimmed",
+      "usedRatio"
     ],
     "recent0": null,
     "hits0": [

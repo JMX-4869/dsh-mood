@@ -65,10 +65,24 @@ const rb2 = P.noteBoot(b1, Date.now(), 0)
 ok('  热重载不算重启（用进程时刻而不是插件加载时刻）', rb2.restarted === false && b1.pendingRestart === false, JSON.stringify(rb2))
 
 // procStart 变了 = 宿主真的重启过
+//
+// ⚠️ 但**只有"因为改了东西才重启"才挂待办**。
+//    原来这里是 `if (restarted) pendingRestart = true` —— 只要进程启动时刻变了就挂。
+//    后果：主人随手开一下 DSH 也会在几十秒后收到"宿主刚重启过，去看一眼现在的实际状态"，
+//    而他什么都没让插件改。这条期望是**跟着旧语义写的**，现在一起改。
 const b2 = P.blankProactive()
 b2.procStart = Date.now() - 3600_000
-const rb3 = P.noteBoot(b2, Date.now(), 0)
-ok('  procStart 变了 → 认成重启', rb3.restarted === true && b2.pendingRestart === true, JSON.stringify(rb3))
+const rb3 = P.noteBoot(b2, Date.now(), b2.procStart - 60_000)
+ok('  procStart 变了 → 认出重启', rb3.restarted === true, JSON.stringify(rb3))
+ok('  但没改过东西 → needed=false', rb3.needed === false, JSON.stringify(rb3))
+ok('  → 也就不挂待办（随手开一下不该弹）', b2.pendingRestart === false, JSON.stringify(rb3))
+
+// 上一轮运行期间文件被改过 → 这次重启是"需要"的 → 挂待办
+const b2b = P.blankProactive()
+b2b.procStart = Date.now() - 3600_000
+const rb3b = P.noteBoot(b2b, Date.now(), b2b.procStart + 600_000)
+ok('  上一轮期间改过文件 → needed=true 且挂待办',
+  rb3b.needed === true && b2b.pendingRestart === true, JSON.stringify(rb3b))
 
 console.log()
 console.log('════ 改动待生效（文件比进程新）════')

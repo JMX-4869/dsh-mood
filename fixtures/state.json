@@ -3,13 +3,13 @@
   "current": {
     "id": "calm",
     "label": "平静",
-    "mixLabel": "平静混着专注、好奇",
-    "primaryLabel": "平静"
+    "mixLabel": "专注混着平静、好奇",
+    "primaryLabel": "专注"
   },
   "mixed": [
     {
-      "id": "focused",
-      "label": "专注"
+      "id": "calm",
+      "label": "平静"
     },
     {
       "id": "curious",
@@ -18,39 +18,39 @@
   ],
   "ranked": [
     {
-      "id": "calm",
-      "label": "平静",
-      "value": 38.4
-    },
-    {
       "id": "focused",
       "label": "专注",
-      "value": 34.5
+      "value": 36.9
+    },
+    {
+      "id": "calm",
+      "label": "平静",
+      "value": 35.4
     },
     {
       "id": "curious",
       "label": "好奇",
-      "value": 31.6
-    },
-    {
-      "id": "happy",
-      "label": "开心",
-      "value": 29.7
+      "value": 33.7
     },
     {
       "id": "tired",
       "label": "疲惫",
-      "value": 28.8
+      "value": 29.4
+    },
+    {
+      "id": "happy",
+      "label": "开心",
+      "value": 27.3
+    },
+    {
+      "id": "annoyed",
+      "label": "烦躁",
+      "value": 17.9
     },
     {
       "id": "excited",
       "label": "兴奋",
       "value": 17.7
-    },
-    {
-      "id": "annoyed",
-      "label": "烦躁",
-      "value": 14.3
     },
     {
       "id": "proud",
@@ -88,14 +88,14 @@
       "value": 11.4
     },
     {
+      "id": "down",
+      "label": "低落",
+      "value": 10.9
+    },
+    {
       "id": "hurt",
       "label": "委屈",
       "value": 9.6
-    },
-    {
-      "id": "down",
-      "label": "低落",
-      "value": 9.4
     },
     {
       "id": "cracked",
@@ -183,14 +183,14 @@
       "value": 0
     }
   ],
-  "sinceSwitchMin": 66,
-  "nextPeriodicMin": 279,
+  "sinceSwitchMin": 115,
+  "nextPeriodicMin": 230,
   "diaryFile": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-diary.json",
   "generateAt": "23:59",
   "unlocked": true,
   "lockedReason": "",
   "accessAt": 1791907268608,
-  "count": 1,
+  "count": 2,
   "moodLabels": {
     "calm": "平静",
     "happy": "开心",
@@ -268,12 +268,18 @@
     ]
   },
   "memory": {
-    "count": 130,
-    "bytes": 73032,
-    "sessions": 1,
+    "count": 217,
+    "bytes": 110755,
+    "sessions": 2,
     "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-memory.jsonl",
     "oldest": 1791987664514,
-    "newest": 1791992174757
+    "newest": 1791995124191,
+    "maxBytes": 52428800,
+    "usedRatio": 0.0021124839782714843,
+    "perDayBytes": 1282794.415897632,
+    "daysLeft": 40.78443463085282,
+    "trimmed": 0,
+    "onlyUser": false
   },
   "persona": {
     "source": "external",
@@ -292,6 +298,12 @@
     }
   },
   "diaries": [
+    {
+      "date": "2026-10-14",
+      "mood": "curious",
+      "moodLabel": "好奇",
+      "edited": false
+    },
     {
       "date": "2026-10-13",
       "mood": "calm",

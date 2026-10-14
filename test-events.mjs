@@ -125,12 +125,36 @@ ok('诊断更新成"没有欠着的"', !!(st2 && /没有欠着的/.test(st2.last
 
 console.log()
 console.log('════ 会话对象只有顶层 id（没有 header）也得能取到 ════')
+// ⚠️ 顺序变了：**先**让 sess-B 说话（它成为"当前活跃对话"），**再**挂待办 ——
+//    手动挂待办会绑到当前活跃的那条。反过来的话，待办已经绑在 sess-A 上，
+//    按新规矩就**不该**投给 sess-B 了（这正是要的效果，不是 bug）。
+got.events[0]({ id: 'sess-B' }, { type: 'user/message', at: Date.now(), data: { role: 'user', content: [{ type: 'text', text: '换个会话对象形状' }] } })
 setPending()
 got.prompts.length = 0
 got.events[0]({ id: 'sess-B' }, { type: 'user/message', at: Date.now(), data: { role: 'user', content: [{ type: 'text', text: '换个会话对象形状再来一次' }] } })
 got.events[0]({ id: 'sess-B' }, { type: 'turn/end', at: Date.now(), data: {} })
 await tick()
-ok('没有 header 也能投递', got.prompts.length === 1 && got.prompts[0].sessionId === 'sess-B',
+ok('没有 header 也能取到 id 并投递', got.prompts.length === 1 && got.prompts[0].sessionId === 'sess-B',
+  got.prompts.length + ' 次 / ' + (got.prompts[0] && got.prompts[0].sessionId))
+
+console.log()
+console.log('════ 活跃的是别的对话时，绝不"就近投递" ════')
+// 待办绑在 sess-B，现在换个对话说话 —— 提醒**不该**跑到那边去
+setPending()
+got.prompts.length = 0
+got.events[0]({ id: 'sess-C' }, { type: 'user/message', at: Date.now(), data: { role: 'user', content: [{ type: 'text', text: '我跑到另一个对话来了' }] } })
+got.events[0]({ id: 'sess-C' }, { type: 'turn/end', at: Date.now(), data: {} })
+await tick()
+ok('没投给 sess-C（提醒不会跟着人跑）', got.prompts.length === 0, '投了 ' + got.prompts.length + ' 次')
+const stC = callApi('GET', '/dsh-mood-api/proactive')
+ok('诊断说清了原因', !!(stC && /别的对话/.test(stC.lastReportCheck.why)), stC && stC.lastReportCheck && stC.lastReportCheck.why)
+ok('待办还留着（没有白丢）', !!(stC && stC.pendingRestart === true))
+// 回到绑定的那条 —— 这时候才该投
+got.prompts.length = 0
+got.events[0]({ id: 'sess-B' }, { type: 'user/message', at: Date.now(), data: { role: 'user', content: [{ type: 'text', text: '回来了' }] } })
+got.events[0]({ id: 'sess-B' }, { type: 'turn/end', at: Date.now(), data: {} })
+await tick()
+ok('回到绑定的对话 → 投出去了', got.prompts.length === 1 && got.prompts[0].sessionId === 'sess-B',
   got.prompts.length + ' 次 / ' + (got.prompts[0] && got.prompts[0].sessionId))
 
 console.log()

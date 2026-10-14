@@ -62,21 +62,21 @@
       "kind": "谷"
     }
   ],
-  "nowHour": 23,
+  "nowHour": 0,
   "reportRestart": true,
   "warnStale": true,
   "pendingRestart": false,
-  "pendingSince": 1791990425088,
+  "pendingSince": 1791993914682,
   "pendingStale": false,
-  "reportedAt": 1791991200304,
-  "procStart": 1791990423322,
+  "reportedAt": 1791993944692,
+  "procStart": 1791993912868,
   "lastReportCheck": {
-    "at": 1791991670729,
+    "at": 1791995114961,
     "why": "没有欠着的汇报"
   },
-  "lastUserAt": 1791991963001,
-  "lastSpokeAt": 1791991200304,
-  "sentToday": 2,
+  "lastUserAt": 1791994949564,
+  "lastSpokeAt": 1791993944692,
+  "sentToday": 1,
   "awaitingReply": false,
   "canNow": false,
   "why": "正在跑回合",
@@ -99,12 +99,12 @@
     {
       "name": "距上次说话",
       "pass": false,
-      "note": "4 分钟（门槛 25 分钟）"
+      "note": "3 分钟（门槛 25 分钟）"
     },
     {
       "name": "距上次开口",
       "pass": false,
-      "note": "17 分钟（门槛 45 分钟）"
+      "note": "20 分钟（门槛 45 分钟）"
     },
     {
       "name": "等回复",
@@ -114,7 +114,7 @@
     {
       "name": "今日配额",
       "pass": true,
-      "note": "2 / 6 次"
+      "note": "1 / 6 次"
     },
     {
       "name": "深夜静默",
@@ -124,7 +124,7 @@
     {
       "name": "允许时段",
       "pass": true,
-      "note": "深夜 / 晚间（现在 23 点是晚间）"
+      "note": "深夜 / 晚间（现在 0 点是深夜）"
     },
     {
       "name": "重启汇报",

@@ -96,9 +96,19 @@ export function blankProactive() {
     //    每次热重载都会被误判成"重启过"，然后就没完没了地汇报。
     //    process.uptime() 反推出来的进程启动时刻不受 HMR 影响。
     procStart: 0,
-    pendingRestart: false,   // 检测到重启 → 等下一次回合结束时汇报
+    pendingRestart: false,   // 检测到「这次重启是因为改了东西」→ 等合适的时机汇报
     pendingSince: 0,         // 什么时候挂上的 —— 用来量「从重启到真的说出口」隔了多久
     pendingStale: false,     // 插件文件比进程还新 → 等下一次回合结束时提醒
+    /**
+     * 这次汇报该投到**哪个对话**。
+     *
+     * ⚠️ 原来是用「最近一次有动静的 session」（liveSession）—— 主人切过对话，
+     *    提醒就跑到别的对话框里去了。那种提醒是**针对这次重启**的，
+     *    必须落在"他此刻真的在看的那条对话"里，否则等于白发。
+     *
+     *    所以：由**主人在某个对话里开口**那一刻绑上，之后只投给那一个。
+     */
+    reportSid: '',
     reportedAt: 0,
   }
 }
@@ -219,9 +229,10 @@ export function processStart(now = Date.now()) {
 /**
  * 挂载时调一次：判断这次是不是"重启"。
  *
- * @returns {{ restarted: boolean, stale: boolean }}
+ * @returns {{ restarted: boolean, stale: boolean, needed: boolean }}
  *   restarted —— 之前记过 procStart，而且和这次不一样 → 中间宿主重启过
  *   stale     —— 插件文件比进程还新 → 改了要重启才生效
+ *   needed    —— 这次重启是**因为改了东西**（上一轮运行期间文件被改过）
  */
 export function noteBoot(p, now = Date.now(), newestFileMtime = 0) {
   const ps = processStart(now)
@@ -233,13 +244,33 @@ export function noteBoot(p, now = Date.now(), newestFileMtime = 0) {
   // 但**宿主配置和 cordis.patch.yml 不会跟着变** —— 所以"要重启"这话仍然成立。
   const stale = !!newestFileMtime && newestFileMtime > ps + 5000
 
-  if (restarted && p.cfg && p.cfg.reportRestart !== false) {
+  /**
+   * ⚠️ **只有"因为改了东西才重启"才汇报。**
+   *
+   * 原来这里是 `if (restarted) pendingRestart = true` —— 只要进程启动时刻变了就挂待办。
+   * 后果：主人随手开一下 DSH、或者从任务栏重新打开，都会在几十秒后收到一条
+   * "宿主刚重启过，去看一眼现在的实际状态" —— 而他**什么都没让插件改**。
+   * 一两次之后这条提醒就跟弹窗广告一样，真改完东西那次反而不当回事了。
+   *
+   * 判据：**上一轮运行期间**插件文件被改过没有 ——
+   *   `newestFileMtime > prev`（prev = 上一次的进程启动时刻）
+   * 文件比上一轮进程还新，说明上一轮跑到一半代码变了（或者改完没重启），
+   * 那就确实欠一次重启；重启之后才值得说一句。
+   * 文件一直比上一次启动还老 → 这轮什么都没改 → **不吭声**。
+   *
+   * 这条判据还自带"说一次就够"：报完 prev 会跟着推进，同样的文件时间戳不会再触发。
+   */
+  const needed = restarted && !!prev && newestFileMtime > prev + 5000
+
+  if (needed && p.cfg && p.cfg.reportRestart !== false) {
     // 只在「从没挂过」时记时间 —— 重复挂上不该把起点往后推，否则延迟会越量越小
     if (!p.pendingRestart) p.pendingSince = now
     p.pendingRestart = true
+    // 换一次待办就重新挑投递的对话 —— 上一次投过的那条不能再背这口锅
+    p.reportSid = ''
   }
   if (stale && p.cfg && p.cfg.warnStale !== false) p.pendingStale = true
-  return { restarted, stale }
+  return { restarted, stale, needed }
 }
 
 /** 要投的重启汇报。说不说仍然由模型自己决定。 */
@@ -281,6 +312,7 @@ export function markReported(p, now = Date.now()) {
   p.pendingRestart = false
   p.pendingStale = false
   p.reportedAt = now
+  p.reportSid = ''
   return p
 }
 

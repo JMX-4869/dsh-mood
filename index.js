@@ -352,6 +352,24 @@ export const MOOD_TIERS = {
  *    （memory.js 的 moveTo 也留了 onMoved 回调，两边一起才生效。）
  */
 /**
+ * 从会话对象里取 id。
+ *
+ * ⚠️ 别只赌一个字段名。原来 `maybeSpeak` 里写的是 `liveSession.header.id`，
+ *    而硬盘记忆那边用的是 `session.id` —— **同一个会话对象，两处取法不一样**，
+ *    说明当时我不确定哪个才对。猜错的后果是 `!sid` 直接 return：
+ *    **什么都不发生，而且完全不报错** —— 重启汇报就是这么被吞掉的。
+ *
+ * ⚠️ 它放在**模块级**，不是 mountCore 里面 —— 路由（mountApi）也要用它。
+ *    之前它在 mountCore 的闭包里，路由里一调就 `sessionIdOf is not defined`：
+ *    语法检查过、apply 过，**只有请求进来才炸**。
+ *    这是今晚第四次栽"闭包里的东西模块级/另一层看不见"，所以纯函数一律放外面。
+ */
+function sessionIdOf(s) {
+  if (!s) return ''
+  return (s.header && s.header.id) || s.id || s.sessionId || ''
+}
+
+/**
  * 模块级的 state 引用 —— **mountCore 里赋值**。
  *
  * ⚠️ 这是今晚第三次栽同一个坑了：
@@ -1246,6 +1264,14 @@ export function apply(root, rawConfig) {
    * （写测试时也靠它 —— 不然碰不到 mountCore 里那份活的状态。）
    */
   let tryReportRef = null
+  /**
+   * 当前活跃的会话对象 —— mountCore 里赋值，mountApi 的路由要用。
+   *
+   * ⚠️ 又是那个老坑：`liveSession` 定义在 mountCore 的闭包里（缩进两格），
+   *    路由写在 mountApi 里，**看不见**。今晚这个坑栽过三次
+   *    （memoryCfg / personaSource / readPersona），解法一样：外层留引用。
+   */
+  let liveSessionRef = null
   const log = (...a) => { try { root?.logger?.info?.(...a) } catch {} }
 
   // 额外层：可在配置里单独关掉，不影响人设插件，也不留残留。
@@ -1621,9 +1647,24 @@ export function apply(root, rawConfig) {
             } catch { /* 归档失败不能影响对话 */ }
           }
           // ── 主动开口用到的三个观察点 ──
-          if (session) liveSession = session
+          if (session) { liveSession = session; liveSessionRef = session }
           if (type === 'user/message') {
             lastUserAt = Date.now()
+            /**
+             * ⚠️ 重启提醒**投到哪个对话**，由这一刻决定。
+             *
+             * 原来的投递用的是 `liveSession`（最近一次有动静的 session）——
+             * 主人切过对话的话，提醒就跑到别的对话框里去了。
+             * 而这条提醒是**针对这次重启**的，落在没在看的那条里等于白发。
+             *
+             * 判据改成：**主人在哪个对话里开口，就投给哪个**。
+             * 他既然在这儿敲字，说明他就在看这一条。
+             * 绑上之后不再改 —— 免得后来的事件把待办"抢"走。
+             */
+            if ((proactive.pendingRestart || proactive.pendingStale) && !proactive.reportSid) {
+              const sid0 = sessionIdOf(session || liveSession)
+              if (sid0) proactive.reportSid = sid0
+            }
             // 用户终于回话了 —— 关掉"等回复"，下次空闲才可能再开口
             try { markReplied(proactive) } catch { /* 不管 */ }
             void persistProactive()
@@ -1777,7 +1818,8 @@ export function apply(root, rawConfig) {
           name: '重启汇报',
           pass: true,
           note: proactive.pendingRestart
-            ? '⚠️ 检测到宿主重启过 —— 下次回合结束时主动汇报'
+            ? ('⚠️ 这次重启前改过东西 —— 等你在某个对话里开口时汇报'
+              + (proactive.reportSid ? '（已绑到 ' + proactive.reportSid.slice(0, 8) + '）' : '（还没绑到对话）'))
             : (c.reportRestart === false ? '关着' : '没有欠着的'),
         },
         {
@@ -1800,6 +1842,8 @@ export function apply(root, rawConfig) {
         reportRestart: c.reportRestart !== false,
         warnStale: c.warnStale !== false,
         pendingRestart: !!proactive.pendingRestart,
+        // 这次汇报绑到了哪个对话（空 = 还没人在对话里开口）
+        reportSid: proactive.reportSid || '',
         pendingSince: proactive.pendingSince || 0,
         pendingStale: !!proactive.pendingStale,
         reportedAt: proactive.reportedAt || 0,
@@ -1814,19 +1858,6 @@ export function apply(root, rawConfig) {
         gates,
         file: proactiveFile(),
       }
-    }
-
-    /**
-     * 从会话对象里取 id。
-     *
-     * ⚠️ 别只赌一个字段名。原来 `maybeSpeak` 里写的是 `liveSession.header.id`，
-     *    而硬盘记忆那边用的是 `session.id` —— **同一个会话对象，两处取法不一样**，
-     *    说明当时我不确定哪个才对。猜错的后果是 `!sid` 直接 return：
-     *    **什么都不发生，而且完全不报错** —— 重启汇报就是这么被吞掉的。
-     */
-    function sessionIdOf(s) {
-      if (!s) return ''
-      return (s.header && s.header.id) || s.id || s.sessionId || ''
     }
 
     /**
@@ -1886,6 +1917,22 @@ export function apply(root, rawConfig) {
         if (!c.enabled) { skip('主动开口关着'); await persistProactive(); return }
         const kind = proactive.pendingRestart ? 'restart' : (proactive.pendingStale ? 'stale' : '')
         if (!kind) { skip('没有欠着的汇报'); await persistProactive(); return }
+        // ⚠️ **必须投给主人开口的那个对话**，不是"最近有动静的那个"。
+        //    他想看的提醒，要出现在他正看着的那条对话里。
+        //    还没人开口就等着 —— 宁可晚一点，也别发到别的对话框去。
+        const sid = proactive.reportSid || ''
+        if (!sid) {
+          skip('还不知道该投给哪个对话（等主人先在某个对话里开口）')
+          await persistProactive()
+          return
+        }
+        // 如果当前活跃的对话已经不是绑定的那个，说明他换地方了 —— 也等着，
+        // 等绑定的那条再有动静时再投。绝不"就近投递"。
+        if (sessionIdOf(liveSession) && sessionIdOf(liveSession) !== sid) {
+          skip('当前活跃的是别的对话，等回到绑定的那条再投')
+          await persistProactive()
+          return
+        }
         if (turnBusy) { skip('回合还在跑'); await persistProactive(); return }
         const now = Date.now()
         const h = new Date(now).getHours()
@@ -1894,14 +1941,6 @@ export function apply(root, rawConfig) {
         const { quietFrom: a, quietTo: b } = c
         const isQuiet = a < b ? (h >= a && h < b) : (h >= a || h < b)
         if (isQuiet) { skip(a + '~' + b + ' 点静默'); await persistProactive(); return }
-        const sid = sessionIdOf(liveSession)
-        // 这一条最阴：会话对象里字段名猜错 → 什么都不发生、也不报错。
-        if (!sid) {
-          skip('会话对象里取不到 id（顶层：' + Object.keys(liveSession).slice(0, 8).join('/')
-            + (liveSession.header ? ' · header：' + Object.keys(liveSession.header).slice(0, 8).join('/') : ' · 没有 header') + '）')
-          await persistProactive()
-          return
-        }
         // 先清标记再投递：投递失败也不能在下一个回合重来（宁可少说，不能刷屏）
         markReported(proactive, now)
         markSpoke(proactive, now)
@@ -2622,15 +2661,23 @@ export function apply(root, rawConfig) {
                     // 有了这两个，界面上就能放个按钮当场试：
                     //   markRestart —— 标成"欠一次汇报"（下一次回合结束会走正常流程）
                     //   tryReport   —— 立刻跑一遍，成没成写在 lastReportCheck 里
+                    //
+                    // ⚠️ 手动触发时**顺手绑到当前活跃的对话**。
+                    //    正常路径靠"主人在某个对话里开口"来绑，但手动点按钮时他可能
+                    //    还没在对话里说过话 —— 那样投递会因为"不知道该给谁"而静默跳过，
+                    //    按钮点了没反应，看起来像坏的。他此刻就坐在这个应用里，
+                    //    绑当前活跃的那条是合理的。
                     if (j.action === 'markRestart') {
                       p.pendingRestart = true
                       p.reportedAt = 0
                       p.lastReportCheck = null
+                      p.reportSid = sessionIdOf(liveSessionRef) || ''
                       saveProactive(p)
                       return send(proactiveStatus())
                     }
                     if (j.action === 'tryReport') {
                       if (!p.pendingRestart && !p.pendingStale) p.pendingRestart = true
+                      if (!p.reportSid) p.reportSid = sessionIdOf(liveSessionRef) || ''
                       saveProactive(p)
                       const fn = tryReportRef
                       if (typeof fn !== 'function') return send({ ok: false, error: '还没挂载' }, 503)

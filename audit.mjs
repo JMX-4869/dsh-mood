@@ -298,6 +298,34 @@ const N = M.MOOD_IDS.length
     //    所以"检测到了重启但一句话没说"只能靠主人在界面上发现。
     const portDoc = fs.existsSync(SRC + '/PORTING.md') && fs.existsSync(SRC + '/test-porting.mjs')
     portDoc ? OK('有 PORTING.md + test-porting.mjs（移植说明配了验证）') : NG('移植说明或它的测试缺了')
+
+    // ⚠️ 重启汇报：**只在"因为改了东西才重启"时发**。
+    //    原来写成 if (restarted) pendingRestart = true —— 只要进程启动时刻变了就挂待办，
+    //    主人随手开一下 DSH 也会在几十秒后收到「宿主刚重启过，去看一眼现在的实际状态」，
+    //    而他什么都没让插件改。一两次之后这条提醒就跟弹窗广告一样。
+    const proSrc = fs.readFileSync(SRC + '/proactive.js', 'utf8')
+    const neededRule = /const needed = restarted && !!prev && newestFileMtime > prev \+ 5000/.test(proSrc)
+    neededRule ? OK('只有「上一轮期间改过文件」才挂重启汇报（随手开一下不弹）')
+      : NG('重启汇报还是「只要重启就发」')
+    const gateOnNeeded = /if \(needed && p\.cfg/.test(proSrc)
+    gateOnNeeded ? OK('挂待办用的是 needed 不是 restarted') : NG('挂待办没用 needed')
+
+    // ⚠️ 重启汇报必须投给**主人开口的那个对话**，不是「最近有动静的那个」。
+    //    他切过对话，提醒就跑到别的对话框里去了 —— 而这条提醒是针对这次重启的。
+    const repFn = code.slice(code.indexOf('async function maybeReportRestart'),
+      code.indexOf('async function maybeReportRestart') + 3000)
+    const useReportSid = /const sid = proactive\.reportSid/.test(repFn)
+    useReportSid
+      ? OK('投递目标是绑定的对话（reportSid）') : NG('投递还在用 liveSession —— 会发到别的对话')
+    const noNearby = /当前活跃的是别的对话/.test(repFn)
+    noNearby ? OK('活跃的是别的对话时等着，绝不就近投递') : NG('缺少「不就近投递」的判断')
+    const bindOnSpeak = /if \(\(proactive\.pendingRestart \|\| proactive\.pendingStale\) && !proactive\.reportSid\)/.test(code)
+    bindOnSpeak ? OK('绑定发生在「主人在某个对话里开口」那一刻') : NG('没找到绑定时机')
+
+    // 纯函数别放在闭包里 —— 路由（mountApi）也要用 sessionIdOf，
+    // 放 mountCore 里的话请求一到就 sessionIdOf is not defined（语法检查抓不到）。
+    const sidTop = /^function sessionIdOf\(/m.test(code)
+    sidTop ? OK('sessionIdOf 在模块级（路由也能用）') : NG('sessionIdOf 还在闭包里 —— 路由一调就炸')
     const evTest = fs.existsSync(SRC + '/test-events.mjs')
     const toolTest = fs.existsSync(SRC + '/test-tools.mjs')
     // ⚠️ 心跳里**先汇报、再普通开口**。两个都会同步把 lastSpokeAt 推到"现在"，
