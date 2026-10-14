@@ -20,12 +20,12 @@
     {
       "id": "focused",
       "label": "专注",
-      "value": 36.9
+      "value": 37.9
     },
     {
       "id": "calm",
       "label": "平静",
-      "value": 35.4
+      "value": 34.4
     },
     {
       "id": "curious",
@@ -35,17 +35,17 @@
     {
       "id": "tired",
       "label": "疲惫",
-      "value": 29.4
+      "value": 30.1
     },
     {
       "id": "happy",
       "label": "开心",
-      "value": 27.3
+      "value": 26.5
     },
     {
       "id": "annoyed",
       "label": "烦躁",
-      "value": 17.9
+      "value": 19.1
     },
     {
       "id": "excited",
@@ -83,14 +83,14 @@
       "value": 11.5
     },
     {
-      "id": "flutter",
-      "label": "心动",
+      "id": "down",
+      "label": "低落",
       "value": 11.4
     },
     {
-      "id": "down",
-      "label": "低落",
-      "value": 10.9
+      "id": "flutter",
+      "label": "心动",
+      "value": 11.4
     },
     {
       "id": "hurt",
@@ -183,8 +183,8 @@
       "value": 0
     }
   ],
-  "sinceSwitchMin": 115,
-  "nextPeriodicMin": 230,
+  "sinceSwitchMin": 145,
+  "nextPeriodicMin": 201,
   "diaryFile": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-diary.json",
   "generateAt": "23:59",
   "unlocked": true,
@@ -268,16 +268,16 @@
     ]
   },
   "memory": {
-    "count": 217,
-    "bytes": 110755,
+    "count": 269,
+    "bytes": 131195,
     "sessions": 2,
     "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-memory.jsonl",
     "oldest": 1791987664514,
-    "newest": 1791995124191,
+    "newest": 1791996887690,
     "maxBytes": 52428800,
-    "usedRatio": 0.0021124839782714843,
-    "perDayBytes": 1282794.415897632,
-    "daysLeft": 40.78443463085282,
+    "usedRatio": 0.0025023460388183595,
+    "perDayBytes": 1228996.172251294,
+    "daysLeft": 42.55310649519799,
     "trimmed": 0,
     "onlyUser": false
   },

@@ -141,6 +141,7 @@
       "quietFrom",
       "quietTo",
       "reportRestart",
+      "reportSid",
       "reportedAt",
       "sentToday",
       "slotTable",

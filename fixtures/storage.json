@@ -27,7 +27,7 @@
       "configured": null,
       "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-diary.json",
       "exists": true,
-      "size": 12641
+      "size": 14842
     },
     {
       "name": "dsh-mood-news.json",
@@ -49,7 +49,7 @@
       "configured": null,
       "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-proactive.json",
       "exists": true,
-      "size": 643
+      "size": 699
     },
     {
       "name": "dsh-mood-memory.jsonl",
@@ -60,7 +60,7 @@
       "configured": null,
       "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-memory.jsonl",
       "exists": true,
-      "size": 110755
+      "size": 131195
     }
   ],
   "leftovers": []

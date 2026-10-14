@@ -65,16 +65,17 @@
   "nowHour": 0,
   "reportRestart": true,
   "warnStale": true,
-  "pendingRestart": false,
-  "pendingSince": 1791993914682,
+  "pendingRestart": true,
+  "reportSid": "session-7f487b19-1d4e-4aa1-b6fd-460482d446fc",
+  "pendingSince": 1791996660836,
   "pendingStale": false,
   "reportedAt": 1791993944692,
-  "procStart": 1791993912868,
+  "procStart": 1791996659010,
   "lastReportCheck": {
-    "at": 1791995114961,
-    "why": "没有欠着的汇报"
+    "at": 1791996900892,
+    "why": "回合还在跑"
   },
-  "lastUserAt": 1791994949564,
+  "lastUserAt": 1791996823956,
   "lastSpokeAt": 1791993944692,
   "sentToday": 1,
   "awaitingReply": false,
@@ -99,12 +100,12 @@
     {
       "name": "距上次说话",
       "pass": false,
-      "note": "3 分钟（门槛 25 分钟）"
+      "note": "1 分钟（门槛 25 分钟）"
     },
     {
       "name": "距上次开口",
-      "pass": false,
-      "note": "20 分钟（门槛 45 分钟）"
+      "pass": true,
+      "note": "49 分钟（门槛 45 分钟）"
     },
     {
       "name": "等回复",
@@ -129,7 +130,7 @@
     {
       "name": "重启汇报",
       "pass": true,
-      "note": "没有欠着的"
+      "note": "⚠️ 这次重启前改过东西 —— 等你在某个对话里开口时汇报（已绑到 session-）"
     },
     {
       "name": "改动待生效",

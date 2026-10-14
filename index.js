@@ -1934,7 +1934,20 @@ export function apply(root, rawConfig) {
           await persistProactive()
           return
         }
-        if (turnBusy) { skip('回合还在跑'); await persistProactive(); return }
+        // ⚠️ **这里原来有一道 `if (turnBusy) return`（回合在跑就不投）—— 已经删掉。**
+        //
+        //    它把这条提醒变成了死锁：
+        //      要投递 → 得等没有回合在跑
+        //      但主人只有在说话的时候我才在 → 一说话就有回合
+        //    实测就是这个症状：重启之后一直没汇报，诊断里反复写着"回合还在跑"。
+        //    只有他放下不管、走开 30 秒以上，心跳才可能撞上空档发出来 ——
+        //    这跟"重启后告诉你一声"的目的正好相反。
+        //
+        //    而且这道门槛本来就是多余的：投递走的是
+        //    `sessionController.prompt({ mode: 'queue' })` —— **排队**投递，
+        //    本来就会等当前回合结束，不会打断任何人。
+        //
+        //    静默时段和允许时段**照样管**（下面那两道），只是不再要求"此刻没人说话"。
         const now = Date.now()
         const h = new Date(now).getHours()
         // 时段/静默照样管 —— 只是不要求空闲

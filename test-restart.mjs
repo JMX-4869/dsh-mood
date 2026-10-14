@@ -151,4 +151,34 @@ const NOW = new Date('2026-10-14T15:00:00').getTime()
   t.has(block, '!proactive.reportSid', '已经绑过的不会被后来的对话抢走')
 }
 
+// ══════════════════════════════════════════════════════════
+//  ⑤ 不许再要求"此刻没人说话"
+// ══════════════════════════════════════════════════════════
+//
+// 主人报的第三个症状：「重启了，没汇报」。
+// 诊断里反复写着「回合还在跑」—— 因为原来有一道 `if (turnBusy) return`。
+// 但那是个**死锁**：他只有说话的时候我才在，一说话就有回合在跑。
+// 只有他走开 30 秒以上，心跳才可能撞上空档 —— 跟"重启后告诉你一声"正好相反。
+//
+// 而且那道门槛本来就多余：投递走 `mode: 'queue'`，排队投递，
+// 本来就会等当前回合结束，不打断任何人。
+{
+  const fs = await import('node:fs')
+  const host = fs.readFileSync('D:/chajian/dsh-mood/index.js', 'utf8')
+  const i = host.indexOf('async function maybeReportRestart')
+  const fn = host.slice(i, i + 4000)
+  // ⚠️ **先剥注释再查** —— 我在那段里写了「这里原来有一道 if (turnBusy)」来解释，
+  //    不剥的话断言会匹配到自己的注释，反过来报错。
+  //    （这个坑今晚栽过十几次了，凡是"查代码文本"一律先剥。）
+  const body = fn.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*$/gm, '')
+
+  t.ok(!/if \(turnBusy\)/.test(body), '重启汇报里没有 turnBusy 门槛（那是死锁）')
+  t.ok(!/'回合还在跑'/.test(body), '也不会再写"回合还在跑"这条诊断')
+  t.has(body, "mode: 'queue'", '投递走 queue —— 排队，不打断当前回合')
+  t.has(body, 'slotAllowed(c, h)', '允许时段照样管')
+  t.has(body, 'isQuiet', '静默时段照样管')
+  // 但普通开口（主动找话）**应该**继续等空闲 —— 那条性质不同
+  t.has(host, 'busy: turnBusy', '主动开口那条仍然把 busy 交给 canSpeak（它才该等空闲）')
+}
+
 t.done()
