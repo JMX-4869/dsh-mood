@@ -493,7 +493,10 @@ export function renderFull(t) {
   if (!t.items.length) L.push('  （还没有）')
   for (const x of t.items) {
     const tags = Object.entries(x.tags).map(([k, v]) => (TAG_DIMS[k] || k) + ':' + v).join(' ')
-    L.push(`  ${x.kind === 'good' ? '✓' : '✗'} [${x.id}] ${x.ref}${tags ? '  ' + tags : ''}${x.confirmed ? '' : '  ⚠️待确认'}${x.note ? '\n      ' + x.note : ''}`)
+    // ⚠️ 原话必须显示 —— 它是条目里最有信息量的字段（第一版只显示了 note，把它漏了）
+    L.push(`  ${x.kind === 'good' ? '✓' : '✗'} [${x.id}] ${x.ref}${tags ? '  ' + tags : ''}${x.confirmed ? '' : '  ⚠️待确认'}`)
+    if (x.said) L.push('      他说过：「' + x.said + '」')
+    if (x.note) L.push('      ' + x.note)
   }
   return L.join('\n')
 }
@@ -551,7 +554,11 @@ export function summaryStale(t) {
  *    而且不要塞时间戳之类每轮都变的东西 —— 一变，后面全部作废。
  *    （动态那些放在返回值的最后。）
  */
-export function renderForPrompt(t, opts = {}) {
+export function renderForPrompt(t0, opts = {}) {
+  // ⚠️ 传进来 undefined / null 不能炸 —— 提示词段一出错就把整轮上下文带崩。
+  const t = t0 && typeof t0 === 'object'
+    ? { principles: Array.isArray(t0.principles) ? t0.principles : [], items: Array.isArray(t0.items) ? t0.items : [], summary: t0.summary || null }
+    : { principles: [], items: [], summary: null }
   // ⚠️ 别写成 `Number(x) || 14` —— 那样 0 会被当成假值吃掉，
   //    "一条原则都不列"就表达不出来（调试时踩到的）。
   const numOr = (v, d) => (Number.isFinite(Number(v)) && String(v).trim() !== '' ? Math.max(0, Number(v)) : d)
@@ -626,11 +633,13 @@ export function renderForPrompt(t, opts = {}) {
     L.push('### 例子 —— 最有用的就是这一段')
     if (good.length) {
       L.push('**主人认可的（正例）**')
-      for (const x of good.slice(-maxI)) L.push('- ' + fmtItem(x))
+      // ⚠️ 别用 slice(-maxI)：maxI=0 时 slice(-0) 就是 slice(0)，
+      //    本想「一个都不取」，结果取了**全部**。
+      for (const x of (maxI ? good.slice(-maxI) : [])) L.push('- ' + fmtItem(x))
     }
     if (bad.length) {
       L.push('**主人不认可的（反例）**')
-      for (const x of bad.slice(-maxI)) L.push('- ' + fmtItem(x))
+      for (const x of (maxI ? bad.slice(-maxI) : [])) L.push('- ' + fmtItem(x))
     }
     const drafts = t.items.filter((x) => !x.confirmed)
     if (drafts.length) {
