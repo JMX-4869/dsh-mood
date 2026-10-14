@@ -284,6 +284,12 @@ const N = M.MOOD_IDS.length
     const repWired = /if \(type === 'turn\/end'\)[\s\S]{0,400}?maybeReportRestart\(\)/.test(host2)
     repWired ? OK('回合结束时检查重启汇报（= 任务结束就查一次）') : NG('重启汇报没接在回合结束上')
 
+    // 时段选择用**真复选框**（<input type=checkbox>），不是长得像按钮的东西。
+    // 复选框表达的是现在是选中状态，按钮表达的是点下去会发生什么 —— 这里要的是前者。
+    const chk = /type: 'checkbox'/.test(cl2) && /className: 'slotchk'/.test(cl2)
+    chk ? OK('时段用复选框（真 input[type=checkbox]，键盘也能操作）')
+      : NG('时段不是复选框')
+
     const switches = /reportRestart: c\.reportRestart !== false/.test(host2)
       && /id: 'memory', order: 29/.test(cl2)
       && /重启汇报/.test(cl2)

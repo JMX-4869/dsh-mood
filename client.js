@@ -112,10 +112,14 @@ window.__ModuleLoader__.load({
       '.dshmood .slottitle{font-size:13px;font-weight:600}',
       '.dshmood .slotnote{font-size:12px;color:var(--dsw-alias-label-secondary);flex:1;min-width:120px}',
       '.dshmood .slots{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:8px}',
-      '.dshmood .slots3{grid-template-columns:repeat(3,1fr)}',
-      '.dshmood .slotbig{padding:12px 14px;flex-direction:column;align-items:flex-start;gap:4px}',
-      '.dshmood .slotbig .slotkind{width:22px;height:22px;line-height:22px;font-size:12px}',
-      '.dshmood .slotbig .slotname{font-size:14px;font-weight:600;flex:none}',
+      '.dshmood .slotchecks{display:flex;flex-direction:column;gap:6px}',
+      '.dshmood .slotchk{display:flex;align-items:center;gap:9px;padding:9px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;cursor:pointer;font-size:13px}',
+      '.dshmood .slotchk:hover{border-color:var(--dsw-alias-brand-primary)}',
+      '.dshmood .slotchk.on{background:#13241a;border-color:#2ea043}',
+      '.dshmood .slotchk.now{box-shadow:0 0 0 1px var(--dsw-alias-brand-primary) inset}',
+      '.dshmood .slotchk input[type=checkbox]{width:15px;height:15px;accent-color:#2ea043;cursor:pointer;flex:none}',
+      '.dshmood .slotchk .slotkind{width:20px;height:20px;line-height:20px;flex:none}',
+      '.dshmood .slotchk .slotname{font-weight:600;flex:none;min-width:3em}',
       '.dshmood .slot{display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:transparent;cursor:pointer;font-size:12.5px;color:var(--dsw-alias-label-primary)}',
       '.dshmood .slot:hover{border-color:var(--dsw-alias-brand-primary)}',
       '.dshmood .slot.on{background:#13241a;border-color:#2ea043}',
@@ -1167,29 +1171,36 @@ window.__ModuleLoader__.load({
               disabled: busy || !(d.slots && d.slots.length),
             }, '恢复全时段'),
           ),
-          // 只按**三类**选：峰 / 平 / 谷。
+          // 只按**三类**选：峰 / 平 / 谷，用**复选框**。
           //
-          // 原来是 7 个具体时段，粒度高但没必要 —— 想说的其实是
-          // 「别在人少的时候找我」或者「只在高峰期找我」，而不是"我只要 9 到 12 点"。
-          // 点某一类 = 把属于这类的所有时段一起选上（存储仍然是按段记的，
+          // 为什么是复选框不是按钮：按钮看的是"点下去会发生什么"，
+          // 复选框看的是"**现在是选中状态**" —— 这里要表达的正是后者。
+          // 用真 <input type="checkbox">，键盘也能操作（Tab + 空格）。
+          //
+          // 勾某一类 = 把属于这类的所有时段一起选上（存储仍然是按段记的，
           // 所以以后想再细化回去不用改数据）。
-          h('div', { className: 'slots slots3' },
+          h('div', { className: 'slotchecks' },
             ...(['峰', '平', '谷'].map((kind) => {
               const mine = (d.slotTable || []).filter((s) => s.kind === kind)
               const ids = mine.map((s) => s.id)
               const on = ids.length > 0 && ids.every((x) => (d.slots || []).includes(x))
               const isNow = mine.some((s) => d.nowHour >= s.from && d.nowHour < s.to)
               const hours = mine.map((s) => String(s.from).padStart(2, '0') + '–' + String(s.to % 24).padStart(2, '0')).join(' · ')
-              return h('button', {
+              const toggle = () => {
+                const cur = new Set(d.slots || [])
+                if (on) { for (const x of ids) cur.delete(x) } else { for (const x of ids) cur.add(x) }
+                patch({ slots: [...cur] })
+              }
+              return h('label', {
                 key: kind,
-                className: 'slot slotbig' + (on ? ' on' : '') + (isNow ? ' now' : ''),
-                disabled: busy,
-                onClick: () => {
-                  const cur = new Set(d.slots || [])
-                  if (on) { for (const x of ids) cur.delete(x) } else { for (const x of ids) cur.add(x) }
-                  patch({ slots: [...cur] })
-                },
+                className: 'slotchk' + (on ? ' on' : '') + (isNow ? ' now' : ''),
               },
+                h('input', {
+                  type: 'checkbox',
+                  checked: on,
+                  disabled: busy,
+                  onChange: toggle,
+                }),
                 h('span', { className: 'slotkind' }, kind),
                 h('span', { className: 'slotname' }, kind === '峰' ? '高峰' : kind === '平' ? '平峰' : '低谷'),
                 h('span', { className: 'slothours' }, hours),
