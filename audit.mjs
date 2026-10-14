@@ -30,7 +30,9 @@ for (const f of FILES) {
   if (md5(a) === md5(b)) OK(f + '  同步一致')
   else NG(f + '  **两份不一致**')
 }
-const extra = fs.readdirSync(DST).filter((f) => !FILES.includes(f))
+// ⚠️ 只看**文件**。`fixtures/` 是个目录 —— 第一版把目录也当成"多余文件"报了出来。
+//    这种假警报会教人忽略红灯。
+const extra = fs.readdirSync(DST).filter((f) => !FILES.includes(f) && fs.statSync(DST + '/' + f).isFile())
 if (extra.length) WN('profile 有多余文件: ' + extra.join(', '))
 else OK('profile 无多余文件')
 
@@ -298,6 +300,30 @@ const N = M.MOOD_IDS.length
     portDoc ? OK('有 PORTING.md + test-porting.mjs（移植说明配了验证）') : NG('移植说明或它的测试缺了')
     const evTest = fs.existsSync(SRC + '/test-events.mjs')
     const toolTest = fs.existsSync(SRC + '/test-tools.mjs')
+    // ⚠️ 心跳里**先汇报、再普通开口**。两个都会同步把 lastSpokeAt 推到"现在"，
+    //    先跑的占坑、后跑的被间隔门槛挡住。顺序反了会在同一拍发两条。
+    //    （重启汇报故意不走空闲门槛，它自己拦不住 —— 靠顺序 + maybeSpeak 里那道兜底。）
+    const beatOrder = (() => {
+      const m = code.match(/setInterval\(\(\) => \{[\s\S]{0,900}?\}, 30000\)/)
+      if (!m) return null
+      const rep = m[0].indexOf("maybeReportRestart")
+      const spk = m[0].indexOf("maybeSpeak")
+      if (rep < 0 || spk < 0) return null
+      return rep < spk
+    })()
+    beatOrder === true ? OK('心跳里先汇报再开口（不会同一拍发两条）')
+      : beatOrder === null ? NG('心跳里找不到这两个调用')
+      : NG('心跳里先开口再汇报 —— 同一拍会发两条')
+    const speakGuard = /proactive\.pendingRestart \|\| proactive\.pendingStale\) return/.test(code)
+    speakGuard ? OK('maybeSpeak 在欠汇报时让路（双保险）') : NG('maybeSpeak 没有让路逻辑')
+
+    // ⚠️ 日记里说「一整天」之前要**看跨度**。
+    //    实测：素材只跨 2.7 小时，出来还是"一整天都在 X 上头打转" ——
+    //    第一段按跨度分了情况、第二段写死了，自相矛盾，而且假。
+    let diarySrc = ''
+    try { diarySrc = fs.readFileSync(SRC + '/diary.js', 'utf8') } catch { /* 没有 */ }
+    const dayWord = /const dayWord = whole \? /.test(diarySrc) && /spanMin >= 240/.test(diarySrc)
+    dayWord ? OK('日记措辞按跨度选（不到四小时不说「一整天」）') : NG('日记里「一整天」是写死的')
     const cliTest = fs.existsSync(SRC + '/test-client.mjs')
     cliTest ? OK('有 test-client.mjs（真渲染每个面板）') : NG('缺 test-client.mjs —— 客户端从没被渲染过')
 

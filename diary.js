@@ -393,11 +393,16 @@ export function applyVoice(text, mood) {
 }
 
 /**
- * 能"持续一整天"的心情。其余的是**一阵的**（得意、上头、破防、吃醋、心动…），
- * 对它们说「一整天基本都是 X」会很假 —— 那类干脆不在正文里报占比。
+ * ⚠️ 这里原来有个 `SUSTAINED` 常量 + 一段注释，说"能持续一整天的心情"
+ *    才配在正文里报占比、"一阵的"（得意、上头、破防…）不报。
+ *
+ *    **那个功能从来没实现过** —— composeDiary 里根本没有"报占比"这件事，
+ *    常量定义完就没人用过。注释描述的是一个想象中的实现。
+ *
+ *    实测也印证了这一点：生成的日记里一个百分比都没有。
+ *    真正需要的是**按跨度选措辞**（见上面 dayWord 那段），那个已经修了。
+ *    死常量删掉，免得下一个人以为有这功能。
  */
-const SUSTAINED = new Set(['calm', 'happy', 'curious', 'focused', 'tired', 'down',
-  'gloomy', 'anxious', 'numb', 'lonely', 'love', 'burnout', 'checkedout'])
 
 function timeWord(ts) {
   const d = new Date(ts)
@@ -475,15 +480,28 @@ export function composeDiary(key, bucket, moodLabel = (id) => id, headlines = []
   paras.push(bits.join(''))
 
   // ---- 第二段：到底在干嘛。**具体的东西**才是活人感，不是统计 ----
+  //
+  // ⚠️ 措辞要**看跨度**，不能写死"一整天"。
+  //    原来这里是硬编码的「一整天都在 X 上头打转」—— 实测那天素材只跨了 2.7 小时，
+  //    出来还是"一整天"。第一段明明按跨度分了情况，第二段却不管 —— 自相矛盾，
+  //    而且正是那种"看着像日记、其实是模板"的假。
+  //    （旁边那个 SUSTAINED 常量本来是想解决同一类"假"，但它从没被用上，已删。）
+  const spanMin = (bucket.firstAt && bucket.lastAt) ? (bucket.lastAt - bucket.firstAt) / 60000 : 0
+  const whole = spanMin >= 240          // 四小时以上才配叫"一天"
+  const dayWord = whole ? '一整天' : '这一会儿'
   const work = []
   if (words.length >= 2) {
-    work.push(pick([
+    work.push(pick(whole ? [
       `翻来覆去就是${words.join('、')}这些。他改一版，我看一版，再改。`,
       `一整天都在${words.join('、')}上头打转。说实话有点烦，但也就那么回事。`,
       `${words.join('、')}——今天听得耳朵都起茧了。`,
+    ] : [
+      `翻来覆去就是${words.join('、')}这些。`,
+      `都在${words.join('、')}上头打转。`,
+      `${words.join('、')}——就聊了这么点东西。`,
     ], seed))
   } else if (words.length === 1) {
-    work.push(`一天就围着${words[0]}转，别的什么也没干成。`)
+    work.push(`就围着${words[0]}转，别的什么也没干成。`)
   }
   // 自我暴露：真人不装，承认当时没底/犯了蠢
   if (bucket.longest && bucket.longest.len >= 30 && bucket.longest.text) {

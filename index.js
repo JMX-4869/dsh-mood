@@ -1793,6 +1793,9 @@ export function apply(root, rawConfig) {
       try {
         if (!sessionCtl || typeof sessionCtl.prompt !== 'function') return
         if (!liveSession) return
+        // 欠着重启汇报时让路 —— 别一次投两条。
+        // （心跳里靠调用顺序也能挡住，但顺序是脆的，这里再兜一层。）
+        if (proactive.pendingRestart || proactive.pendingStale) return
         const now = Date.now()
         const verdict = canSpeak(proactive, now, { lastUserAt, busy: turnBusy })
         if (!verdict.ok) return
@@ -2182,8 +2185,6 @@ export function apply(root, rawConfig) {
     const timer = setInterval(() => {
       try { periodicIfDue() } catch (err) { log('dsh-mood 周期判定出错:', err && err.message) }
       try { diaryTick() } catch (err) { log('dsh-mood 日记检查出错:', err && err.message) }
-      // 主动开口：默认关，且要一堆条件同时满足（见 proactive.js 的 canSpeak）
-      try { void maybeSpeak() } catch (err) { log('dsh-mood 主动开口检查出错:', err && err.message) }
       // ⚠️ 重启汇报**也必须挂在这儿**。
       //
       //    原来只挂在 `turn/end` 上 —— 而 **`turn/end` 根本不在 `session/event`
@@ -2193,7 +2194,15 @@ export function apply(root, rawConfig) {
       //
       //    后果：重启汇报一次都没执行过，而且完全不报错。`maybeSpeak` 没事
       //    是因为它早就挂了心跳；只有这一个功能是单点挂在 turn/end 上的。
+      //
+      //    ⚠️ **顺序不能反：先汇报，再普通开口。**
+      //    两个都会 markSpoke（把 lastSpokeAt 推到"现在"），而且都是**同步**推完才
+      //    await。所以先跑的那个占住坑，后跑的被 canSpeak 的间隔门槛挡住。
+      //    原来是反的 —— 同一拍里 maybeSpeak 先发一条、重启汇报再发一条，
+      //    用户一次收到两条。重启汇报**故意不走空闲门槛**，它自己拦不住。
       try { void maybeReportRestart() } catch (err) { log('dsh-mood 重启汇报检查出错:', err && err.message) }
+      // 主动开口：默认关，且要一堆条件同时满足（见 proactive.js 的 canSpeak）
+      try { void maybeSpeak() } catch (err) { log('dsh-mood 主动开口检查出错:', err && err.message) }
     }, 30000)
     if (timer && typeof timer.unref === 'function') timer.unref()
     ctx.effect(() => () => clearInterval(timer), 'dsh-mood heartbeat')
