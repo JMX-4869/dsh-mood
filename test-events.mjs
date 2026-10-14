@@ -56,10 +56,18 @@ ok('路由注册了（只 1 个）', got.routes.length === 1, got.routes.length 
 const fire = (type, data, session, extra) =>
   got.events[0](session || { id: 'sess-A', header: { id: 'sess-A' } }, { type, data, at: Date.now(), ...extra })
 
-function callApi(method, url, body) {
+function callApi(method, url, body, noHeader) {
   let out = null
   const chunks = body === undefined ? [] : [Buffer.from(JSON.stringify(body), 'utf8')]
-  const req = { method, url, on(ev, fn) { if (ev === 'data') for (const c of chunks) fn(c); if (ev === 'end') fn(); return req }, destroy() {} }
+  // 写操作要求 x-dsh-mood 头（跨站写保护）。
+  // ⚠️ 假请求也必须给 headers —— 少了它服务端一读就抛，
+  //    表现成一个莫名其妙的业务错误，很难看出真正原因（第一版就是这样）。
+  const req = {
+    method, url,
+    headers: noHeader ? {} : { 'x-dsh-mood': '1' },
+    on(ev, fn) { if (ev === 'data') for (const c of chunks) fn(c); if (ev === 'end') fn(); return req },
+    destroy() {},
+  }
   const res = { writeHead(c) { out = out || { code: c } }, end(s) { out = { code: (out && out.code) || 200, body: s } } }
   got.routes[0].handler(req, res)
   try { return JSON.parse(out.body) } catch { return null }

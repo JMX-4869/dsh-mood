@@ -2246,7 +2246,7 @@ export function apply(root, rawConfig) {
           //    自定义头必然触发预检，而我们不返回任何 CORS 允许头 → 预检 405 → 打不进来。
           //    设置页是我们自己的代码，加上这个头就行。
           const isWrite = req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE'
-          if (isWrite && String(req.headers['x-dsh-mood'] || '') !== '1') {
+          if (isWrite && String((req.headers || {})['x-dsh-mood'] || '') !== '1') {
             try {
               res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' })
               res.end(JSON.stringify({ ok: false, error: '缺少 x-dsh-mood 头（跨站写保护）' }))
