@@ -48,11 +48,14 @@ const route = got.routes[0]
 ok('路由注册了', !!route && route.kind === 'prefix' && route.path === '/dsh-mood-api', JSON.stringify(route && { k: route.kind, p: route.path }))
 
 /** 造一个假请求，真的走一遍 handler */
-function call(method, url, body) {
+function call(method, url, body, noHeader) {
   const chunks = body === undefined ? [] : [Buffer.from(JSON.stringify(body), 'utf8')]
   let out = null
   const req = {
     method, url,
+    // 写操作要求 `x-dsh-mood` 头（跨站写保护，见 index.js 里那段注释）。
+    // noHeader=true 专门用来**验证它真的会挡** —— 不验的话这层保护可能压根没生效。
+    headers: noHeader ? {} : { 'x-dsh-mood': '1' },
     on(ev, fn) {
       if (ev === 'data') for (const c of chunks) fn(c)
       if (ev === 'end') fn()
@@ -122,6 +125,21 @@ const back = call('POST', '/dsh-mood-api/memory', { action: 'limits', maxMB: 50,
 ok('改回默认', !!(back.json && Math.round(back.json.stats.maxBytes / 1048576) === 50 && back.json.stats.onlyUser === false))
 const after = call('GET', '/dsh-mood-api/proactive')
 ok('再读一次还是 false（真的改到活的那份了）', after.json && after.json.enabled === false, JSON.stringify(after.json && { e: after.json.enabled }))
+
+console.log()
+console.log('════ 跨站写保护（CSRF）════')
+// ⚠️ 这个接口里是**全部对话原文**，还能一键清空。
+//    DSH 只绑 127.0.0.1，跨站读也拿不到响应 —— 但**跨站写**能打进来：
+//    页面用 mode:'no-cors' + 字符串 body（→ text/plain → 不触发预检），
+//    请求照样到达、副作用照样发生。所以写操作必须要求一个自定义头。
+const noHdr = call('POST', '/dsh-mood-api/memory', { action: 'limits', maxMB: 7 }, true)
+ok('不带 x-dsh-mood 的 POST 被挡住（403）', noHdr.code === 403, 'HTTP ' + noHdr.code)
+const stillLim = call('GET', '/dsh-mood-api/memory')
+ok('被挡之后设置**没有被改**', stillLim.json && Math.round(stillLim.json.stats.maxBytes / 1048576) === 50, JSON.stringify(stillLim.json && stillLim.json.stats && stillLim.json.stats.maxBytes))
+const noHdrClear = call('POST', '/dsh-mood-api/memory', { action: 'clear' }, true)
+ok('不带头的 clear 也挡住了（没清空）', noHdrClear.code === 403, 'HTTP ' + noHdrClear.code)
+const getNoHdr = call('GET', '/dsh-mood-api/state', undefined, true)
+ok('GET 不要头（读不构成破坏，跨站也读不到响应）', getNoHdr.code === 200, 'HTTP ' + getNoHdr.code)
 
 fs.rmSync(TMP, { recursive: true, force: true })
 console.log()

@@ -725,7 +725,7 @@ window.__ModuleLoader__.load({
         try {
           const r = await fetch(API + '/persona', {
             method: 'POST',
-            headers: { 'content-type': 'application/json' },
+            headers: { 'content-type': 'application/json', 'x-dsh-mood': '1' },
             body: JSON.stringify(f),
           })
           const j = await r.json()
@@ -792,7 +792,7 @@ window.__ModuleLoader__.load({
         setBusy(true)
         try {
           const r = await fetch(API + '/memory', {
-            method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+            method: 'POST', headers: { 'content-type': 'application/json', 'x-dsh-mood': '1' }, body: JSON.stringify(body),
           })
           const j = await r.json()
           if (!j.ok) throw new Error(j.error || ('HTTP ' + r.status))
@@ -821,7 +821,7 @@ window.__ModuleLoader__.load({
         setBusy(true)
         try {
           const r = await fetch(API + '/memory', {
-            method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+            method: 'POST', headers: { 'content-type': 'application/json', 'x-dsh-mood': '1' }, body: JSON.stringify(body),
           })
           const j = await r.json()
           if (!j.ok) throw new Error(j.error || ('HTTP ' + r.status))
@@ -1030,7 +1030,7 @@ window.__ModuleLoader__.load({
       const post = async (body) => {
         const r = await fetch(API + '/news/sources', {
           method: 'POST',
-          headers: { 'content-type': 'application/json', accept: 'application/json' },
+          headers: { 'content-type': 'application/json', accept: 'application/json', 'x-dsh-mood': '1' },
           body: JSON.stringify(body),
         })
         const j = await r.json()
@@ -1172,7 +1172,7 @@ window.__ModuleLoader__.load({
         try {
           const r = await fetch(API + '/proactive', {
             method: 'POST',
-            headers: { 'content-type': 'application/json', accept: 'application/json' },
+            headers: { 'content-type': 'application/json', accept: 'application/json', 'x-dsh-mood': '1' },
             body: JSON.stringify(body),
           })
           const j = await r.json()
@@ -1378,7 +1378,7 @@ window.__ModuleLoader__.load({
         try {
           const r = await fetch(API + '/storage', {
             method: 'POST',
-            headers: { 'content-type': 'application/json', accept: 'application/json' },
+            headers: { 'content-type': 'application/json', accept: 'application/json', 'x-dsh-mood': '1' },
             body: JSON.stringify({ dir: t, keys: [key] }),
           })
           const j = await r.json()

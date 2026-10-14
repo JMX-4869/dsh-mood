@@ -2229,6 +2229,31 @@ export function apply(root, rawConfig) {
           const url = String(req.url || '')
           const urlObj = new URL(url, 'http://localhost')
           const path = urlObj.pathname.replace(/^\/dsh-mood-api/, '') || '/'
+
+          // ── 跨站写保护（CSRF）──
+          //
+          // ⚠️ 这个接口里是**全部对话原文**，而且能 `{action:'clear'}` 一键清空。
+          //    DSH 只绑 127.0.0.1，局域网进不来；跨站**读**也拿不到（没有 CORS 头）。
+          //
+          //    但跨站**写**能打进来：页面用
+          //        fetch(url, { method:'POST', body: JSON.stringify({action:'clear'}),
+          //                     mode:'no-cors' })
+          //    body 是字符串 → content-type 是 text/plain → **不触发预检** →
+          //    请求照样到达、副作用照样发生（响应读不到而已）。
+          //    也就是说：**你随便逛一个网页，它就能把你的归档清掉。**
+          //
+          //    修法就是标准那一招：要求一个**自定义请求头**。
+          //    自定义头必然触发预检，而我们不返回任何 CORS 允许头 → 预检 405 → 打不进来。
+          //    设置页是我们自己的代码，加上这个头就行。
+          const isWrite = req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE'
+          if (isWrite && String(req.headers['x-dsh-mood'] || '') !== '1') {
+            try {
+              res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' })
+              res.end(JSON.stringify({ ok: false, error: '缺少 x-dsh-mood 头（跨站写保护）' }))
+            } catch { /* 不管 */ }
+            return
+          }
+
           const send = (obj, code = 200) => {
             const body = JSON.stringify(obj)
               res.writeHead(code, {

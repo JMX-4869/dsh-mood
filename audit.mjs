@@ -325,6 +325,19 @@ const N = M.MOOD_IDS.length
     const dayWord = /const dayWord = whole \? /.test(diarySrc) && /spanMin >= 240/.test(diarySrc)
     dayWord ? OK('日记措辞按跨度选（不到四小时不说「一整天」）') : NG('日记里「一整天」是写死的')
     const cliTest = fs.existsSync(SRC + '/test-client.mjs')
+    // ⚠️ 跨站写保护。这个接口里是**全部对话原文**，还能一键清空。
+    //    DSH 只绑 127.0.0.1、跨站读也拿不到响应 —— 但**跨站写**能打进来：
+    //    页面用 mode:"no-cors" + 字符串 body（→ text/plain → 不触发预检），
+    //    请求照样到达、副作用照样发生。也就是"随便逛个网页就能清掉你的归档"。
+    //    修法是要求一个自定义头（必然触发预检，而预检 405）。
+    const csrfSrv = /x-dsh-mood/.test(code) && /const isWrite = req\.method/.test(code)
+    csrfSrv ? OK('服务端要求 x-dsh-mood 头（跨站写打不进来）') : NG('写接口没有跨站保护')
+    const clSrc0 = fs.readFileSync(SRC + '/client.js', 'utf8')
+    const postSites = (clSrc0.match(/method: 'POST'/g) || []).length
+    const postHdr = (clSrc0.match(/'x-dsh-mood': '1'/g) || []).length
+    postHdr >= postSites ? OK('客户端的 ' + postSites + ' 处 POST 都带了那个头')
+      : NG('客户端有 POST 没带 x-dsh-mood —— 那个功能会被 403 挡住（' + postHdr + '/' + postSites + '）')
+
     cliTest ? OK('有 test-client.mjs（真渲染每个面板）') : NG('缺 test-client.mjs —— 客户端从没被渲染过')
 
     // ⚠️ 客户端测试的数据**必须来自真接口的快照**，不能手写。

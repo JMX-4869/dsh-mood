@@ -91,9 +91,11 @@ function respond(path) {
   if (mode === 'stale' && EMPTY[name]) data = EMPTY[name]()
   return { ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(data)) }
 }
+const sentHeaders = []          // 写请求发过的头，最后断言跨站保护头带上了
 global.fetch = (u, o) => {
   const path = String(u).replace(/^.*\/dsh-mood-api/, '')
   if (o && o.method === 'POST') {
+    sentHeaders.push(Object.assign({}, o.headers || {}))
     const name = path.split('?')[0].replace(/^\//, '')
     const body = o.body ? JSON.parse(o.body) : {}
     if (name === 'memory') return Promise.resolve({ ok: true, status: 200, json: async () => ({ ok: true, stats: F.memory.stats }) })
@@ -212,9 +214,47 @@ console.log('════ 错误边界（面板渲染期抛错时不许白屏）
 
 // ── 卸载 ──
 console.log()
+console.log('════ 交互：点按钮 → 必须带跨站保护头 ════')
+// ⚠️ 首屏渲染**一个 POST 都不发**（只 GET），所以光渲染是验不到这个头的。
+//    第一版就是这么写的，断言 `sentHeaders.length > 0` 直接暴露它自己是空的。
+//    要真验证，得把面板挂上去、**点一个真的按钮**。
+{
+  mode = 'ok'
+  sentHeaders.length = 0
+  const mem = sections.find((s) => s.def.id === 'memory')
+  const host = dom.window.document.createElement('div')
+  dom.window.document.body.appendChild(host)
+  const oldErr = console.error; console.error = () => {}
+  const root = ReactDOMClient.createRoot(host)
+  await act(async () => { root.render(mem.render()) })
+  await act(async () => { await new Promise((r) => setTimeout(r, 120)) })
+
+  const btns = [...host.querySelectorAll('button')]
+  ok('面板里有按钮可点（' + btns.length + ' 个）', btns.length > 0, btns.map((b) => b.textContent).join(' | ').slice(0, 100))
+  const target = btns.find((b) => /只存|清空|打开|关掉/.test(b.textContent || ''))
+  ok('找到那个会发 POST 的按钮：' + JSON.stringify(target ? target.textContent : ''), !!target)
+  if (target) {
+    await act(async () => { target.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+    await act(async () => { await new Promise((r) => setTimeout(r, 150)) })
+    ok('点击真的发出了 POST（' + sentHeaders.length + ' 个）', sentHeaders.length > 0)
+    ok('每个写请求都带 x-dsh-mood: 1', sentHeaders.length > 0 && sentHeaders.every((h) => h['x-dsh-mood'] === '1'),
+      JSON.stringify(sentHeaders.slice(0, 2)))
+  }
+  console.error = oldErr
+  try { await act(async () => { root.unmount() }) } catch { /* 不管 */ }
+  host.remove()
+}
+
+console.log()
 console.log('════ 卸载 ════')
 for (const d of disposers) { try { if (typeof d === 'function') d() } catch { /* 不管 */ } }
 ok('卸载后样式表被摘掉（不留孤儿 <style>）', !dom.window.document.getElementById('dsh-mood-style'))
+
+console.log()
+console.log('════ 写请求必须带跨站保护头 ════')
+ok('这次渲染里至少发出过一个 POST（否则这条断言是空的）', sentHeaders.length > 0, sentHeaders.length + '')
+ok('每个 POST 都带 x-dsh-mood: 1', sentHeaders.every((h) => h['x-dsh-mood'] === '1'),
+  JSON.stringify(sentHeaders.filter((h) => h['x-dsh-mood'] !== '1').slice(0, 2)))
 
 console.log()
 console.log('  通过 ' + pass + '  失败 ' + fail)
