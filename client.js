@@ -97,6 +97,22 @@ window.__ModuleLoader__.load({
       '.dshmood .plab{font-size:12px;color:var(--dsw-alias-label-secondary)}',
       '.dshmood .pta{min-height:64px;resize:vertical;font-family:inherit;line-height:1.6}',
       '.dshmood .hintline{font-size:12px;line-height:1.7;color:var(--dsw-alias-label-secondary)}',
+      // 硬盘记忆面板
+      '.dshmood .memstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:10px;margin:14px 0}',
+      '.dshmood .memstat{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px}',
+      '.dshmood .memstat .v{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums}',
+      '.dshmood .memstat .k{font-size:11px;color:var(--dsw-alias-label-secondary)}',
+      '.dshmood .memrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0}',
+      '.dshmood .memlab{font-size:12px;color:var(--dsw-alias-label-secondary);min-width:64px}',
+      '.dshmood .mempath{flex:1;min-width:200px;font-size:12px;padding:6px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.dshmood button.danger{color:#e5534b;border-color:#e5534b55}',
+      '.dshmood .memlist{margin-top:14px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;overflow:hidden}',
+      '.dshmood .memlisthd{padding:8px 12px;font-size:12px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2)}',
+      '.dshmood .memline{display:flex;gap:8px;align-items:baseline;padding:7px 12px;border-top:1px solid var(--dsw-alias-border-l1);font-size:12.5px}',
+      '.dshmood .memwho{flex:none;padding:1px 7px;border-radius:999px;font-size:11px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary)}',
+      '.dshmood .memwho.me{color:var(--dsw-alias-brand-primary)}',
+      '.dshmood .memt{flex:none;font-size:11px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}',
+      '.dshmood .memx{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       // （旧的"日期输入框 + 月份小标签"那套 CSS 已删 —— 换成下面的日历了）
       // ── 日历式日记浏览 ──
       // 为什么要有它：日记攒多了，一条条往下堆会让右侧滚动条缩成头发丝。
@@ -200,6 +216,8 @@ window.__ModuleLoader__.load({
       'M10 16h.01',
     ]
     // 人设：一个线条人（头 + 肩），和别的图标同一套描边参数
+    // 硬盘记忆：一个方块叠一个方块（像磁盘）
+    const MEMORY_D = ['M4 5.5h16v4H4z', 'M4 14.5h16v4H4z', 'M7.5 7.5h1M7.5 16.5h1']
     const PERSONA_D = ['M12 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z', 'M4.5 20c0-3.1 3.2-5.3 7.5-5.3s7.5 2.2 7.5 5.3']
 
     function StoreIcon(props) {
@@ -729,6 +747,164 @@ window.__ModuleLoader__.load({
       )
     }
 
+
+    /**
+     * 「硬盘记忆」面板。
+     *
+     * 这一格要**先把话说清楚**：它会把对话正文写进磁盘。
+     * 一个记东西的功能，最忌讳的就是用户不知道它记了什么、记在哪。
+     */
+    function MemoryPanel({ ctx }) {
+      const [data, setData] = React.useState(null)
+      const [err, setErr] = React.useState('')
+      const [msg, setMsg] = React.useState('')
+      const [q, setQ] = React.useState('')
+      const [hits, setHits] = React.useState(null)
+      const [busy, setBusy] = React.useState(false)
+
+      const load = React.useCallback(async () => {
+        try {
+          const d = await getJSON('/memory')
+          setData(d); setErr('')
+        } catch (e) { setErr(String((e && e.message) || e)) }
+      }, [])
+      React.useEffect(() => { load() }, [load])
+
+      const doSearch = async () => {
+        const query = q.trim()
+        if (!query) { setHits(null); return }
+        try { setHits((await getJSON('/memory?query=' + encodeURIComponent(query) + '&limit=20')).hits || []) }
+        catch (e) { setMsg('检索失败：' + ((e && e.message) || e)) }
+      }
+
+      const post = async (body, okMsg) => {
+        setBusy(true)
+        try {
+          const r = await fetch(API + '/memory', {
+            method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+          })
+          const j = await r.json()
+          if (!j.ok) throw new Error(j.error || ('HTTP ' + r.status))
+          setMsg(okMsg); setTimeout(() => setMsg(''), 3000)
+          await load()
+          if (q.trim()) await doSearch()
+        } catch (e) { setMsg('失败：' + ((e && e.message) || e)) }
+        setBusy(false)
+      }
+
+      const doClear = () => {
+        if (!window.confirm('确定清空硬盘记忆？\n\n这会删掉归档文件本身，' +
+          '已经记下的对话正文全部消失，而且**不可恢复**。\n\n（当前对话的上下文不受影响。）')) return
+        void post({ action: 'clear' }, '已清空')
+      }
+
+      const doMove = () => {
+        const dir = window.prompt('把归档搬到哪个目录？（绝对路径）\n\n' +
+          '已有的内容会一起搬过去；目标目录里如果已经有归档，两边会合并，不覆盖。', data && data.stats ? (data.stats.path || '').replace(/[\\/][^\\/]*$/, '') : '')
+        if (!dir) return
+        void post({ action: 'move', dir: dir.trim() }, '已迁移')
+      }
+
+      if (err) return h('div', { className: 'dshmood' }, h('div', { className: 'notice' }, '读不到：' + err))
+      if (!data) return h('div', { className: 'dshmood' }, h('div', { className: 'notice' }, '加载中…'))
+
+      const st = data.stats || {}
+      const rows = hits || (data.recent || [])
+      const isSearch = !!hits
+
+      const line = (o) => h('div', { className: 'memline', key: o.id },
+        h('span', { className: 'memwho' + (o.k === 'a' ? ' me' : '') }, o.k === 'a' ? '我' : '用户'),
+        h('span', { className: 'memt' }, fmtTime(o.t) + ' · ' + (o.s || '??')),
+        h('span', { className: 'memx' }, String(o.x || '').slice(0, 160) + (String(o.x || '').length > 160 ? '…' : '')),
+      )
+
+      return h('div', { className: 'dshmood' },
+        h('div', { className: 'page-hd' },
+          h('span', { className: 'page-title' }, '硬盘记忆'),
+          h('span', { className: 'page-sub' }, '把对话正文归档到磁盘，跨会话可检索'),
+        ),
+
+        // ── 先说清楚这是什么、代价是什么 ──
+        h('div', { className: 'notice' },
+          h('b', null, '它会把你所有对话的正文写进磁盘。'),
+          h('br'),
+          '模型的上下文是有上限的 —— 满了只能压缩（丢掉大部分）或者报错。',
+          '这一层补的是第三条路：',
+          h('b', null, '正文留在硬盘上，需要的时候我自己去查。'),
+          h('br'),
+          '归档是', h('b', null, '全对话通用'), '的，但不自动塞进我的上下文 —— ',
+          '我主动调 ', h('code', null, 'memory'), ' 工具才去翻。',
+        ),
+
+        // ── 体积 ──
+        h('div', { className: 'memstats' },
+          h('div', { className: 'memstat' }, h('span', { className: 'v' }, String(st.count || 0)), h('span', { className: 'k' }, '条')),
+          h('div', { className: 'memstat' }, h('span', { className: 'v' }, fmtBytes(st.bytes || 0)), h('span', { className: 'k' }, '占用')),
+          h('div', { className: 'memstat' }, h('span', { className: 'v' }, String(st.sessions || 0)), h('span', { className: 'k' }, '个会话')),
+          h('div', { className: 'memstat' }, h('span', { className: 'v' }, st.oldest ? Math.max(1, Math.round((Date.now() - st.oldest) / 86400000)) + ' 天' : '—'), h('span', { className: 'k' }, '最早')),
+        ),
+
+        // ── 路径 + 操作 ──
+        h('div', { className: 'memrow' },
+          h('span', { className: 'memlab' }, '存储位置'),
+          h('code', { className: 'mempath' }, st.path || '（未定）'),
+          h('button', { onClick: doMove, disabled: busy }, '迁移…'),
+          h('button', { onClick: doClear, disabled: busy, className: 'danger' }, '清空…'),
+          h('button', { onClick: load, disabled: busy }, '刷新'),
+        ),
+
+        // ── 试查 ──
+        h('div', { className: 'memrow' },
+          h('span', { className: 'memlab' }, '翻一下'),
+          h('input', {
+            className: 'srcin', placeholder: '输入关键词，看归档里能翻到什么（空格分隔多个）',
+            value: q,
+            onChange: (e) => setQ(e.target.value),
+            onKeyDown: (e) => { if (e.key === 'Enter') void doSearch() },
+          }),
+          h('button', { onClick: () => void doSearch(), disabled: busy }, '检索'),
+          h('button', { onClick: () => { setQ(''); setHits(null) }, disabled: busy || !isSearch }, '看最近'),
+        ),
+
+        msg ? h('div', { className: 'pill' }, msg) : null,
+
+        h('div', { className: 'memlist' },
+          h('div', { className: 'memlisthd' }, isSearch
+            ? '跟「' + q.trim() + '」相关的 ' + rows.length + ' 条'
+            : '最近 ' + rows.length + ' 条'),
+          rows.length
+            ? rows.map(line)
+            : h('div', { className: 'empty' }, isSearch
+              ? '没有相关记录。'
+              : '还是空的 —— 每条对话攒够 ' + (data.minChars || 8) + ' 字以上才会记下来。'),
+        ),
+
+        h('div', { className: 'hintline' },
+          '为什么只记长的：', h('code', null, '嗯'), '、', h('code', null, '好的'), ' 这些哪儿都是、又什么都不说明 —— ',
+          '存进去只会把检索结果搅浑。',
+        ),
+        h('div', { className: 'hintline' },
+          '为什么不让它自动出现在我的回复里：归档可能几万条，每轮自动塞几条又贵又容易塞错东西。',
+          '我调 ', h('code', null, 'memory'), ' 的时候才翻 —— 我自己更清楚缺什么。',
+        ),
+
+        h(StorageBar, { keys: ['memory'] }),
+      )
+    }
+
+    function fmtBytes(n) {
+      const b = Number(n) || 0
+      if (b < 1024) return b + ' B'
+      if (b < 1048576) return (b / 1024).toFixed(1) + ' KB'
+      if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB'
+      return (b / 1073741824).toFixed(2) + ' GB'
+    }
+    function fmtTime(t) {
+      const d = new Date(Number(t) || 0)
+      const p = (x) => String(x).padStart(2, '0')
+      return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes())
+    }
+
     /**
      * 时事面板。**只有用户点按钮才去抓** —— 不做后台定时抓取，
      * 免得插件在用户不知情的时候往外发请求。
@@ -1114,6 +1290,11 @@ window.__ModuleLoader__.load({
       })()
 
       slots.inject('settings.section', () => slots.register(
+        { name: 'settings.section', id: 'memory', order: 29, label: '硬盘记忆' },
+        () => React.createElement(MoodErrorBoundary, null, React.createElement(MemoryPanel, { ctx })),
+      ))
+
+      slots.inject('settings.section', () => slots.register(
         { name: 'settings.section', id: 'proactive', order: 28, label: '主动开口' },
         () => React.createElement(MoodErrorBoundary, null, React.createElement(ProactivePanel, {})),
       ))
@@ -1144,6 +1325,7 @@ window.__ModuleLoader__.load({
     const NAV_LABEL = '心情日记'
     const NAV_NEWS = '时事'
     const NAV_PERSONA = '人设'
+    const NAV_MEMORY = '硬盘记忆'
     const NAV_TALK = '主动开口'
     const NAV_STORE = '存储位置'
 
@@ -1170,6 +1352,7 @@ window.__ModuleLoader__.load({
       if (label === NAV_TALK) return 'talk'
       if (label === NAV_STORE) return 'store'
         if (label === NAV_PERSONA) return 'persona'
+        if (label === NAV_MEMORY) return 'memory'
       return ''
     }
 
@@ -1185,6 +1368,7 @@ window.__ModuleLoader__.load({
             : style === 'talk' ? TALK_D
               : style === 'store' ? STORE_D
                   : style === 'persona' ? PERSONA_D
+                    : style === 'memory' ? MEMORY_D
                 : NEWS_D
         while (svg.firstChild) svg.removeChild(svg.firstChild)
         for (const d of paths) {

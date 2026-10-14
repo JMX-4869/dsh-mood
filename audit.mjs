@@ -22,7 +22,7 @@ const md5 = (f) => crypto.createHash('md5').update(fs.readFileSync(f)).digest('h
 
 // ───────────────────────────── A. 文件层
 head('A. 文件同步')
-const FILES = ['index.js', 'sessions.js', 'store.js', 'diary.js', 'news.js', 'proactive.js', 'client.js', 'package.json', 'icon.svg', 'cordis.patch.yml', 'README.md', '手机版_心情提示词.md', 'LICENSE']
+const FILES = ['index.js', 'sessions.js', 'store.js', 'memory.js', 'diary.js', 'news.js', 'proactive.js', 'client.js', 'package.json', 'icon.svg', 'cordis.patch.yml', 'README.md', '手机版_心情提示词.md', 'LICENSE']
 for (const f of FILES) {
   const a = SRC + '/' + f, b = DST + '/' + f
   if (!fs.existsSync(a)) { NG('源缺 ' + f); continue }
@@ -92,7 +92,11 @@ reg.events === 1 ? OK('session/event 注册 1 次（不重复）') : NG('session
 reg.timers === 1 ? OK('定时器只起 1 个') : NG('定时器起了 ' + reg.timers + ' 个')
 reg.sections.length === 1 ? OK('提示词段注册 1 次') : NG('提示词段 ' + reg.sections.length + ' 个')
 const toolNames = reg.tools.map((t) => t.name).sort()
-JSON.stringify(toolNames) === '["diary","mood","news"]' ? OK('工具: ' + toolNames.join(', ')) : NG('工具异常: ' + toolNames.join(','))
+// ⚠️ 别写死成某个数组 —— 加一个工具就要改这里，是同一类"硬编码期望"的坑
+//    （之前写死「22 种心情」，扩到 33 之后也炸过一次）。
+const WANT_TOOLS = ['diary', 'memory', 'mood', 'news']
+const gotAllTools = WANT_TOOLS.every((x) => toolNames.includes(x)) && toolNames.length === WANT_TOOLS.length
+gotAllTools ? OK('工具: ' + toolNames.join(', ')) : NG('工具异常: ' + toolNames.join(','))
 const route = reg.routes[0]
 route && route.kind === 'prefix' && route.path === '/dsh-mood-api'
   ? OK('HTTP 路由已注册: ' + route.kind + ' ' + route.path)
@@ -188,6 +192,48 @@ const N = M.MOOD_IDS.length
     // 写接口在外部存在时必须拒绝 —— 不然用户以为改的是生效那份
     const guarded = /409/.test(host) && /有别的插件在管人设/.test(host)
     guarded ? OK('有别人管时，写自己那份会被拒（409）并说明原因') : NG('写接口没有保护')
+  }
+  // ── 硬盘记忆 ──
+  //
+  // 这一块的核心不是"有没有功能"，是**几件必须同时成立的事**：
+  // 路径必须走 dataFile（否则迁移之后还指着旧目录）、
+  // 迁移必须两边一起改（搬文件 + 写配置）、
+  // 必须两个事件都收（只收用户那句，归档就是半截对话）。
+  {
+    const host = fs.readFileSync(SRC + '/index.js', 'utf8')
+    const st = fs.readFileSync(SRC + '/store.js', 'utf8')
+    const cl2 = fs.readFileSync(SRC + '/client.js', 'utf8')
+    let memSrc = ''
+    try { memSrc = fs.readFileSync(SRC + '/memory.js', 'utf8') } catch { /* 没有 */ }
+
+    // ⚠️ 每条正则先赋给变量。
+    //    行首写 `/` 会被 ASI 当成除号 —— 这个坑一晚上栽了三次（含下面这条)。
+    const hasFn = /export function createMemory/.test(memSrc)
+    hasFn ? OK('memory.js 存在且导出 createMemory') : NG('memory.js 缺失')
+
+    const inStore = /'dsh-mood-memory\.jsonl': 'memory'/.test(st) && /memory: '硬盘记忆'/.test(st)
+    inStore ? OK('store.js 注册了归档文件（可自定义路径 + 迁移）') : NG('归档文件没进 store 注册表')
+
+    // ⚠️ 路径必须是**函数** —— 字符串的话迁移后还指着旧目录
+    const livePath = /file: \(\) => dataFile\('dsh-mood-memory\.jsonl'\)/.test(host)
+    livePath ? OK('归档路径走 dataFile 函数（迁移能立刻生效）') : NG('归档路径写死了')
+
+    const bothEvents = /type === 'user\/message' \|\| type === 'assistant\/message'/.test(host)
+    bothEvents ? OK('两个事件都收（用户 + 助手）') : NG('只收了一边 —— 归档会是半截对话')
+
+    const hasTool = /name: 'memory',/.test(host)
+    hasTool ? OK('memory 工具已注册') : NG('memory 工具没注册')
+
+    // 迁移必须同时改配置并让缓存失效
+    const moveBoth = /moveTo\(dir, \(d2\) => /.test(host) && /invalidateDataDir\(\)/.test(host)
+    moveBoth ? OK('迁移两边一起改（搬文件 + 写配置 + 失效缓存）') : NG('迁移只搬文件，路径不会跟着变')
+
+    // 不自动注入提示词 —— 这是设计决定，别被"顺手加上"改掉
+    const noInject = !/systemPrompt\.section\(\{[\s\S]{0,400}memory/.test(host)
+    noInject ? OK('归档不自动注入提示词（模型主动调 memory）') : NG('归档被自动注入了 —— 那会每轮烧 token')
+
+    const hasPanel = /id: 'memory', order: 29/.test(cl2)
+    hasPanel ? OK('设置页有「硬盘记忆」那一格') : NG('设置页没有那一格')
   }
 N === 33 ? OK('33 种心情（基础 + 复合 + 当代）') : NG('心情数 = ' + N)
 const need = ['sulk', 'hurt', 'proud', 'gloomy', 'anxious', 'numb', 'lonely',

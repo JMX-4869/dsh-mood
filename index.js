@@ -21,6 +21,7 @@ import os from 'node:os'
 // 静态 import —— 与 dsh-meme 等可用插件一致。动态 import('@deepseek-ai/dsh-tools')
 // 在宿主里解析不到（该包不在 profile 的 node_modules 里），会导致工具静默注册失败。
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { createMemory, MIN_CHARS as MEM_MIN_CHARS, DEFAULT_LIMIT as MEM_LIMIT } from './memory.js'
 import {
   diaryFile, DIARY_HOUR, DIARY_MINUTE,
   dateKey, yesterdayKey, diaryDue,
@@ -338,6 +339,27 @@ export const MOOD_TIERS = {
   complex: ['hurt', 'sulk', 'proud', 'gloomy', 'anxious', 'numb', 'lonely', 'flutter', 'love', 'jealous',
     'shame', 'guilt', 'awkward', 'sympathy', 'disappointed', 'nostalgia', 'coy', 'conflict'],
   modern: ['burnout', 'cracked', 'checkedout', 'hyper'],
+}
+
+/**
+ * 硬盘记忆实例。
+ *
+ * ⚠️ 路径走**函数**而不是字符串 —— 用户在设置页把归档迁到别的盘之后，
+ *    下一次调用要立刻走新路径。传字符串的话这里会一直指着旧的。
+ *    （memory.js 的 moveTo 也留了 onMoved 回调，两边一起才生效。）
+ */
+export const memory = createMemory({
+  file: () => dataFile('dsh-mood-memory.jsonl'),
+  log: (m) => { try { console.error('[dsh-mood] ' + m) } catch { /* 不管 */ } },
+})
+
+/** 把归档里的一条压成一行给模型看（省 token，但保留会话来源和时间） */
+function fmt(o) {
+  const who = o.k === 'a' ? '我' : '用户'
+  const d = new Date(o.t)
+  const t = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  const x = o.x.length > 400 ? o.x.slice(0, 400) + '…' : o.x
+  return `  [${t}·${o.s || '??'}] ${who}：${x.replace(/\n/g, ' ')}`
 }
 
 export const MOOD_IDS = Object.keys(MOODS)
@@ -1434,6 +1456,18 @@ export function apply(root, rawConfig) {
             diaryTick()
             return
           }
+          // ── 硬盘记忆：把对话正文抄一份到磁盘 ──
+          //
+          // 为什么在这里抄、而不是等压缩时抄：压缩是 DSH 内部的事，
+          // 插件拿不到"哪些被丢了"。与其去猜，不如**每一条都存** ——
+          // 上下文里没有的，磁盘上一定有。
+          if (type === 'user/message' || type === 'assistant/message') {
+            try {
+              const sid = (session && (session.id || session.sessionId)) || ''
+              const txt = extractText(d)
+              if (txt) memory.note(type === 'assistant/message' ? 'assistant' : 'user', txt, sid, event.at || event.ts || Date.now())
+            } catch { /* 归档失败不能影响对话 */ }
+          }
           if (type === 'turn/end') {
             state.turns += 1
             noteActivity(diary, 'turn')
@@ -1801,6 +1835,70 @@ export function apply(root, rawConfig) {
         })
         ctx.effect(() => tools.register(newsDef), 'dsh-mood news tool')
       }
+
+      // 4.6) memory 工具 —— 翻查硬盘上的旧对话
+      //
+      // **不自动注入提示词。** 归档可能几个月、几万条，每轮自动塞几条既贵又容易塞错东西。
+      // 让模型自己调 —— 它比按关键词猜更清楚自己缺什么信息。
+      if (tools && typeof tools.register === 'function') {
+        const memDef = defineTool({
+          name: 'memory',
+          description:
+            '翻查硬盘上归档的旧对话。**归档是全对话通用的** —— 别的会话聊过的东西也在里面，' +
+            '而当前上下文里可能已经没有那段了（被压缩掉、或者根本是另一个会话）。' +
+            '所以：当用户说"上次那个""之前说过的""我们不是聊过吗"，而你没印象时，**先查这里再回答**。' +
+            'action=search 按关键词全文检索（中文按 2 字切分，多给几个词更准）；' +
+            'action=recent 看最近几条；action=stats 看归档体积。',
+          parameters: {
+            action: {
+              type: 'string',
+              enum: ['search', 'recent', 'stats'],
+              description: 'search=检索（默认）；recent=最近几条；stats=体积统计',
+            },
+            query: { type: 'string', description: 'search 的关键词，空格分隔多个' },
+            limit: { type: 'number', description: 'search/recent 返回几条，默认 ' + MEM_LIMIT + '，上限 50' },
+          },
+          output: {
+            schema: { type: 'json' },
+            render: (_args, value) => [{ type: 'text', text: value.message }],
+          },
+          execute(args) {
+            try {
+              const action = args && args.action ? String(args.action) : 'search'
+              if (action === 'stats') {
+                const st = memory.stats()
+                const days = st.oldest ? Math.max(1, Math.round((Date.now() - st.oldest) / 86400000)) : 0
+                return {
+                  ok: true,
+                  message: '硬盘记忆：' + st.count + ' 条，' + humanSize(st.bytes) + '，跨 ' + st.sessions + ' 个会话'
+                    + (days ? '，最早 ' + days + ' 天前' : '')
+                    + '\n位置：' + st.path,
+                }
+              }
+              if (action === 'recent') {
+                const lim = Math.max(1, Math.min(50, Number(args.limit) || MEM_LIMIT))
+                const rows = memory.recent(lim)
+                if (!rows.length) return { ok: true, message: '硬盘记忆还是空的（还没攒够 ' + MEM_MIN_CHARS + ' 字以上的对话）。' }
+                return { ok: true, message: '最近 ' + rows.length + ' 条：\n' + rows.map(fmt).join('\n') }
+              }
+              const q = String((args && args.query) || '').trim()
+              if (!q) return { ok: false, message: 'search 需要一个 query。' }
+              const lim = Math.max(1, Math.min(50, Number(args.limit) || MEM_LIMIT))
+              const hits = memory.search(q, lim)
+              if (!hits.length) return { ok: true, message: '硬盘记忆里没有跟「' + q + '」相关的记录。' }
+              return {
+                ok: true,
+                message: '硬盘记忆里找到 ' + hits.length + ' 条跟「' + q + '」相关的（跨会话）：\n'
+                  + hits.map(fmt).join('\n')
+                  + '\n\n⚠️ 这是**旧对话的原文**，不是现在的上下文。引用前先判断它是不是已经过时了。',
+              }
+            } catch (err) {
+              return { ok: false, message: 'memory 工具出错：' + (err && err.message) }
+            }
+          },
+        })
+        ctx.effect(() => tools.register(memDef), 'dsh-mood memory tool')
+      }
     }
 
     // 5) 心跳定时器：每 30 秒一次（很轻，两次比较而已）
@@ -1873,6 +1971,21 @@ export function apply(root, rawConfig) {
                 /** 分层：基础 / 复合 / 当代 —— 界面用它把 33 条分组显示 */
                 tiers: MOOD_TIERS,
                 /**
+                 * 硬盘记忆的体积统计。
+                 *
+                 * 只给**数字**，不在这儿带正文 —— /state 每次开设置页都拉，
+                 * 把几万条正文塞进去会把它变成一个巨大的响应。
+                 * 要正文走 /memory?query=。
+                 */
+                memory: (() => {
+                  try {
+                    const st = memory.stats()
+                    return { count: st.count, bytes: st.bytes, sessions: st.sessions, path: st.path, oldest: st.oldest, newest: st.newest }
+                  } catch {
+                    return { count: 0, bytes: 0, sessions: 0, path: '', oldest: null, newest: null }
+                  }
+                })(),
+                /**
                  * 人设来源。
                  *
                  * ⚠️ 界面**靠这个字段决定「人设」那一格要不要出现**：
@@ -1939,6 +2052,54 @@ export function apply(root, rawConfig) {
                 state.persona = NEXT
                 saveState(state)
                 return send({ ok: true, own: NEXT, source: personaSource() })
+              }
+              return send({ ok: false, error: '只支持 GET / POST' }, 405)
+            }
+            // ---- 硬盘记忆 ----
+            //
+            // GET  /memory?query=xxx&limit=n   → 检索（没 query 就返回 stats + 最近几条）
+            // POST /memory {action:'clear'}    → 清空
+            // POST /memory {action:'move', dir}→ 迁移到别的目录
+            //
+            // ⚠️ 迁移必须**两边一起改**：memory.moveTo 搬文件，onMoved 回调写进
+            //    store 配置并让缓存失效。少一边的话路径还指着旧目录 —— 测试里挂过。
+            if (path === '/memory') {
+              if (req.method === 'GET') {
+                const q = String(urlObj.searchParams.get('query') || '').trim()
+                const lim = Math.max(1, Math.min(50, Number(urlObj.searchParams.get('limit')) || MEM_LIMIT))
+                const st = memory.stats()
+                if (!q) {
+                  return send({
+                    ok: true,
+                    stats: st,
+                    recent: memory.recent(lim).map((o) => ({ ...o, id8: o.id })),
+                    minChars: MEM_MIN_CHARS,
+                  })
+                }
+                return send({ ok: true, query: q, stats: st, hits: memory.search(q, lim) })
+              }
+              if (req.method === 'POST') {
+                const body = JSON.parse(raw || '{}')
+                const action = String(body.action || '')
+                if (action === 'clear') {
+                  memory.clear()
+                  return send({ ok: true, stats: memory.stats() })
+                }
+                if (action === 'move') {
+                  const dir = String(body.dir || '').trim()
+                  if (!dir) return send({ ok: false, error: '得给一个目录' }, 400)
+                  const r = memory.moveTo(dir, (d2) => {
+                    const cfg = readStoreConfig()
+                    const dirs = { ...(cfg.dirs || {}) }
+                    dirs.memory = d2
+                    writeStoreConfig({ ...cfg, dirs })
+                    invalidateDataDir()
+                  })
+                  return send(r.ok
+                    ? { ok: true, stats: memory.stats() }
+                    : { ok: false, error: r.error }, r.ok ? 200 : 500)
+                }
+                return send({ ok: false, error: '未知 action：' + action }, 400)
               }
               return send({ ok: false, error: '只支持 GET / POST' }, 405)
             }

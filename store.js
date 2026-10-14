@@ -27,12 +27,13 @@ export function dshHome() {
 /** 指针文件本身 —— 它**不能**挪，否则就找不着新位置了 */
 export const POINTER_FILE = join(dshHome(), 'dsh-mood-store.json')
 
-/** 我们的四个数据文件（迁移时就搬这几个） */
+/** 我们的数据文件（迁移时就搬这几个） */
 export const DATA_FILES = [
   'dsh-mood.json',
   'dsh-mood-diary.json',
   'dsh-mood-news.json',
   'dsh-mood-proactive.json',
+  'dsh-mood-memory.jsonl',
 ]
 
 /**
@@ -44,6 +45,8 @@ export const FILE_KEYS = {
   'dsh-mood-diary.json': 'diary',
   'dsh-mood-news.json': 'news',
   'dsh-mood-proactive.json': 'proactive',
+  // 硬盘记忆是 jsonl（一行一条），不是 json —— 但键名照旧走这套
+  'dsh-mood-memory.jsonl': 'memory',
 }
 
 /** 短键 → 人话（界面上用） */
@@ -52,6 +55,7 @@ export const KEY_LABELS = {
   diary: '日记',
   news: '时事',
   proactive: '主动开口',
+  memory: '硬盘记忆',
 }
 
 /** 每个文件"应该由哪个面板管"（界面上分组用） */
@@ -60,6 +64,7 @@ export const KEY_OWNER = {
   diary: 'mood',
   news: 'news',
   proactive: 'proactive',
+  memory: 'memory',
 }
 
 const normDir = (d) => {
