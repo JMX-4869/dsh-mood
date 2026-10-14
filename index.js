@@ -15,8 +15,9 @@ import { dataFile, dataDir, storageStatus, migrateStorage, humanSize, POINTER_FI
  *
  * 状态持久化在 $DSH_HOME/dsh-mood.json（默认 ~/.dsh/dsh-mood.json）。
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, statSync } from 'node:fs'
 import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 // 静态 import —— 与 dsh-meme 等可用插件一致。动态 import('@deepseek-ai/dsh-tools')
 // 在宿主里解析不到（该包不在 profile 的 node_modules 里），会导致工具静默注册失败。
@@ -46,6 +47,8 @@ import {
   proactiveFile, DEFAULTS as PRO_CFG,
   loadProactive, saveProactive, canSpeak, buildNudge,
   markSpoke, markReplied, sentToday,
+  SLOTS, slotOf, slotAllowed,
+  processStart, noteBoot, buildRestartNudge, markReported,
 } from './proactive.js'
 
 export const name = 'dsh-mood'
@@ -1517,7 +1520,10 @@ export function apply(root, rawConfig) {
           if (type === 'turn/end') {
             state.turns += 1
             noteActivity(diary, 'turn')
-            // 回合刚结束 —— 如果空闲够久，这里也顺手看一眼要不要开口
+            // 回合刚结束（= 一次任务干完了）。
+            // 先看有没有欠着的重启汇报 —— 它**不等空闲**，等了下一次重启就白等了；
+            // 再按常规看一眼要不要开口。
+            void maybeReportRestart()
             void maybeSpeak()
             return
           }
@@ -1538,6 +1544,30 @@ export function apply(root, rawConfig) {
     let lastUserAt = 0                // 用户上次说话
     let turnBusy = false              // 是不是有回合在跑
     let proactive = loadProactive()   // 主动开口的状态（默认 enabled:false）
+    /**
+     * 认一下这次是不是"重启"。
+     *
+     * ⚠️ 用**宿主进程**的启动时刻，不是插件加载时刻 —— HMR 会重载插件，
+     *    用加载时刻的话每次热重载都像重启过。
+     *    另外顺手看看插件自己的文件是不是比进程还新（= 改了要重启才生效）。
+     */
+    async function bootCheck() {
+      try {
+        let newest = 0
+        try {
+          const here = dirname(fileURLToPath(import.meta.url))
+          for (const f of ['index.js', 'client.js', 'proactive.js', 'memory.js', 'diary.js', 'news.js', 'store.js']) {
+            try { const st = statSync(join(here, f)); if (st.mtimeMs > newest) newest = st.mtimeMs } catch { /* 没有就算了 */ }
+          }
+        } catch { /* 拿不到自己的目录就算了 */ }
+        const r = noteBoot(proactive, Date.now(), newest)
+        if (r.restarted || r.stale) {
+          await persistProactive()
+          log('dsh-mood: 重启检测 → restarted=' + r.restarted + ' stale=' + r.stale)
+        }
+      } catch (e) { log('dsh-mood 重启检测失败：' + ((e && e.message) || e)) }
+    }
+    void bootCheck()
     let persistProactive = async () => {
       try { saveProactive(proactive) } catch { /* 存不下就算了，别影响主流程 */ }
     }
@@ -1594,6 +1624,31 @@ export function apply(root, rawConfig) {
           note: sentToday(proactive, now) + ' / ' + c.maxPerDay + ' 次',
         },
         { name: '深夜静默', pass: true, note: c.quietFrom + '~' + c.quietTo + ' 点不说' },
+        {
+          // 允许时段（空 = 全时段）。**静默比它优先** —— 两个都开时静默赢。
+          name: '允许时段',
+          pass: slotAllowed(c, new Date(now).getHours()),
+          note: (Array.isArray(c.slots) && c.slots.length)
+            ? SLOTS.filter((x) => c.slots.includes(x.id)).map((x) => x.label).join(' / ')
+              + '（现在 ' + new Date(now).getHours() + ' 点是' + (slotOf(new Date(now).getHours()) || {}).label + '）'
+            : '没选 —— 全时段',
+        },
+        {
+          // 重启汇报：有没有欠着的。这两条**不拦普通开口**，
+          // 只是说明"重启后会不会主动说一句"。
+          name: '重启汇报',
+          pass: true,
+          note: proactive.pendingRestart
+            ? '⚠️ 检测到宿主重启过 —— 下次回合结束时主动汇报'
+            : (c.reportRestart === false ? '关着' : '没有欠着的'),
+        },
+        {
+          name: '改动待生效',
+          pass: true,
+          note: proactive.pendingStale
+            ? '⚠️ 插件文件比进程还新 —— 有改动要重启才生效'
+            : (c.warnStale === false ? '关着' : '没有'),
+        },
       ]
       return {
         ok: true,
@@ -1601,6 +1656,15 @@ export function apply(root, rawConfig) {
         enabled: !!c.enabled,
         idleMs: c.idleMs, minGapMs: c.minGapMs, maxPerDay: c.maxPerDay,
         quietFrom: c.quietFrom, quietTo: c.quietTo,
+        slots: Array.isArray(c.slots) ? [...c.slots] : [],
+        slotTable: SLOTS.map((s) => ({ ...s })),
+        nowHour: new Date(now).getHours(),
+        reportRestart: c.reportRestart !== false,
+        warnStale: c.warnStale !== false,
+        pendingRestart: !!proactive.pendingRestart,
+        pendingStale: !!proactive.pendingStale,
+        reportedAt: proactive.reportedAt || 0,
+        procStart: proactive.procStart || 0,
         lastUserAt, lastSpokeAt: proactive.lastSpokeAt || 0,
         sentToday: sentToday(proactive, now),
         awaitingReply: !!proactive.awaitingReply,
@@ -1640,6 +1704,48 @@ export function apply(root, rawConfig) {
         ctx.logger?.info?.('[dsh-mood] 主动开口（空闲 ' + Math.round(idleMs / 60000) + ' 分钟）')
       } catch (e) {
         ctx.logger?.warn?.('[dsh-mood] 主动开口失败：' + ((e && e.message) || e))
+      }
+    }
+
+    /**
+     * 重启汇报 —— 「任务结束」时看一眼有没有欠着的。
+     *
+     * ⚠️ 它**不走 idle 门槛**。重启是主人刚刚亲手做的事，等 25 分钟空闲才说
+     *    等于永远不说。但**静默/允许时段照样管** —— 凌晨三点重启也不该吵。
+     *
+     * 说不说仍然由模型决定（投的是 <silent/> 可回绝的框），跟普通开口一个路子。
+     */
+    async function maybeReportRestart() {
+      try {
+        if (!sessionCtl || typeof sessionCtl.prompt !== 'function') return
+        if (!liveSession) return
+        const c = proactive.cfg || PRO_CFG
+        if (!c.enabled) return
+        const kind = proactive.pendingRestart ? 'restart' : (proactive.pendingStale ? 'stale' : '')
+        if (!kind) return
+        if (turnBusy) return
+        const now = Date.now()
+        const h = new Date(now).getHours()
+        // 时段/静默照样管 —— 只是不要求空闲
+        if (!slotAllowed(c, h)) return
+        const { quietFrom: a, quietTo: b } = c
+        const isQuiet = a < b ? (h >= a && h < b) : (h >= a || h < b)
+        if (isQuiet) return
+        const sid = liveSession.header && liveSession.header.id
+        if (!sid) return
+        // 先清标记再投递：投递失败也不能在下一个回合重来（宁可少说，不能刷屏）
+        markReported(proactive, now)
+        markSpoke(proactive, now)
+        await persistProactive()
+        await sessionCtl.prompt({
+          requestId: 'dsh-mood-boot-' + now.toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+          sessionId: sid,
+          mode: 'queue',
+          content: [{ type: 'text', text: buildRestartNudge(kind) }],
+        }, new AbortController().signal)
+        ctx.logger?.info?.('[dsh-mood] 重启汇报已投递（' + kind + '）')
+      } catch (e) {
+        ctx.logger?.warn?.('[dsh-mood] 重启汇报失败：' + ((e && e.message) || e))
       }
     }
 
@@ -2233,6 +2339,14 @@ export function apply(root, rawConfig) {
                       const v = Number(j[k])
                       if (Number.isFinite(v) && v >= 0) p.cfg[k] = v
                     }
+                    // 时段选择：**空数组 = 全时段**（这是刻意的默认，不是"没配好"）。
+                    // 只认表里有的 id —— 前端传了怪东西就当没传，别把配置写脏。
+                    if (Array.isArray(j.slots)) {
+                      const valid = new Set(SLOTS.map((s) => s.id))
+                      p.cfg.slots = [...new Set(j.slots.map(String).filter((x) => valid.has(x)))]
+                    }
+                    if (typeof j.reportRestart === 'boolean') p.cfg.reportRestart = j.reportRestart
+                    if (typeof j.warnStale === 'boolean') p.cfg.warnStale = j.warnStale
                     saveProactive(p)
                     return send(proactiveStatus())
                   } catch (e) {

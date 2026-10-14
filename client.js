@@ -106,6 +106,22 @@ window.__ModuleLoader__.load({
       '.dshmood .memlab{font-size:12px;color:var(--dsw-alias-label-secondary);min-width:64px}',
       '.dshmood .mempath{flex:1;min-width:200px;font-size:12px;padding:6px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.dshmood button.danger{color:#e5534b;border-color:#e5534b55}',
+      // 主动开口的时段选择
+      '.dshmood .slotbox{margin:14px 0;padding:12px 14px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px}',
+      '.dshmood .slothead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}',
+      '.dshmood .slottitle{font-size:13px;font-weight:600}',
+      '.dshmood .slotnote{font-size:12px;color:var(--dsw-alias-label-secondary);flex:1;min-width:120px}',
+      '.dshmood .slots{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:8px}',
+      '.dshmood .slot{display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:transparent;cursor:pointer;font-size:12.5px;color:var(--dsw-alias-label-primary)}',
+      '.dshmood .slot:hover{border-color:var(--dsw-alias-brand-primary)}',
+      '.dshmood .slot.on{background:#13241a;border-color:#2ea043}',
+      '.dshmood .slot.now{box-shadow:0 0 0 1px var(--dsw-alias-brand-primary) inset}',
+      '.dshmood .slotkind{flex:none;width:18px;height:18px;line-height:18px;text-align:center;border-radius:4px;font-size:11px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary)}',
+      '.dshmood .slotkind.k峰{background:#3a2a12;color:#e3b341}',
+      '.dshmood .slotkind.k谷{background:#12202e;color:#58a6ff}',
+      '.dshmood .slotname{flex:1;text-align:left}',
+      '.dshmood .slothours{font-size:11px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}',
+      '.dshmood .slotnow{font-size:10px;color:var(--dsw-alias-brand-primary)}',
       '.dshmood .memlist{margin-top:14px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;overflow:hidden}',
       '.dshmood .memlisthd{padding:8px 12px;font-size:12px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2)}',
       '.dshmood .memline{display:flex;gap:8px;align-items:baseline;padding:7px 12px;border-top:1px solid var(--dsw-alias-border-l1);font-size:12.5px}',
@@ -1129,6 +1145,90 @@ window.__ModuleLoader__.load({
             h('span', { className: 'gate-name' }, g.name),
             h('span', { className: 'gate-note' }, g.note),
           )),
+        ),
+
+        // ── 允许开口的时段 ──
+        //
+        // **一个都不选 = 全时段。** 这是刻意的默认：让"没配过"和"想全开"
+        // 是同一个状态，用户不用先去理解这个功能。
+        h('div', { className: 'slotbox' },
+          h('div', { className: 'slothead' },
+            h('span', { className: 'slottitle' }, '允许开口的时段'),
+            h('span', { className: 'slotnote' },
+              (d.slots && d.slots.length)
+                ? '只在这 ' + d.slots.length + ' 段里开口'
+                : '没选 —— 全时段都能开口'),
+            h('button', {
+              onClick: () => patch({ slots: [] }),
+              disabled: busy || !(d.slots && d.slots.length),
+            }, '恢复全时段'),
+          ),
+          h('div', { className: 'slots' },
+            ...((d.slotTable || []).map((sl) => {
+              const on = !!(d.slots && d.slots.includes(sl.id))
+              const isNow = d.nowHour >= sl.from && d.nowHour < sl.to
+              return h('button', {
+                key: sl.id,
+                className: 'slot' + (on ? ' on' : '') + (isNow ? ' now' : ''),
+                disabled: busy,
+                onClick: () => {
+                  const cur = new Set(d.slots || [])
+                  if (cur.has(sl.id)) cur.delete(sl.id); else cur.add(sl.id)
+                  patch({ slots: [...cur] })
+                },
+              },
+                h('span', { className: 'slotkind' }, sl.kind),
+                h('span', { className: 'slotname' }, sl.label),
+                h('span', { className: 'slothours' },
+                  String(sl.from).padStart(2, '0') + '–' + String(sl.to % 24).padStart(2, '0')),
+                isNow ? h('span', { className: 'slotnow' }, '现在') : null,
+              )
+            })),
+          ),
+          h('div', { className: 'hintline' },
+            '峰 = 一般通勤/活跃高峰，平 = 工作时段，谷 = 人少的时候 —— ',
+            h('b', null, '只是标签，不参与判定'),
+            '。真正起作用的是起止整点。',
+          ),
+          h('div', { className: 'hintline' },
+            '⚠️ ', h('b', null, '「深夜静默」比这里优先'),
+            ' —— 两个都开时静默赢。选中的时段如果和静默重叠，那段时间照样不开口。',
+          ),
+        ),
+
+        // ── 重启相关的两个开关 ──
+        //
+        // 为什么值得单独列出来：**改完东西要重启才生效**这件事，
+        // 人很容易忘。这个插件能自己认出来"宿主重启过"或者"有改动还没生效"，
+        // 然后在**下一次回合结束时**主动说一句 —— 不用你记着回来问。
+        h('div', { className: 'slotbox' },
+          h('div', { className: 'slothead' },
+            h('span', { className: 'slottitle' }, '重启汇报'),
+            h('span', { className: 'slotnote' },
+              d.pendingRestart ? '⚠️ 检测到重启过 —— 下次回合结束会主动说'
+                : d.pendingStale ? '⚠️ 有改动还没生效 —— 下次回合结束会提醒'
+                  : (d.procStart ? '当前进程启动于 ' + new Date(d.procStart).toLocaleString('zh-CN') : '还没记下进程启动时刻')),
+          ),
+          h('div', { className: 'memrow' },
+            h('button', { onClick: () => patch({ reportRestart: !d.reportRestart }), disabled: busy },
+              d.reportRestart ? '重启汇报：开' : '重启汇报：关'),
+            h('button', { onClick: () => patch({ warnStale: !d.warnStale }), disabled: busy },
+              d.warnStale ? '改动未生效提醒：开' : '改动未生效提醒：关'),
+          ),
+          h('div', { className: 'hintline' },
+            '「重启汇报」—— 宿主重启之后，主动看一眼状态并跟主人说一句',
+            h('b', null, '（不等空闲）'),
+            '。重启是你刚做的事，等 25 分钟才说等于永远不说。',
+          ),
+          h('div', { className: 'hintline' },
+            '「改动未生效提醒」—— 插件文件比进程还新的时候，说明有改动要重启才生效。',
+            h('b', null, 'HMR 能重载插件代码，但宿主配置不会跟着变'),
+            ' —— 所以这句话仍然成立。',
+          ),
+          h('div', { className: 'hintline' },
+            '两条都', h('b', null, '受静默和允许时段约束'),
+            ' —— 凌晨三点重启也不吵你。而且说不说仍然由它自己决定，可以只回一个回绝标记。',
+          ),
         ),
 
         h('div', { className: 'tools' },

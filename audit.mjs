@@ -232,6 +232,54 @@ const N = M.MOOD_IDS.length
     const noInject = !/systemPrompt\.section\(\{[\s\S]{0,400}memory/.test(host)
     noInject ? OK('归档不自动注入提示词（模型主动调 memory）') : NG('归档被自动注入了 —— 那会每轮烧 token')
 
+    // ────────────────────────────────────────────────────────────
+    //  主动开口：允许时段 + 重启汇报
+    // ────────────────────────────────────────────────────────────
+    const pro = fs.readFileSync(SRC + '/proactive.js', 'utf8')
+
+    // 时段表必须**铺满 24 小时**。少一段就会出现"哪个时段都不属于"的缝，
+    // 那种时候 slotAllowed 会返回 false，表现为"明明全选了却还是不说话"。
+    const slotsFull = (() => {
+      const m = pro.match(/export const SLOTS = \[([\s\S]*?)\n\]/)
+      if (!m) return false
+      const covered = new Set()
+      for (const mm of m[1].matchAll(/from:\s*(\d+),\s*to:\s*(\d+)/g)) {
+        for (let h = Number(mm[1]); h < Number(mm[2]); h++) covered.add(h)
+      }
+      return covered.size === 24
+    })()
+    slotsFull ? OK('时段表铺满 24 小时（不留缝）') : NG('时段表没铺满 —— 会有整点落不进任何一段')
+
+    // 「不选就全时段」是这个功能的默认，别被改掉
+    const emptyAll = /if \(!Array\.isArray\(ids\) \|\| ids\.length === 0\) return true/.test(pro)
+    emptyAll ? OK('时段不选 = 全时段（刻意的默认）') : NG('空时段数组被当成"都不允许"了')
+
+    // 静默必须**优先于**时段：选了时段也不能覆盖深夜静默
+    const quietFirst = pro.indexOf('点静默') < pro.indexOf('不在你选的时段')
+    quietFirst ? OK('静默判定在时段之前（静默赢）') : NG('时段盖过了静默 —— 凌晨也会开口')
+
+    // ⚠️ 重启判定必须用**进程启动时刻**，不能用插件加载时刻。
+    //    HMR 会重载插件，用加载时刻的话每次热重载都像重启过，然后没完没了地汇报。
+    const procStartOk = /process\.uptime\(\)/.test(pro)
+    procStartOk ? OK('重启判定用进程启动时刻（热重载不会被误判）') : NG('重启判定没用到进程启动时刻')
+
+    // 重启汇报**不等空闲**，但**照样受静默/时段管**
+    const host2 = fs.readFileSync(SRC + '/index.js', 'utf8')
+    const iRep = host2.indexOf('async function maybeReportRestart')
+    const repBody = iRep >= 0 ? host2.slice(iRep, iRep + 2000) : ''
+    const noIdle = !!repBody && !/canSpeak\(/.test(repBody)
+    const stillGated = /slotAllowed\(/.test(repBody) && /isQuiet|quietFrom/.test(repBody)
+    noIdle ? OK('重启汇报不等空闲（等了下一次重启就白等）') : NG('重启汇报走了 canSpeak —— 会被空闲门槛永远拦住')
+    stillGated ? OK('重启汇报照样受静默/时段管（凌晨不吵）') : NG('重启汇报绕过了静默/时段')
+
+    const repWired = /if \(type === 'turn\/end'\)[\s\S]{0,400}?maybeReportRestart\(\)/.test(host2)
+    repWired ? OK('回合结束时检查重启汇报（= 任务结束就查一次）') : NG('重启汇报没接在回合结束上')
+
+    const switches = /reportRestart: c\.reportRestart !== false/.test(host2)
+      && /id: 'memory', order: 29/.test(cl2)
+      && /重启汇报/.test(cl2)
+    switches ? OK('两个开关（重启汇报 / 改动待生效）都在界面上') : NG('开关没接到界面上')
+
     const hasPanel = /id: 'memory', order: 29/.test(cl2)
     hasPanel ? OK('设置页有「硬盘记忆」那一格') : NG('设置页没有那一格')
 

@@ -20,6 +20,7 @@
     "store.js",
     "test-memory-e2e.mjs",
     "test-memory.mjs",
+    "test-proactive.mjs",
     "手机版_心情提示词.md"
   ],
   "exports": {
