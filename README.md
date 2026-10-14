@@ -4,6 +4,10 @@
 
 **它会累、会烦、会好奇。**
 
+> **当前版本 `1.2.0`** —— 每一版都发 [Release](https://github.com/JMX-4869/dsh-mood/releases)；
+> 完整历史改动见 [CHANGELOG.md](CHANGELOG.md)。
+> 版本规则：改动大加**大版本**，加了功能或一批集中修复加**小版本**，单点小修加**修订号**。
+
 ![设置页里的心情日记](docs/preview-mood-diary.png)
 
 > 图是用插件**同一份 CSS** + 真实状态数据渲的页面复刻，不是 DSH 里的截图 ——

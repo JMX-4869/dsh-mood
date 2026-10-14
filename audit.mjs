@@ -413,6 +413,35 @@ const N = M.MOOD_IDS.length
       ? NG('这些测试会写数据但没隔离 DSH_HOME（会动用户的真东西）：' + notIsolated.join(', '))
       : OK('会写数据的测试都隔离了 DSH_HOME（' + tFiles.length + ' 个）')
 
+    // ⚠️ **版本号三处必须一致**，而且 CHANGELOG 里必须真有这一版。
+    //    主人要求："每次更新加版本号，改动小就加小版本，改动大就加大版本，写更新日志。"
+    //    光靠自觉迟早会漏 —— 所以让审计盯着：三处对不上就报红。
+    //    （三处 = package.json 的 version / CHANGELOG 第一条 ## 标题 / README 里那句当前版本）
+    {
+      const pkg = JSON.parse(fs.readFileSync(SRC + '/package.json', 'utf8'))
+      const ver = String(pkg.version || '')
+      const cl = fs.existsSync(SRC + '/CHANGELOG.md') ? fs.readFileSync(SRC + '/CHANGELOG.md', 'utf8') : ''
+      const rm = fs.readFileSync(SRC + '/README.md', 'utf8')
+
+      const okSemver = /^\d+\.\d+\.\d+$/.test(ver)
+      okSemver ? OK('package.json 版本号是语义化版本（' + ver + '）') : NG('版本号不是 X.Y.Z：' + JSON.stringify(ver))
+
+      const clTop = (cl.match(/^##\s+(\d+\.\d+\.\d+)/m) || [])[1] || ''
+      clTop === ver ? OK('CHANGELOG 第一条就是当前版本（' + ver + '）')
+        : NG('CHANGELOG 的第一条是 ' + (clTop || '(没有)') + '，和 package.json 的 ' + ver + ' 对不上')
+
+      const rmVer = (rm.match(/当前版本\s*`?(\d+\.\d+\.\d+)/) || [])[1] || ''
+      rmVer === ver ? OK('README 里标的当前版本也是 ' + ver)
+        : NG('README 写的是 ' + (rmVer || '(没写)') + '，和 package.json 的 ' + ver + ' 对不上')
+
+      const hasEntry = new RegExp('^##\\s+' + ver.replace(/\./g, '\\.') + '\\b', 'm').test(cl)
+      hasEntry ? OK('这一版在 CHANGELOG 里有条目') : NG('CHANGELOG 里没有 ' + ver + ' 这一版')
+      // 条目不能是空壳
+      const body = hasEntry ? cl.split(new RegExp('^##\\s+' + ver.replace(/\./g, '\\.') + '\\b', 'm'))[1] : ''
+      const bodyLen = body ? body.split(/^##\s/m)[0].trim().length : 0
+      bodyLen > 80 ? OK('这一版的日志写实了（' + bodyLen + ' 字符）') : NG('这一版的日志太短（' + bodyLen + ' 字符）—— 是不是占位')
+    }
+
     // ⚠️ 跨站写保护。这个接口里是**全部对话原文**，还能一键清空。
     //    DSH 只绑 127.0.0.1、跨站读也拿不到响应 —— 但**跨站写**能打进来：
     //    页面用 mode:"no-cors" + 字符串 body（→ text/plain → 不触发预检），
