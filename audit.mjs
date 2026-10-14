@@ -166,7 +166,30 @@ D.setAccess(dd, false); D.canRead(dd) === false ? OK('deny 后不可见') : NG('
 // ───────────────────────────── E. 心情
 head('E. 心情')
 const N = M.MOOD_IDS.length
-N === 22 ? OK('22 种心情') : NG('心情数 = ' + N)
+  // ── 兜底人设：有别人的就让位 ──
+  //
+  // 这不是"谁优先"，是"这一层要不要存在"。两条人设同时注入会打架。
+  //    external → dsh-mood 这一层完全不用（设置页那一格**整个不注册**）
+  //    own      → 没有别人管，用自己那份
+  //    none     → 两边都没有，就只做心情
+  {
+    const host = fs.readFileSync(SRC + '/index.js', 'utf8')
+    const cl = fs.readFileSync(SRC + '/client.js', 'utf8')
+    const hasFn = /export function personaSource\(/.test(host)
+    const three = /return 'own'/.test(host) && /return 'external'/.test(host) && /return 'none'/.test(host)
+    hasFn && three ? OK('personaSource 有三种来源：external / own / none') : NG('personaSource 不完整')
+    // 外部存在时必须**不读**自己那份（读了就说明可能混用）
+    // ⚠️ 正则先赋给变量 —— 行首写 `/` 会被当成除号（ASI 坑，栽过）
+    const bySource = /const src = personaSource\(\)[\s\S]{0,200}?if \(src === 'own'\)/.test(host)
+    bySource ? OK('readPersona：先判来源，own 时才读自己那份') : NG('readPersona 没按来源分支')
+    // 客户端必须**条件注册**，不是"显示但禁用"
+    const condReg = /if \(external\) return/.test(cl) && /source === 'external' && !d\.persona\.force/.test(cl)
+    condReg ? OK('人设那一格是条件注册（有别人管就不注册，导航里不出现）') : NG('人设那一格没做条件注册')
+    // 写接口在外部存在时必须拒绝 —— 不然用户以为改的是生效那份
+    const guarded = /409/.test(host) && /有别的插件在管人设/.test(host)
+    guarded ? OK('有别人管时，写自己那份会被拒（409）并说明原因') : NG('写接口没有保护')
+  }
+N === 33 ? OK('33 种心情（基础 + 复合 + 当代）') : NG('心情数 = ' + N)
 const need = ['sulk', 'hurt', 'proud', 'gloomy', 'anxious', 'numb', 'lonely',
   'flutter', 'love', 'jealous', 'burnout', 'cracked', 'checkedout', 'hyper']
 const missing = need.filter((x) => !M.MOODS[x])
@@ -183,6 +206,14 @@ const bodyLen = M.MOOD_OUTPUT_RULE.length + M.REALITY_GUARD.length
 bodyLen <= 2000 ? OK('规则体量 ' + bodyLen + ' 字（上限 2000，防它again长成文档）') : NG('规则又胖了: ' + bodyLen + ' 字')
 M.judgeMessage('陪着我好不好').__clingy === true && M.judgeMessage('这个bug搞不定').__clingy === false
   ? OK('依赖信号识别正确（零误报）') : NG('依赖信号异常')
+// 新装必须从 0 开始 —— 别拿基线冒充"初始状态"
+{
+  const b = M._internal.blankState()
+  const nz = Object.entries(b.values).filter(([, v]) => v !== 0)
+  nz.length === 0
+    ? OK('首次安装全部为 0（基线只作回落目标，不作初始值）')
+    : NG('首次安装不是全 0，有 ' + nz.length + ' 个非零: ' + nz.slice(0, 3).map(([k, v]) => k + '=' + v).join(' '))
+}
 M.MOOD_IDS.every((id) => M.MOODS[id].label && M.MOODS[id].hint && M.MOODS[id].inner && typeof M.MOODS[id].baseline === 'number')
   ? OK('每种都有 label/hint/inner/baseline') : NG('有心情字段不全')
 
@@ -259,6 +290,29 @@ head('F. 客户端（静态检查）')
 const cl = fs.readFileSync(SRC + '/client.js', 'utf8')
 const clChecks = [
   ['Loader id 与包名一致', /__ModuleLoader__[\s\S]{0,80}id: 'dsh-mood'/.test(cl)],
+  // 数值条必须按来源分组（基础 / 复合 / 当代）—— /state 的 tiers 要接上
+  ['数值条按 tiers 分组', cl.includes('groupedBars(ranked, data.tiers') && cl.includes('function groupedBars')],
+  ['拿不到 tiers 时退回平铺', /if \(!usable\) return ranked\.map\(row\)/.test(cl)],
+  // 错误边界：插件**不许**把宿主界面搞白。
+  // React 里组件渲染抛错且没有错误边界 → 整棵根树被卸载 → 整个界面全白。
+  // 代价不对等：插件一个 bug = 用户整个 DSH 用不了。
+  // 每个注册出去的面板都要套错误边界。
+  // 数**注册点**和**包裹数**是否对得上 —— 写死数字迟早会因为加面板而误报。
+  ['每个注册的面板都套了错误边界',
+    (cl.match(/React\.createElement\(MoodErrorBoundary, null/g) || []).length === (cl.match(/slots\.register\(/g) || []).length
+    && (cl.match(/slots\.register\(/g) || []).length >= 3],
+  ['错误边界实现了 getDerivedStateFromError', /static getDerivedStateFromError/.test(cl)],
+  ['错误边界会把报错显示出来', /这一格渲染出错了/.test(cl)],
+  // ⚠️ 工厂层必须有 h。
+  //
+  // 踩过的坑：面板各自在自己里面写 `const h = React.createElement`，
+  // 而我把公共函数 groupedBars 加在**工厂层**、里面引用了 h ——
+  // 运行时 ReferenceError，整个心情日记面板白屏。
+  // 面板内部的 h 是"组件自己的"，工厂层的函数看不见。
+  //
+  // 更值得记的是**为什么当时没测出来**：我的测试把 h 当参数喂了进去，
+  // 等于亲手把缺的变量补上 —— **那是个不可能失败的测试**。
+  ['工厂层定义了 h（4 空格缩进那个）', /^    const h = React\.createElement$/m.test(cl)],
   ['注册 settings.section', cl.includes("slots.inject('settings.section'")],
   ['section id = mood', cl.includes("id: 'mood'")],
   ['合上书本 BookIcon', cl.includes('function BookIcon')],
@@ -407,4 +461,15 @@ for (const [n, f] of [
 console.log('\n' + '═'.repeat(46))
 console.log('  通过 ' + pass + '   失败 ' + fail + '   警告 ' + warn)
 console.log('═'.repeat(46))
-process.exit(fail ? 1 : 0)
+process.exit(fail ? 1 : 0)  // 分层：MOOD_TIERS 必须不重不漏地覆盖全部心情
+  {
+    const tiers = M.MOOD_TIERS || {}
+    const all = Object.values(tiers).flat()
+    const dup = all.filter((x, i) => all.indexOf(x) !== i)
+    const miss = M.MOOD_IDS.filter((x) => !all.includes(x))
+    const extra = all.filter((x) => !M.MOOD_IDS.includes(x))
+    dup.length === 0 && miss.length === 0 && extra.length === 0
+      ? OK('分层完整：基础 ' + (tiers.basic || []).length + ' / 复合 ' + (tiers.complex || []).length + ' / 当代 ' + (tiers.modern || []).length)
+      : NG('分层有问题: 重复[' + dup.join(',') + '] 漏[' + miss.join(',') + '] 多[' + extra.join(',') + ']')
+  }
+

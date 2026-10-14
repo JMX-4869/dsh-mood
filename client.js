@@ -86,6 +86,17 @@ window.__ModuleLoader__.load({
       '.dshmood .storebadge{flex:0 0 auto;font-size:11px;padding:0 6px;border-radius:5px;opacity:.6;border:1px solid var(--dsw-alias-border-l1)}',
       '.dshmood .storebadge.on{opacity:1;border-color:var(--dsw-alias-brand-primary)}',
       '.dshmood .storebody{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border-top:1px solid var(--dsw-alias-border-l1)}',
+      // 数值条的分组标题（基础情绪 / 复合情绪 / 当代说法）
+      '.dshmood .grp{display:flex;align-items:center;gap:8px;margin:12px 0 6px;padding-bottom:5px;border-bottom:1px solid var(--dsw-alias-border-l1)}',
+      '.dshmood .grp:first-child{margin-top:2px}',
+      '.dshmood .grpn{font-size:13px;font-weight:600;color:var(--dsw-alias-brand-primary)}',
+      '.dshmood .grpc{font-size:11px;color:var(--dsw-alias-label-secondary)}',
+      // 人设面板的表单
+      '.dshmood .pform{display:flex;flex-direction:column;gap:14px}',
+      '.dshmood .pfield{display:flex;flex-direction:column;gap:6px}',
+      '.dshmood .plab{font-size:12px;color:var(--dsw-alias-label-secondary)}',
+      '.dshmood .pta{min-height:64px;resize:vertical;font-family:inherit;line-height:1.6}',
+      '.dshmood .hintline{font-size:12px;line-height:1.7;color:var(--dsw-alias-label-secondary)}',
       // （旧的"日期输入框 + 月份小标签"那套 CSS 已删 —— 换成下面的日历了）
       // ── 日历式日记浏览 ──
       // 为什么要有它：日记攒多了，一条条往下堆会让右侧滚动条缩成头发丝。
@@ -188,6 +199,8 @@ window.__ModuleLoader__.load({
       'M6 16h.01',
       'M10 16h.01',
     ]
+    // 人设：一个线条人（头 + 肩），和别的图标同一套描边参数
+    const PERSONA_D = ['M12 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z', 'M4.5 20c0-3.1 3.2-5.3 7.5-5.3s7.5 2.2 7.5 5.3']
 
     function StoreIcon(props) {
       const p = props || {}
@@ -279,6 +292,65 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * 错误边界 —— **插件永远不许把宿主界面搞白**。
+     *
+     * 为什么必须要有这个：React 里一个组件渲染时抛错，如果没有错误边界，
+     * 它会沿着树往上找，**找不到就把整棵根树卸载** —— 表现出来就是整个界面全白。
+     * 也就是说：**我的插件出一个 bug，代价是用户整个 DSH 用不了。**
+     * 这个代价不对等，得挡住。
+     *
+     * 有了它之后，同一个 bug 的表现变成：**那一格显示一条能读的报错**，
+     * 其它面板、导航、会话全都照常。
+     *
+     * 顺带一个好处：报错文本直接显示在界面上 —— 不用开 devtools 也知道错在哪。
+     */
+    class MoodErrorBoundary extends React.Component {
+      constructor(props) {
+        super(props)
+        this.state = { err: null }
+      }
+      static getDerivedStateFromError(err) {
+        return { err }
+      }
+      componentDidCatch(err, info) {
+        // 控制台里留一份完整的栈，方便定位
+        try { console.error('[dsh-mood] 面板渲染失败:', err, info) } catch { /* 不管 */ }
+      }
+      render() {
+        if (!this.state.err) return this.props.children
+        const msg = String((this.state.err && this.state.err.message) || this.state.err)
+        return h('div', { className: 'dshmood' },
+          h('div', { className: 'notice' },
+            '这一格渲染出错了，插件没有崩掉整个界面。',
+            h('br'),
+            h('code', null, msg),
+          ),
+          h('div', { className: 'warn' },
+            '把这条报错发给我就行。其它面板和会话不受影响。'),
+        )
+      }
+    }
+
+
+    /**
+     * ⚠️ **工厂层的 h** —— 公共函数用得到。
+     *
+     * 原来每个面板各自在自己里面写 `const h = React.createElement`。
+     * 那样面板内部用没问题，但**工厂层的公共函数看不见它**。
+     *
+     * 我加 `groupedBars` 的时候就踩了这个：函数写在工厂层、里面引用 `h`，
+     * 运行时 `ReferenceError: h is not defined` —— 整个心情日记面板白屏。
+     *
+     * 那为什么当时没测出来？因为我的测试是这么写的：
+     *     new Function('h', 'React', SRC)   ← **把 h 当参数喂进去**
+     * 等于亲手把缺的那个变量补上了，于是它在比真实环境宽松的沙盒里"全过"。
+     * **那是个不可能失败的测试。**
+     *
+     * 所以这里定义一次。面板里那几个同名的 `const h` 会**遮蔽**它，行为不变。
+     */
+    const h = React.createElement
+
+    /**
      * 把"多少分钟"写成人看得懂的样子。
      *
      * ⚠️ 为什么不用「324 分」：中文里"分"**既可以是分钟也可以是分值**，
@@ -292,6 +364,48 @@ window.__ModuleLoader__.load({
       const h = Math.floor(n / 60)
       const m = n % 60
       return h + ' 小时' + (m ? ' ' + m + ' 分' : '')
+    }
+
+    /**
+     * 把数值条按来源分组渲染。
+     *
+     * **分层的依据是"它从哪来"，不是"重要程度"** —— 所以组的顺序是固定的
+     * （基础 → 复合 → 当代），组内才按当前分值从高到低排。
+     * 这样"现在什么心情"在哪个组、离基线多远，一眼能看出来。
+     *
+     * 柱子的宽度用的是**全局最大值**，不是组内最大值 ——
+     * 否则每个组都会被拉满，组和组之间的高低就没法比了。
+     *
+     * 拿不到 tiers（旧宿主）就平铺 —— 不报错，只是没了分组。
+     */
+    function groupedBars(ranked, tiers, max, curId) {
+      const row = (r) =>
+        h('div', { className: 'bar-row' + (r.id === curId ? ' on' : ''), key: r.id },
+          h('span', { className: 'lbl' }, r.label),
+          h('div', { className: 'bar' },
+            h('i', { style: { width: Math.max(2, Math.round((r.value / Math.max(1, max)) * 100)) + '%' } })),
+          h('span', { className: 'v' }, String(r.value)),
+        )
+
+      const byId = {}
+      for (const r of ranked) byId[r.id] = r
+      const ORDER = [
+        ['basic', '基础情绪', 'Ekman 那六种 + 几个同样是"当下直接反应"的'],
+        ['complex', '复合情绪', '由基础情绪组合、带认知加工 —— 爱 = 快乐+信任+依恋'],
+        ['modern', '当代说法', '这代人新造的词，旧分类里没有准确对应'],
+      ]
+      const usable = tiers && ORDER.some(([k]) => Array.isArray(tiers[k]) && tiers[k].length)
+      if (!usable) return ranked.map(row)
+
+      const out = []
+      for (const [key, label, note] of ORDER) {
+        const ids = Array.isArray(tiers[key]) ? tiers[key] : []
+        const items = ids.map((id) => byId[id]).filter(Boolean).sort((a, b) => b.value - a.value)
+        if (!items.length) continue
+        out.push(h('div', { className: 'grp', key }, h('span', { className: 'grpn' }, label),
+          h('span', { className: 'grpc' }, String(items.length))), ...items.map(row))
+      }
+      return out
     }
 
     function DiaryPanel() {
@@ -435,13 +549,16 @@ window.__ModuleLoader__.load({
             ? h('span', { className: 'pill' }, '下次判定约 ' + spellMinutes(data.nextPeriodicMin) + '后')
             : null,
         ),
+        // 数值条**按来源分三层**显示：基础情绪 / 复合情绪 / 当代说法。
+        //
+        // 分层的依据不是"重要程度"，是**它从哪来**（见 index.js 的 MOOD_TIERS）：
+        //   基础 —— Ekman 那六种 + 几个同样是"当下直接反应"的
+        //   复合 —— 由基础组合、带认知加工（爱 = 快乐+信任+依恋）
+        //   当代 —— 这代人新造的词，旧分类里没有准确对应
+        //
+        // 层信息由 /state 的 tiers 给；拿不到就退回平铺（旧宿主也能跑）。
         h('div', { className: 'bars' },
-          ...ranked.map((r) =>
-            h('div', { className: 'bar-row' + (r.id === (data.current && data.current.id) ? ' on' : ''), key: r.id },
-              h('span', { className: 'lbl' }, r.label),
-              h('div', { className: 'bar' }, h('i', { style: { width: Math.max(2, Math.round((r.value / Math.max(1, max)) * 100)) + '%' } })),
-              h('span', { className: 'v' }, String(r.value)),
-            )),
+          ...groupedBars(ranked, data.tiers, max, data.current && data.current.id),
         ),
 
         // 工具条
@@ -528,6 +645,87 @@ window.__ModuleLoader__.load({
             ),
 
         h(StorageBar, { keys: ['state', 'diary'] }),
+      )
+    }
+
+
+    /**
+     * 「人设」面板 —— **只在没有别的插件管人设时才会被注册**。
+     *
+     * 有别人管的时候，这一格连导航项都不出现（见下面那段条件注册）。
+     * 不是"显示但禁用"，是**根本不注册** —— 一个不生效的设置项摆在那儿，
+     * 比不摆更糟：用户会以为自己改的是生效的那份。
+     */
+    function PersonaPanel({ ctx }) {
+      const [data, setData] = React.useState(null)
+      const [err, setErr] = React.useState('')
+      const [msg, setMsg] = React.useState('')
+      const [f, setF] = React.useState({ selfName: '', userName: '', stance: '', tone: '', enabled: true })
+
+      const load = React.useCallback(async () => {
+        try {
+          const d = await getJSON('/persona')
+          setData(d)
+          setErr('')
+          if (d.own) {
+            setF({
+              selfName: d.own.selfName || '', userName: d.own.userName || '',
+              stance: d.own.stance || '', tone: d.own.tone || '',
+              enabled: d.own.enabled !== false,
+            })
+          }
+        } catch (e) { setErr(String((e && e.message) || e)) }
+      }, [])
+      React.useEffect(() => { load() }, [load])
+
+      const save = async () => {
+        try {
+          const r = await fetch(API + '/persona', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(f),
+          })
+          const j = await r.json()
+          if (!j.ok) throw new Error(j.error || ('HTTP ' + r.status))
+          setMsg('已保存')
+          setTimeout(() => setMsg(''), 2500)
+          await load()
+        } catch (e) { setMsg('保存失败：' + ((e && e.message) || e)) }
+      }
+
+      if (err) return h('div', { className: 'dshmood' }, h('div', { className: 'notice' }, '读不到：' + err))
+      if (!data) return h('div', { className: 'dshmood' }, h('div', { className: 'notice' }, '加载中…'))
+
+      const field = (key, label, ph, rows) =>
+        h('div', { className: 'pfield' },
+          h('div', { className: 'plab' }, label),
+          rows
+            ? h('textarea', { className: 'srcin pta', rows, placeholder: ph, value: f[key], onChange: (e) => setF({ ...f, [key]: e.target.value }) })
+            : h('input', { className: 'srcin', placeholder: ph, value: f[key], onChange: (e) => setF({ ...f, [key]: e.target.value }) }),
+        )
+
+      return h('div', { className: 'dshmood' },
+        h('div', { className: 'page-hd' },
+          h('span', { className: 'page-title' }, '人设'),
+          h('span', { className: 'page-sub' }, '没有别的插件管人设，所以这一份是生效的'),
+        ),
+        h('div', { className: 'notice' },
+          '这一格只在**没有别的插件提供人设**时出现。一旦装了别的人设插件，',
+          '它**整个消失** —— 两份人设同时注入会打架，只留一份。'),
+        h('div', { className: 'pform' },
+          field('selfName', '自称', '比如：小鲸'),
+          field('userName', '怎么称呼你', '比如：主人'),
+          field('stance', '定位（一句话）', '比如：嘴硬心软，脑子转得快身子懒得动'),
+          field('tone', '语气', '比如：语气软中带刺，平时懒洋洋，被惹到就炸毛', 3),
+        ),
+        h('div', { className: 'tools' },
+          h('button', { onClick: save }, '保存'),
+          h('button', { onClick: () => setF({ ...f, enabled: !f.enabled }) }, f.enabled ? '已启用' : '已停用'),
+          msg ? h('span', { className: 'pill' }, msg) : null,
+        ),
+        h('div', { className: 'hintline' },
+          '不填也能用 —— 全员留空等于没有人设，插件就只做心情那层。'),
+        h(StorageBar, { keys: ['state'] }),
       )
     }
 
@@ -895,20 +1093,40 @@ window.__ModuleLoader__.load({
         }, 'dsh-mood style')
       }
 
+      // ── 「人设」那一格：**有条件注册** ──
+      //
+      // 有别的插件管人设时，整个 section **不注册** —— 导航里不会出现，
+      // 点不进、改不了，也不会误以为自己在改生效的那份。
+      //
+      // 先拉一次 /state 看来源；拿不到（宿主没起）就先注册上，
+      // 真写的时候 POST 会返回 409，界面会说出来。
+      void (async () => {
+        let external = false
+        try {
+          const d = await getJSON('/state')
+          external = !!(d.persona && d.persona.source === 'external' && !d.persona.force)
+        } catch { /* 拿不到就注册 */ }
+        if (external) return
+        slots.inject('settings.section', () => slots.register(
+          { name: 'settings.section', id: 'persona', order: 25, label: '人设' },
+          () => React.createElement(MoodErrorBoundary, null, React.createElement(PersonaPanel, { ctx })),
+        ))
+      })()
+
       slots.inject('settings.section', () => slots.register(
         { name: 'settings.section', id: 'proactive', order: 28, label: '主动开口' },
-        () => React.createElement(ProactivePanel, {}),
+        () => React.createElement(MoodErrorBoundary, null, React.createElement(ProactivePanel, {})),
       ))
 
       slots.inject('settings.section', () => slots.register(
         { name: 'settings.section', id: 'mood', order: 26, label: '心情日记' },
-        () => React.createElement(DiaryPanel, { ctx }),
+        () => React.createElement(MoodErrorBoundary, null, React.createElement(DiaryPanel, { ctx })),
       ))
 
       // 第二个整页：时事（用户点按钮才去抓，不做后台定时抓取）
       slots.inject('settings.section', () => slots.register(
         { name: 'settings.section', id: 'news', order: 27, label: '时事' },
-        () => React.createElement(NewsPanel, { ctx }),
+        () => React.createElement(MoodErrorBoundary, null, React.createElement(NewsPanel, { ctx })),
       ))
 
       // ---- 把设置导航里「心情日记」那格的图标换成黑线条书本 ----
@@ -925,6 +1143,7 @@ window.__ModuleLoader__.load({
     /** 我们接管的三格：标签文字，用来在 DOM 里定位 */
     const NAV_LABEL = '心情日记'
     const NAV_NEWS = '时事'
+    const NAV_PERSONA = '人设'
     const NAV_TALK = '主动开口'
     const NAV_STORE = '存储位置'
 
@@ -950,6 +1169,7 @@ window.__ModuleLoader__.load({
       if (label === NAV_NEWS) return 'news'
       if (label === NAV_TALK) return 'talk'
       if (label === NAV_STORE) return 'store'
+        if (label === NAV_PERSONA) return 'persona'
       return ''
     }
 
@@ -964,6 +1184,7 @@ window.__ModuleLoader__.load({
           : style === 'book-closed' ? BOOK_CLOSED_D
             : style === 'talk' ? TALK_D
               : style === 'store' ? STORE_D
+                  : style === 'persona' ? PERSONA_D
                 : NEWS_D
         while (svg.firstChild) svg.removeChild(svg.firstChild)
         for (const d of paths) {
