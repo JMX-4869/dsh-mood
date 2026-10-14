@@ -366,8 +366,17 @@ export function parseRss(text, limit = 15) {
 /**
  * 通用 JSON 抽取：在任意 JSON 里找"标题"字段。
  * 用户填的网址结构不可预知，所以递归找 title/name/headline 之类的键。
+ *
+ * ⚠️ 传进来的可以是**字符串也可以是已解析的对象**。
+ *    原来只认对象 —— 传字符串时 `Array.isArray` 和 `typeof !== 'object'` 都不成立，
+ *    于是**静默返回空数组**，不报错。调用方看到的是"这个源没内容"，
+ *    而不是"我把参数传错了"。名字里有 `parse`，那就该真的能收字符串。
  */
 export function parseJsonAny(json, limit = 15) {
+  let root = json
+  if (typeof root === 'string') {
+    try { root = JSON.parse(root) } catch { return [] }
+  }
   const out = []
   const TITLE_KEYS = ['title', 'name', 'headline', 'question']
   const seen = new Set()
@@ -392,7 +401,10 @@ export function parseJsonAny(json, limit = 15) {
       if (v && typeof v === 'object') walk(v, depth + 1)
     }
   }
-  walk(json, 0)
+  // ⚠️ 这里必须传 `root`（解析后的），不是 `json`（原来的参数）——
+  //    第一版加了字符串兼容，却把解析结果放在 `root` 里、调用时还传老的 `json`，
+  //    于是字符串路径照样静默返回空。**改了但没接上**，和那些"改了副本"的坑是一类。
+  walk(root, 0)
   return out
 }
 
