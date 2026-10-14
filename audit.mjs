@@ -265,14 +265,31 @@ const N = M.MOOD_IDS.length
     const procStartOk = /process\.uptime\(\)/.test(pro)
     procStartOk ? OK('重启判定用进程启动时刻（热重载不会被误判）') : NG('重启判定没用到进程启动时刻')
 
-    // 重启汇报**不等空闲**，但**照样受静默/时段管**
+    // 重启汇报**不等空闲**，也**不受深夜静默**管，但**照样受允许时段管**。
+    //
+    // ⚠️ 这条规矩改过一次，理由是实测：
+    //    原来要求"重启汇报也不许绕过静默"（凌晨不吵）。但静默是 1~7 点，
+    //    而主人自己勾的允许时段是「低谷 = 0-7 + 21-24」——**两个设置本身在打架**，
+    //    静默把低谷的一大半盖掉了。他在 01:07 重启、01:15 问"怎么还没汇报"，
+    //    中间一个字都没说，就是因为落在静默里。
+    //
+    //    而这两件事性质不同：
+    //      · 主动开口 = 我没事找话 → 该被静默管住（那条没变，见 canSpeak）
+    //      · 重启汇报 = 对他刚做的动作的回执 → 往对话里**排队投一条消息**，
+    //        不弹通知、不吵醒人，他回头看的时候它就在那儿
+    //
+    //    所以：静默只管主动开口；重启汇报只受**允许时段**约束。
     const host2 = fs.readFileSync(SRC + '/index.js', 'utf8')
     const iRep = host2.indexOf('async function maybeReportRestart')
-    const repBody = iRep >= 0 ? host2.slice(iRep, iRep + 2000) : ''
+    const repBody = iRep >= 0 ? host2.slice(iRep, iRep + 2600) : ''
+    const repCode = repBody.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*$/gm, '')
     const noIdle = !!repBody && !/canSpeak\(/.test(repBody)
-    const stillGated = /slotAllowed\(/.test(repBody) && /isQuiet|quietFrom/.test(repBody)
+    const slotGated = /slotAllowed\(/.test(repCode)
+    const noQuiet = !/isQuiet|quietFrom/.test(repCode)
     noIdle ? OK('重启汇报不等空闲（等了下一次重启就白等）') : NG('重启汇报走了 canSpeak —— 会被空闲门槛永远拦住')
-    stillGated ? OK('重启汇报照样受静默/时段管（凌晨不吵）') : NG('重启汇报绕过了静默/时段')
+    slotGated ? OK('重启汇报受允许时段管') : NG('重启汇报绕过了允许时段')
+    noQuiet ? OK('重启汇报不受深夜静默管（那是对他刚做的动作的回执）')
+      : NG('重启汇报又被静默挡住了 —— 半夜重启会一个字都不说')
 
     // ⚠️ POST /proactive 必须改**模块里那份活的**。
     //    loadProactive() 每次返回新副本 —— 改副本+存盘的话，canSpeak 读的那份

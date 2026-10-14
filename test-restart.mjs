@@ -176,9 +176,89 @@ const NOW = new Date('2026-10-14T15:00:00').getTime()
   t.ok(!/'回合还在跑'/.test(body), '也不会再写"回合还在跑"这条诊断')
   t.has(body, "mode: 'queue'", '投递走 queue —— 排队，不打断当前回合')
   t.has(body, 'slotAllowed(c, h)', '允许时段照样管')
-  t.has(body, 'isQuiet', '静默时段照样管')
+  // ⚠️ 这条以前写的是"静默时段照样管" —— 后来改掉了（见下面第 ⑧ 节）。
+  //    夜间静默只管主动开口；重启汇报是对主人刚做的动作的回执，不该被它挡。
+  t.ok(!/if \(isQuiet\)/.test(body), '深夜静默**不**管重启汇报（下面 ⑧ 有详细理由）')
   // 但普通开口（主动找话）**应该**继续等空闲 —— 那条性质不同
   t.has(host, 'busy: turnBusy', '主动开口那条仍然把 busy 交给 canSpeak（它才该等空闲）')
+}
+
+// ══════════════════════════════════════════════════════════
+//  ⑥ 启动时自己认出"最近在哪个对话" —— 不许等主人先开口
+// ══════════════════════════════════════════════════════════
+//
+// 主人第四个症状：「还是没有重启汇报」。
+// 实测：01:07 重启 → 01:15 他忍不住问"怎么还没汇报" → 中间 8 分钟
+// 诊断一直写「还不知道该投给哪个对话」。
+//
+// 根因是我上一版的设计错误：让他"开口那一刻才绑对话"。
+// 听起来合理（他既然在这儿敲字，就在看这条），但后果是
+// **它永远不可能在他开口之前说任何话** —— 而"重启后告诉你一声"
+// 本来就该在他回来的时候就已经在那儿。
+//
+// 改成启动时问 `sessionController.list()`，挑**最近更新的那个会话**。
+{
+  const fs = await import('node:fs')
+  const host = fs.readFileSync('D:/chajian/dsh-mood/index.js', 'utf8')
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*$/gm, '')
+  const body = strip(host)
+
+  t.has(body, 'async function bindReportSession', '有"启动时绑定会话"的函数')
+  t.has(body, 'sessionCtl.list()', '用的是 sessionController.list()')
+  // list() 的形状不保证，三种都要认
+  t.has(body, 'Array.isArray(r) ? r', '认裸数组')
+  t.has(body, 'r.items', '认 { items }')
+  t.has(body, 'r.sessions', '认 { sessions }')
+  t.has(body, 'updatedAt || x.at', '按更新时间挑')
+  t.has(body, 'sort((a, b) => stamp(b) - stamp(a))[0]', '挑**最近**的那个（不是第一个）')
+
+  // 两处触发：mountCore 里一次、sessionController 注入时再一次
+  const mountCall = (host.match(/typeof reportBindRef === 'function'\) \{\s*$/m) || []).length
+  t.gt(body.split('reportBindRef?.()').length - 1, 0, '注入 sessionController 时也补一次绑定')
+  t.has(body, 'void reportBindRef()', '心跳里也会（异步，绑上了下一拍就投）')
+}
+
+// ══════════════════════════════════════════════════════════
+//  ⑦ 绑上了就不该再要 liveSession
+// ══════════════════════════════════════════════════════════
+//
+// liveSession 是靠**收到会话事件**才有的 —— 重启之后、主人开口之前必然是 null。
+// 原来硬性要求它，等于又绕回"等他先说话"（跟刚删掉的那个 turnBusy 死锁同一类）。
+// 调试时就是卡在这一条：list() 调了、绑上了，诊断却仍写「还没见过任何会话事件」。
+{
+  const fs = await import('node:fs')
+  const host = fs.readFileSync('D:/chajian/dsh-mood/index.js', 'utf8')
+  const i = host.indexOf('async function maybeReportRestart')
+  const fn = host.slice(i, i + 4000)
+  const body = fn.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*$/gm, '')
+
+  t.ok(!/if \(!liveSession\) \{ skip/.test(body), '不再硬性要求 liveSession')
+  t.has(body, '!liveSession && !proactive.reportSid', '只有"既没见过会话、又没认出目标"才等')
+}
+
+// ══════════════════════════════════════════════════════════
+//  ⑧ 深夜静默不管重启汇报（只管主动开口）
+// ══════════════════════════════════════════════════════════
+//
+// 最后一层拦路虎。实测：01:07 重启，诊断一路写「1~7 点静默」。
+// 但这两件事性质不同：
+//   · 主动开口 = 我没事找话（该被静默管住）
+//   · 重启汇报 = 对你刚做的动作的回执（你亲手重启了，我才说这一句）
+// 而且它是往对话里**排队投一条消息** —— 不弹通知、不会吵醒谁。
+{
+  const fs = await import('node:fs')
+  const host = fs.readFileSync('D:/chajian/dsh-mood/index.js', 'utf8')
+  const i = host.indexOf('async function maybeReportRestart')
+  const fn = host.slice(i, i + 4000)
+  const body = fn.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*$/gm, '')
+
+  t.ok(!/if \(isQuiet\)/.test(body), '重启汇报里没有深夜静默那道闸')
+  t.has(body, 'slotAllowed(c, h)', '但允许时段照样管（那是主人明确勾过的）')
+  t.ok(!/'点静默'/.test(body), '也不会再写"X~Y 点静默"这条诊断')
+  // 主动开口那条**必须继续**受静默管 —— 别顺手一起删了
+  t.has(host, 'quietFrom: a, quietTo: b', '主动开口里仍然算静默时段')
+  const i2 = host.indexOf('canSpeak(proactive, now, { lastUserAt, busy: turnBusy })')
+  t.gt(i2, 0, '主动开口仍然走 canSpeak（静默/空闲都在那儿管）')
 }
 
 t.done()

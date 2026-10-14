@@ -1265,6 +1265,8 @@ export function apply(root, rawConfig) {
    * （写测试时也靠它 —— 不然碰不到 mountCore 里那份活的状态。）
    */
   let tryReportRef = null
+  /** 「启动时自己认出最近在哪个对话」的入口 —— mountCore 里赋值，心跳用它 */
+  let reportBindRef = null
   /**
    * 当前活跃的会话对象 —— mountCore 里赋值，mountApi 的路由要用。
    *
@@ -1904,6 +1906,43 @@ export function apply(root, rawConfig) {
     }
 
     /**
+     * 启动时自己认出"主人最近在哪个对话"，把欠着的汇报绑上去。
+     *
+     * ⚠️ 这是补上一个**设计错误**。
+     *    上一版的做法是"等他开口那一刻再绑"（理由：他既然在这儿敲字，就在看这条）。
+     *    听起来挺对，但后果是：**它永远不可能在他开口之前说任何话**。
+     *    实测就是这样：01:07 重启，等到 01:15 他忍不住问"怎么还没汇报"才绑上 ——
+     *    中间 8 分钟它一直写着"还不知道该投给哪个对话"。
+     *    而"重启后告诉你一声"本来就该在他回来的时候就已经在那儿了。
+     *
+     * 改用 `sessionController.list()`：**最近更新的那个会话**就是他大概率要回的。
+     * 拿不到（没有 list / 列表空）就退回"等他开口"那条路 —— 两条都留着。
+     */
+    async function bindReportSession() {
+      if (!sessionCtl || typeof sessionCtl.list !== 'function') return false
+      if (!(proactive.pendingRestart || proactive.pendingStale)) return false
+      if (proactive.reportSid) return true
+      try {
+        const r = await sessionCtl.list()
+        // ⚠️ list() 的形状不保证：实测见过 items / sessions / 裸数组三种。
+        const items = Array.isArray(r) ? r
+          : (r && Array.isArray(r.items)) ? r.items
+            : (r && Array.isArray(r.sessions)) ? r.sessions
+              : []
+        if (!items.length) return false
+        const stamp = (x) => Number((x && (x.updatedAt || x.at || x.time || x.lastAt)) || 0)
+        const newest = items.slice().sort((a, b) => stamp(b) - stamp(a))[0]
+        const sid = sessionIdOf(newest)
+        if (!sid) return false
+        proactive.reportSid = sid
+        await persistProactive()
+        ctx.logger?.info?.('[dsh-mood] 重启汇报已绑到最近的会话 ' + sid.slice(0, 8) + '…')
+        return true
+      } catch { return false }
+    }
+    reportBindRef = bindReportSession      // 给心跳和路由用
+
+    /**
      * 重启汇报 —— 「任务结束」时看一眼有没有欠着的。
      *
      * ⚠️ 它**不走 idle 门槛**。重启是主人刚刚亲手做的事，等 25 分钟空闲才说
@@ -1919,7 +1958,12 @@ export function apply(root, rawConfig) {
       const skip = (s) => { proactive.lastReportCheck = { at: Date.now(), why: s } }
       try {
         if (!sessionCtl || typeof sessionCtl.prompt !== 'function') { skip('拿不到会话控制器'); await persistProactive(); return }
-        if (!liveSession) { skip('还没见过任何会话事件'); await persistProactive(); return }
+        // ⚠️ **绑上了就不需要 liveSession 了。**
+        //    liveSession 是靠「收到会话事件」才有的 —— 而重启之后、主人还没开口之前，
+        //    它必然是 null。原来这里硬性要求 liveSession，等于又绕回"等他先说话"，
+        //    跟刚修掉的那个死锁是同一类错误（要一个只有他动手才会有东西）。
+        //    目标会话已经从 sessionController.list() 认出来了，直接用它。
+        if (!liveSession && !proactive.reportSid) { skip('还没见过任何会话事件，也还没认出该投给谁'); await persistProactive(); return }
         const c = proactive.cfg || PRO_CFG
         if (!c.enabled) { skip('主动开口关着'); await persistProactive(); return }
         const kind = proactive.pendingRestart ? 'restart' : (proactive.pendingStale ? 'stale' : '')
@@ -1956,11 +2000,26 @@ export function apply(root, rawConfig) {
         //    静默时段和允许时段**照样管**（下面那两道），只是不再要求"此刻没人说话"。
         const now = Date.now()
         const h = new Date(now).getHours()
-        // 时段/静默照样管 —— 只是不要求空闲
+        // 允许时段照样管 —— 那是主人**明确勾过**的"我允许你什么时候说话"。
         if (!slotAllowed(c, h)) { skip(h + ' 点不在允许时段里'); await persistProactive(); return }
-        const { quietFrom: a, quietTo: b } = c
-        const isQuiet = a < b ? (h >= a && h < b) : (h >= a || h < b)
-        if (isQuiet) { skip(a + '~' + b + ' 点静默'); await persistProactive(); return }
+
+        // ⚠️ **深夜静默不管重启汇报**（只管主动开口）。
+        //
+        //    这是最后一层拦路虎。实测：01:07 重启，诊断一路写「1~7 点静默」——
+        //    主人 01:07 重启完、01:15 问"怎么还没汇报"，中间它一个字都没说，
+        //    因为那会儿正在静默里。
+        //
+        //    但这两件事性质不同：
+        //      · 主动开口 = **我没事找话**（该被静默管住，半夜别吵人）
+        //      · 重启汇报 = **对你刚做的动作的回执**（你亲手重启了，我才说这一句）
+        //    而且它是**往对话里排队投一条消息** —— 不弹通知、不会吵醒谁，
+        //    你回头看的时候它就在那儿。半夜重启的人本来就醒着。
+        //
+        //    所以：静默继续管主动开口（见 canSpeak），重启汇报只受允许时段约束。
+        //
+        // const { quietFrom: a, quietTo: b } = c
+        // const isQuiet = a < b ? (h >= a && h < b) : (h >= a || h < b)
+        // if (isQuiet) { skip(a + '~' + b + ' 点静默'); return }
         // 先清标记再投递：投递失败也不能在下一个回合重来（宁可少说，不能刷屏）
         markReported(proactive, now)
         markSpoke(proactive, now)
@@ -2358,6 +2417,13 @@ export function apply(root, rawConfig) {
       //    await。所以先跑的那个占住坑，后跑的被 canSpeak 的间隔门槛挡住。
       //    原来是反的 —— 同一拍里 maybeSpeak 先发一条、重启汇报再发一条，
       //    用户一次收到两条。重启汇报**故意不走空闲门槛**，它自己拦不住。
+      // ⚠️ 先"认出该发给哪个对话"，再检查要不要汇报。
+      //    不先绑的话，它就得等主人开口 —— 而"重启后告诉你一声"应该是他回来时
+      //    就已经在那儿，不该等他先说话。绑是异步的，所以这一拍绑上了、
+      //    下一拍（30 秒后）就投得出去。
+      if (typeof reportBindRef === 'function') {
+        try { void reportBindRef() } catch (err) { log('dsh-mood 绑定会话出错:', err && err.message) }
+      }
       try { void maybeReportRestart() } catch (err) { log('dsh-mood 重启汇报检查出错:', err && err.message) }
       // 主动开口：默认关，且要一堆条件同时满足（见 proactive.js 的 canSpeak）
       try { void maybeSpeak() } catch (err) { log('dsh-mood 主动开口检查出错:', err && err.message) }
@@ -2367,6 +2433,13 @@ export function apply(root, rawConfig) {
     // 启动时先各跑一次：补周期判定（宿主关着时欠下的）+ 补日记（半夜没开的情况）
     periodicIfDue()
     diaryTick()
+    // 启动时**立刻**试一次绑定 —— 别等第一个 30 秒心跳。
+    // 这两步都是异步的：绑上了之后 maybeReportRestart 才看得到 reportSid。
+    // （绑完不直接投递是有意的：万一第 5 秒宿主就关了，投出去的消息会悬着。）
+    void (async () => {
+      try { if (typeof reportBindRef === 'function') await reportBindRef() } catch { /* 不管 */ }
+      try { await maybeReportRestart() } catch { /* 不管 */ }
+    })()
   }
 
   /**
@@ -2825,6 +2898,15 @@ export function apply(root, rawConfig) {
           if (s && typeof s.prompt === 'function') {
             sessionCtl = s
             c.logger?.info?.('[dsh-mood] 主动开口可用（默认仍是关的，要在设置页打开）')
+            // ⚠️ `sessionCtl` 是**单独一路**注入的，和 mountCore 谁先到不保证。
+            //    mountCore 那次绑定时 sessionCtl 很可能还是 null，所以这里再补一次。
+            //    补完**立刻**检查一遍要不要投 —— 不然要干等 30 秒心跳。
+            //    （tryReportRef 也是 mountCore 里赋的，没到就等心跳，不影响。）
+            try {
+              void Promise.resolve(reportBindRef?.())
+                .then(() => { try { void tryReportRef?.() } catch { /* 不管 */ } })
+                .catch(() => {})
+            } catch { /* 不管 */ }
           }
         } catch { /* 没有就算了 */ }
       })
