@@ -189,4 +189,80 @@ const t = suite('时事解析')
   t.lt(same.length, 3, '同一个网址不会无限重复添加（' + same.length + ' 个）')
 }
 
+// ── HTML 列表页（bilibili 主页那种）──
+{
+  // 拿真的 bilibili 卡片结构当输入（抄自实抓的 HTML）
+  const html = '<h3 class="bili-video-card__info--tit" title="有兽焉第六季完结！">' +
+    '<a href="https://www.bilibili.com/video/BV1mHp36TEQQ">有兽焉第六季完结！</a></h3>' +
+    '<a href="https://www.bilibili.com/video/BV1cRpg6dEVm">S16主题曲</a>' +
+    '<a href="https://www.bilibili.com/read/cv123456">一篇专栏文章</a>' +
+    '<a href="https://www.bilibili.com/opus/99887766">图文动态</a>' +
+    // 下面这些都不该收
+    '<a href="https://www.bilibili.com/">首页</a>' +
+    '<a href="https://passport.bilibili.com/login">登录</a>' +
+    '<a href="https://www.bilibili.com/video/BV1mHp36TEQQ">重复的</a>' +
+    '<a href="javascript:void(0)">更多</a>' +
+    '<a href="https://www.bilibili.com/about">关于</a>' +
+    '<a href="https://other.example.com/video/BV1xxxxxxxxxx">别的站的</a>'
+
+  const list = N.parseHtmlList(html, 'https://www.bilibili.com/', 10)
+  t.eq(list.length, 4, '四种内容都捞到了，导航/登录/重复的没进来（' + list.length + '）')
+  t.ok(list.every((x) => /^https:\/\/www\.bilibili\.com\//.test(x.url)), '上来的都是本域名')
+  // ⚠️ 门槛是 4 字不是 6 —— bilibili 的图文卡片标题就是「图文动态」这种 4 个字。
+  //    原来写 6，真标题会被当成"太短不像标题"丢掉。
+  t.ok(list.every((x) => x.title && x.title.length >= 4), '每条都有像样的标题（门槛 4 字）')
+  t.eq(list[0].url, 'https://www.bilibili.com/video/BV1mHp36TEQQ', '保序（第一条还是第一条）')
+  t.eq(new Set(list.map((x) => x.url)).size, list.length, 'URL 去重')
+
+  const blog = '<a href="/2026/10/15/hello-world">今天写了点东西</a>' +
+    '<a href="/post/my-article">一篇长文</a>' +
+    '<a href="/about">关于我</a>'
+  const bl = N.parseHtmlList(blog, 'https://blog.example.com/', 5)
+  t.eq(bl.length, 2, '博客的日期路径和 /post/ 路径收得到，/about 不收（' + bl.length + '）')
+  t.ok(bl.every((x) => x.url.startsWith('https://blog.example.com/')), '相对链接补全成绝对链接')
+
+  t.eq(N.parseHtmlList('', 'https://a.com/', 5).length, 0, '空 HTML → 0 条')
+  t.eq(N.parseHtmlList('<html>没有链接</html>', 'https://a.com/', 5).length, 0, '没链接 → 0 条')
+  t.noThrow(() => N.parseHtmlList(null, '', 5), 'null / 空 baseUrl 不崩')
+  t.noThrow(() => N.parseHtmlList('<a href="http://">x</a>', 'garbage', 5), '坏 baseUrl 不崩')
+
+  const many = Array.from({ length: 20 }, (_, i) =>
+    '<a href="/2026/10/' + String(i + 1).padStart(2, '0') + '/post-' + i + '">标题标题' + i + '号</a>').join('')
+  t.eq(N.parseHtmlList(many, 'https://a.com/', 5).length, 5, 'limit 生效')
+}
+
+// ── kind 判定 ──
+{
+  t.eq(N.guessKind('https://space.bilibili.com/11332884/video'), 'page', 'UP 主空间 → page')
+  t.eq(N.guessKind('https://www.youtube.com/@somechannel'), 'page', 'YouTube 频道 → page')
+  t.eq(N.guessKind('https://www.youtube.com/channel/UCabc'), 'page', 'YouTube channel 页 → page')
+  t.eq(N.guessKind('https://x.com/feed.xml'), 'rss', '还是 rss')
+  t.eq(N.guessKind('https://x.com/'), 'auto', '普通网页还是 auto')
+}
+
+// ── 外部程序的字节解码（⚠️ 这个错曾让标题全是乱码）──
+{
+  const utf8 = Buffer.from('中文标题', 'utf8')
+  const gbk = Buffer.from([0xd6, 0xd0, 0xce, 0xc4])   // "中文" 的 GBK
+  t.eq(N.decodeOut(utf8), '中文标题', 'UTF-8 字节解得对')
+  t.eq(N.decodeOut(gbk), '中文', 'GBK 字节也解得对（Windows 上 yt-dlp 吐的就是这个）')
+  t.eq(N.decodeOut('已经是字符串'), '已经是字符串', '字符串原样返回')
+  t.eq(N.decodeOut(null), '', 'null → 空串')
+  t.eq(N.decodeOut(undefined), '', 'undefined → 空串')
+  t.eq(N.decodeOut(Buffer.alloc(0)), '', '空字节 → 空串')
+  t.ok(!/\uFFFD/.test(N.decodeOut(gbk)), 'GBK 解出来没有替换字符')
+}
+
+// ── 抽帧入口（不真下载，只验参数校验）──
+{
+  const r = await N.fetchVideoFrames('不是网址')
+  t.eq(r.ok, false, '坏网址 → 失败')
+  t.ok(/合法网址/.test(r.error), '说清了原因：' + r.error)
+  const r2 = await N.fetchVideoFrames('')
+  t.eq(r2.ok, false, '空网址 → 失败')
+  t.ok(typeof N.framesBaseDir() === 'string' && N.framesBaseDir().length > 0, '有帧目录')
+  t.ok(typeof N.clearFrames === 'function', '有手动清理入口')
+  t.noThrow(() => N.clearFrames(), '手动清理不崩')
+}
+
 t.done()

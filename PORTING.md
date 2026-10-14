@@ -11,7 +11,7 @@
 
 | 层 | 文件 | 大小 | DSH 依赖 | 怎么办 |
 |---|---|---|---|---|
-| **逻辑** | `store.js` `diary.js` `news.js` `proactive.js` `memory.js` | 94 KB | **0 处** | **原样搬，一行不改** |
+| **逻辑** | `store.js` `diary.js` `news.js` `proactive.js` `memory.js` `frames.js` | 123 KB | **0 处** | **原样搬，一行不改** |
 | 逻辑（边缘） | `sessions.js` | 7 KB | 2 处 | 改两行 |
 | **接线** | `index.js` | 99 KB | 25 处 | 照着重写 |
 | **界面** | `client.js` | 71 KB | 44 处 | 重写 |
@@ -28,7 +28,7 @@
 
 ## 二、已验证：那 5 个模块真的能脱离 DSH 跑
 
-把 `store.js` / `diary.js` / `news.js` / `proactive.js` / `memory.js`（**94 KB**）拷到一个**空目录**
+把 `store.js` / `diary.js` / `news.js` / `proactive.js` / `memory.js` / `frames.js`（**123 KB**）拷到一个**空目录**
 （没有 `dsh-mood`、没有 `@deepseek-ai`、没有 `package.json`），然后：
 
 ```
@@ -75,16 +75,38 @@ noteMood / noteSwitch / noteActivity / dominantMood(bucket)
 applyVoice(text, mood) / composeDiary(...) / ensureDiary(...) / pruneDaily(d, keepDays)
 ```
 
-### `news.js` → 依赖 `./store.js`
+### `frames.js`（完全独立）
+
+```
+FRAME_TABLE / nearestFps(fps) / frameOffsets(fps, perSecond)
+absoluteFrameIndex(sec, offset, fps) / planFrames(durationSec, opts) / selectExpr(indices)
+mediaToolCandidates(name) / findMediaTool(name) / probe(videoPath, ffprobePath)
+extractFrames(videoPath, plan, outDir, ffmpegPath)   ← 用 ffmpeg 的 select 精确抓帧
+cleanFrames(dir) / sweepOldFrames(baseDir, maxAgeMs) / batchDir(baseDir, stamp) / ensureDir(p)
+```
+
+**视频抽帧**：把关键画面抽成 PNG，把路径交给模型（它用 `read_image` 真看画面）。
+依赖外部程序 **ffmpeg / ffprobe**（找不到会明确说，不静默失败）。
+
+⚠️ 抽帧表里的帧号是**从 1 开始数**的，ffmpeg 的 `n` **从 0 开始** ——
+`absoluteFrameIndex()` 里减了 1。忘了减的话整批画面往后偏一帧，看着没错。
+
+⚠️ ffmpeg 9 把 `-vsync` 删了，要用 `-fps_mode passthrough`。
+
+### `news.js` → 依赖 `./store.js` `./frames.js`
 
 ```
 newsFile() / NEWS_FRESH_MS / NEWS_PROMPT_MAX / NEWS_TITLE_MAX
 clean(s)                        去空白/实体，供上面几个函数用
 DETAIL_CHARS / DETAIL_MAX_ITEMS / DETAIL_PROMPT_CHARS
 guessMedia(url) / htmlToText(html) / pickExcerpt(...) / metaDescription(html)
+parseHtmlList(html, baseUrl, limit) / sameSite(a, b) / listViaYtDlp(url, limit) / fillTitles(items)
+decodeOut(buf)                  外部程序的字节解码（见"坑"第 9 条）
 fetchDetail(item) / enrichItems(items, max) / pickComments(html, max)
 ytDlpCandidates() / findYtDlp() / vttToText(vtt) / fetchVideoTranscript(url, maxChars)
 parseRss(text, limit) / parseJsonAny(json, limit) / guessKind(url) / makeSource(url, label)
+fetchVideoFrames(url, opts) / framesBaseDir() / clearFrames()
+lastYtError                     上一次 yt-dlp 枚举失败的原因（风控 / 没装）
 PRESETS / fetchOne(src) / refreshNews(sources, now)
 blankNews() / migrateNews(n) / loadNews() / saveNews(n)
 addSource / removeSource / isFresh(n, now) / ageMinutes(n, now) / renderForPrompt(n, max)

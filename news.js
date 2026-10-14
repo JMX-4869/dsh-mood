@@ -1,4 +1,5 @@
-import { dataFile } from './store.js'
+import { dataFile, dataDir } from './store.js'
+import * as F from './frames.js'
 /**
  * dsh-mood / news.js —— 「更新时事」
  *
@@ -11,13 +12,37 @@ import { dataFile } from './store.js'
  *
  * 数据源全部是**免 key 的单请求接口**：一个挂了不影响其它的，失败只记 error。
  */
-import { readFileSync, writeFileSync, mkdirSync, renameSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, renameSync, existsSync, rmSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import os from 'node:os'
 
 function dshHome() {
   return process.env.DSH_HOME || join(os.homedir(), '.dsh')
+}
+
+/**
+ * 把外部程序吐出来的字节解成字符串。
+ *
+ * ⚠️ **不能用 `encoding: 'utf8'` 直接收。**
+ *    yt-dlp 在 Windows 上是按**控制台代码页**（中文机器上是 GBK/936）写 stdout 的，
+ *    拿 UTF-8 去解，标题/UP 主/字幕全变成 `\uFFFD`（替换字符）—— 而且**不报错**。
+ *    实测：一个视频标题解出来 63 个字符，前 12 个码点全是 fffd，看着像"有标题"，
+ *    其实一个字都读不出来。这种错最阴：功能像是好的，内容全是坏的。
+ *
+ * 做法：收字节 → 严格按 UTF-8 解（坏字节会抛）→ 抛了就说明不是 UTF-8，换 GBK 系。
+ */
+export function decodeOut(buf) {
+  if (buf == null) return ''
+  if (typeof buf === 'string') return buf
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buf)
+  } catch {
+    for (const enc of ['gb18030', 'gbk', 'big5']) {
+      try { return new TextDecoder(enc).decode(buf) } catch { /* 试下一个 */ }
+    }
+    return Buffer.from(buf).toString('utf8')
+  }
 }
 // 路径统一走 store.js —— 数据目录可以被搬到别的盘（见 store.js 顶部说明）
 export function newsFile() { return dataFile('dsh-mood-news.json') }
@@ -228,11 +253,22 @@ export function pickComments(html, max = 5) {
 /** yt-dlp 可能在哪。**绝对路径优先** —— 插件的进程环境不一定带着 PATH。 */
 export function ytDlpCandidates() {
   const home = dshHome()
-  return [
+  const realHome = join(os.homedir(), '.dsh')
+  const out = [
     join(home, 'bin', 'yt-dlp.exe'),
     join(home, 'bin', 'yt-dlp'),
-    'yt-dlp',
   ]
+  // ⚠️ 也看一眼**真正的家目录**下的 .dsh/bin。
+  //    DSH_HOME 被改过（测试、多配置、便携模式）时，`home` 指向别处，
+  //    但主人装的 yt-dlp 还是在默认那个位置 —— 只看 home 会误报"没装"。
+  if (realHome !== home) {
+    out.push(join(realHome, 'bin', 'yt-dlp.exe'), join(realHome, 'bin', 'yt-dlp'))
+  }
+  // WinGet / scoop 之类装的，链接会落在这些地方
+  const local = process.env.LOCALAPPDATA
+  if (local) out.push(join(local, 'Microsoft', 'WinGet', 'Links', 'yt-dlp.exe'))
+  out.push('yt-dlp')
+  return out
 }
 
 /** 找一个能用的 yt-dlp，返回路径或 null */
@@ -284,11 +320,11 @@ export async function fetchVideoTranscript(url, maxChars = DETAIL_CHARS) {
     const r = spawnSync(exe, [
       '--skip-download', '--dump-single-json', '--no-warnings', '--no-playlist',
       '--socket-timeout', '10', url,
-    ], { timeout: 30000, windowsHide: true, maxBuffer: 32 * 1024 * 1024, encoding: 'utf8' })
+    ], { timeout: 30000, windowsHide: true, maxBuffer: 32 * 1024 * 1024, encoding: 'buffer' })
     if (!r || r.status !== 0 || !r.stdout) {
-      return { text: '', title: '', note: 'yt-dlp 没取到（' + String((r && r.stderr) || '').slice(0, 60) + '）' }
+      return { text: '', title: '', note: 'yt-dlp 没取到（' + decodeOut(r && r.stderr).slice(0, 60) + '）' }
     }
-    meta = JSON.parse(r.stdout)
+    meta = JSON.parse(decodeOut(r.stdout))
   } catch (e) {
     return { text: '', title: '', note: 'yt-dlp 调用失败：' + String((e && e.message) || e) }
   }
@@ -408,18 +444,328 @@ export function parseJsonAny(json, limit = 15) {
   return out
 }
 
-// ---------------------------------------------------------------- 源配置（用户自己加）
+// ---------------------------------------------------------------- 视频抽帧
+
+/** 抽出来的帧放哪。**固定一个目录**，每次抽之前整批清掉。 */
+export function framesBaseDir() {
+  try { return join(dataDir(), 'frames') } catch { return join(dshHome(), 'dsh-mood-frames') }
+}
+
+/**
+ * 抓一个视频的画面 —— 下载 → 抽帧 → **把视频删掉** → 给出 PNG 路径。
+ *
+ * ⚠️ 字幕那条路**保留着**（fetchVideoTranscript）。两条并存：
+ *    有字幕就读字幕（便宜、能拿到"说了什么"）；字幕拿不到、或者想确认
+ *    "画面里到底是什么"，才走这条。别把字幕删了换这个。
+ *
+ * ⚠️ 下载是**有限制**的 —— 视频文件比图片大两三个数量级，不设限会：
+ *    · 拖很久（主人点一下按钮，卡三分钟）
+ *    · 占满磁盘
+ *    · 被站点限流
+ *    所以：时长上限 15 分钟、清晰度压到 480p 以下、大小上限 80 MB。
+ *
+ * 参数 opts:
+ *   maxFrames  抽几张（默认 12）
+ *   perSecond  每秒抽几张（默认 1；表里最多给到 8）
+ *   everySec   每隔几秒取一组（不传就按时长自动算）
+ *   maxDurationSec  超过这个时长就不抓（默认 900）
+ */
+export async function fetchVideoFrames(url, opts = {}) {
+  if (!/^https?:\/\//i.test(String(url || ''))) return { ok: false, error: '不是合法网址' }
+
+  const bin = findYtDlp()
+  if (!bin) {
+    return {
+      ok: false,
+      error: '没装 yt-dlp，下不了视频',
+      hint: '把 yt-dlp.exe 放进 ' + join(dshHome(), 'bin') + ' 就行（插件会优先找那儿）',
+    }
+  }
+  const ffmpeg = F.findMediaTool('ffmpeg')
+  const ffprobe = F.findMediaTool('ffprobe')
+  if (!ffmpeg || !ffprobe) {
+    return { ok: false, error: '没找到 ffmpeg / ffprobe，抽不了帧' }
+  }
+
+  const maxDuration = Math.max(10, Number(opts.maxDurationSec) || 900)
+  const base = framesBaseDir()
+  const stamp = Date.now()
+  const batch = F.batchDir(base, stamp)
+  const tmp = join(base, '_tmp_video')
+  F.ensureDir(batch)
+  F.ensureDir(tmp)
+
+  // 上一批 + 超时的批次先清掉 —— "读取完自动删除"落地在这儿
+  F.sweepOldFrames(base, 2 * 3600 * 1000)
+  F.cleanFrames(tmp)
+
+  let title = ''
+  let durationSec = 0
+  let videoPath = ''
+  try {
+    // ── 下载（限时长/清晰度/大小）──
+    const r = spawnSync(bin, [
+      '--no-playlist', '--no-warnings', '--ignore-errors',
+      '--match-filter', 'duration < ' + maxDuration + ' & duration > 0',
+      '-S', 'res:480,ext:mp4:m4a',        // 能压到 480p 就压，压不了用原始
+      '--max-filesize', '80M',
+      '-o', join(tmp, 'v.%(ext)s'),
+      '--print', 'after_move:%(filepath)s\t%(title)s\t%(duration)s',
+      url,
+    ], { timeout: 300000, windowsHide: true, encoding: 'buffer', maxBuffer: 8 * 1024 * 1024 })
+
+    const out = decodeOut(r && r.stdout)
+    const line = out.split(/\r?\n/).map((x) => x.trim()).filter(Boolean).pop() || ''
+    const parts = line.split('\t')
+    videoPath = parts[0] || ''
+    title = parts[1] || ''
+    durationSec = Number(parts[2]) || 0
+
+    if (!r || r.status !== 0 || !videoPath || !existsSync(videoPath)) {
+      const err = decodeOut(r && r.stderr).split(/\r?\n/).filter(Boolean).slice(-1)[0] || ''
+      const tooLong = /does not pass filter|match-filter/i.test(decodeOut(r && r.stderr))
+      return {
+        ok: false,
+        title,
+        error: tooLong ? ('视频超过 ' + Math.round(maxDuration / 60) + ' 分钟，不抓（' + err.slice(0, 80) + '）') : ('下载失败：' + err.slice(0, 140)),
+        note: '可以调大时长上限，或者只读字幕',
+      }
+    }
+
+    // ── probe（拿真实时长和帧率）──
+    const info = F.probe(videoPath, ffprobe)
+    if (info) {
+      durationSec = info.durationSec || durationSec
+      opts = { ...opts, fps: info.fps }
+    }
+
+    // ── 计划 + 抽帧 ──
+    const plan = F.planFrames(durationSec, {
+      maxFrames: opts.maxFrames || 12,
+      perSecond: opts.perSecond || 1,
+      everySec: opts.everySec,
+      fps: opts.fps || 30,
+    })
+    const ex = F.extractFrames(videoPath, plan, batch, ffmpeg)
+    if (!ex.ok) return { ok: false, title, durationSec, error: ex.error }
+    return {
+      ok: true,
+      title,
+      durationSec,
+      fps: opts.fps || 30,
+      everySec: plan.everySec,
+      dir: batch,
+      files: ex.files,
+      note: '',
+    }
+  } catch (e) {
+    return { ok: false, title, error: '抽帧出错：' + ((e && e.message) || e) }
+  } finally {
+    // ⚠️ **视频文件当场删掉** —— 它是抽帧的原料，抽完就没用了。
+    //    留着的话一次 80 MB，几次就把磁盘吃了。主人明确要求"读取完自动删除"。
+    try { if (videoPath && existsSync(videoPath)) rmSync(videoPath, { force: true }) } catch { /* 不管 */ }
+    F.cleanFrames(tmp)
+  }
+}
+
+/** 清掉所有抽帧（设置页/工具可以手动调） */
+export function clearFrames() {
+  const base = framesBaseDir()
+  const n = F.cleanFrames(base)
+  return { ok: true, removed: n, dir: base }
+}
 //
 // ⚠️ **不预置任何默认源，一个都不抓。** 用户加什么才抓什么。
 //    理由：插件不该在用户没点名的情况下往外发请求。
 //    PRESETS 只是"填起来省事"的候选，**必须用户点一下才会加进去**，绝不会自动生效。
 
-/** 猜测抓取方式。猜错也无所谓 —— fetchOne 会 rss / json 都试一遍。 */
+// ---------------------------------------------------------------- 列表页（HTML）
+
+/**
+ * 「这一条算不算内容条目」的网址特征。
+ *
+ * ⚠️ 为什么必须有一张这样的表：主页上 20 个链接里，
+ *    真正的内容条目大概 8~12 个，其余是导航、登录、下载客户端、备案、友情链接……
+ *    不做筛选的话，抓回来一半是"首页/登录/关于我们"。
+ *    宁可少抓，也别往里塞垃圾（跟评论区那条原则一样）。
+ *
+ * 匹配的是**路径**（不含域名），因为这些站有 m 站、镜像站、地区域名。
+ */
+const ITEM_PATTERNS = [
+  // bilibili：视频 / 专栏 / 图文(opus) / 番剧
+  { host: /bilibili\.com$|b23\.tv$/, re: /^\/(video\/BV[0-9A-Za-z]{10}|video\/av\d+|read\/cv\d+|opus\/\d+|bangumi\/play\/)/ },
+  // YouTube：视频 / 短视频 / 频道里的 watch
+  { host: /youtube\.com$|youtu\.be$/, re: /^\/(watch|shorts\/|live\/)/ },
+  // 通用：带日期的文章路径（博客、新闻站最常见）
+  { host: null, re: /^\/\d{4}\/\d{1,2}\// },
+  { host: null, re: /^\/(post|posts|article|articles|news|blog|p|story|stories)\/[^/]+/ },
+  // 中文站常见
+  { host: null, re: /^\/(\d{6,}|[a-z]+\/\d{5,})\.(html?|shtml)$/ },
+]
+
+/** 明显不是内容的链接文字（导航/功能） */
+const NAV_TEXT = /^(首页|主页|登录|注册|下载|客户端|关于|联系|帮助|反馈|更多|全部|上一页|下一页|返回|搜索|投稿|专栏|直播|游戏中心|会员购|漫画|赛事|下载app|english|home|login|sign\s?up|about|more|menu|search|privacy|terms|rss|sitemap|subscribe|share|comment)$/i
+
+/**
+ * 两个主机名算不算"同一个站"。
+ *
+ * ⚠️ 必须查这个。原来只用**基础页的域名**去匹配条目模式 ——
+ *    于是 `<a href="https://other.example.com/video/BV…">` 也会被当成
+ *    bilibili 的视频收进来：模式对的是基础页域名，链接自己的域名根本没看。
+ *    一个转载站、一个广告位、一段用户贴的外链，都会这么混进来。
+ *
+ * 取**最后两段**比：`www.bilibili.com` 和 `api.bilibili.com` 同站，
+ * `bilibili.com` 和 `other.example.com` 不同站。粗但够用，而且不依赖公共后缀表。
+ * 另外认几组常见的"同站别名"（短链、m 站）。
+ */
+const HOST_ALIASES = [
+  ['bilibili.com', 'b23.tv'],
+  ['youtube.com', 'youtu.be'],
+]
+export function sameSite(a, b) {
+  const tail = (h) => String(h || '').toLowerCase().replace(/^www\./, '').split('.').slice(-2).join('.')
+  const ta = tail(a), tb = tail(b)
+  if (!ta || !tb) return false
+  if (ta === tb) return true
+  return HOST_ALIASES.some((g) => (ta === g[0] && tb === g[1]) || (ta === g[1] && tb === g[0]))
+}
+
+/**
+ * 从一段 HTML 里捞出"内容条目"。
+ *
+ * 通用做法，不针对某个站写死 DOM —— 各站 class 名改起来比翻书还快。
+ * 判据是 **href 的形状 + 链接文字像不像标题 + 是不是同一个站**：
+ *   1. 抽出所有 `<a href="…">文字</a>`（顺便吃同段里的 `title="…"`）
+ *   2. 相对链接按 baseUrl 补全；**域名必须和基础页同站**（见 sameSite）
+ *   3. 路径要命中 ITEM_PATTERNS 里任何一条
+ *   4. 文字长度 ≥ 4（更短的多半是"更多""首页"），且不在导航黑名单里
+ *   5. 按 URL 去重，保序
+ *
+ * 拿不到就返回空数组 —— **别硬凑**。
+ */
+export function parseHtmlList(html, baseUrl = '', limit = 10) {
+  const s = String(html || '')
+  const out = []
+  const seen = new Set()
+  let host = ''
+  try { host = new URL(baseUrl).host.replace(/^www\./, '') } catch { /* 保底空 */ }
+
+  const matchesItem = (pathname) => ITEM_PATTERNS.some((p) => (!p.host || p.host.test(host)) && p.re.test(pathname))
+
+  // 先扫 <a href>；文字优先取标签内文本，没有就用同段里的 title="…"
+  const re = /<a\b([^>]*?)href=["']([^"']+)["']([^>]*)>([\s\S]{0,300}?)<\/a>/gi
+  let m
+  while ((m = re.exec(s)) && out.length < limit * 3) {
+    const attrs = (m[1] || '') + ' ' + (m[3] || '')
+    const href = String(m[2] || '').trim()
+    if (!href || href.startsWith('#') || /^(javascript|mailto|tel):/i.test(href)) continue
+
+    let u
+    try { u = new URL(href, baseUrl || 'https://example.invalid/') } catch { continue }
+    if (!/^https?:$/i.test(u.protocol)) continue
+    // ⚠️ 链接自己也得是同站 —— 不然别站的、广告位的、用户贴的外链全混进来
+    if (host && !sameSite(u.host, host)) continue
+    if (!matchesItem(u.pathname)) continue
+
+    let text = htmlToText(m[4] || '').replace(/\s+/g, ' ').trim()
+    if (text.length < 4) {
+      const t = attrs.match(/\btitle=["']([^"']{4,200})["']/i)
+      text = t ? clean(t[1]) : ''
+    }
+    // ⚠️ 门槛是 **4 个字**，不是 6。
+    //    原来写 6，结果「图文动态」「一篇长文」这种真标题被当成"太短不像标题"丢掉了 ——
+    //    实测 bilibili 的图文卡片标题就是 4 个字。短 ≠ 不是标题，
+    //    真正要挡的是「更多」「首页」那种导航（已经由 NAV_TEXT 管着）。
+    if (text.length < 4) continue
+    if (NAV_TEXT.test(text)) continue
+
+    const url = u.origin + u.pathname + (u.search || '')
+    if (seen.has(url)) continue
+    seen.add(url)
+    out.push({ title: text.slice(0, 200), url })
+    if (out.length >= limit) break
+  }
+  return out
+}
+
+/**
+ * 上一次 yt-dlp 枚举失败的原因（空 = 没失败过）。
+ *
+ * ⚠️ 为什么要留着它：`space.bilibili.com` 这类页面会被**风控**挡
+ *    （实测 `Request is rejected by server (352)`，连续试几次就中）。
+ *    而函数返回空数组时，"这个频道没内容"和"我被挡了"长得一模一样 ——
+ *    不把原因带出来，主人只会看到"加了源但抓不到东西"，然后猜。
+ */
+export let lastYtError = ''
+
+/**
+ * JS 渲染的频道页（bilibili UP 主空间那种）—— 让 yt-dlp 去枚举。
+ *
+ * ⚠️ 实测：`space.bilibili.com/<uid>/video` 的 HTML 只有 10 KB、**0 张卡片**，
+ *    纯 JS 壳；不带签名的公开 API 直接吃风控页。
+ *    但 `yt-dlp --flat-playlist` 能从同一个网址列出真实的 BV 号 ——
+ *    **可用，但会被限流**：成功几次之后就开始拒（错误码 352）。
+ *    代价之二：flat 模式**不取标题**（全是 "NA"），标题得另想办法。
+ */
+export function listViaYtDlp(url, limit = 10, exe = null) {
+  const bin = exe || findYtDlp()
+  if (!bin) { lastYtError = '没装 yt-dlp'; return [] }
+  try {
+    const r = spawnSync(bin, [
+      '--flat-playlist', '--no-warnings', '--ignore-errors',
+      '--playlist-end', String(Math.max(1, Math.min(50, limit))),
+      '--print', '%(url)s',
+      url,
+    ], { timeout: 120000, windowsHide: true, encoding: 'buffer', maxBuffer: 8 * 1024 * 1024 })
+    if (!r || r.status !== 0) {
+      const err = decodeOut(r && r.stderr).split(/\r?\n/).filter((x) => /ERROR/i.test(x)).slice(-1)[0] || ''
+      // 风控单独说清楚 —— 这几乎肯定是"等一下就好了"，不是"这个源坏了"
+      lastYtError = /rejected by server|352|412/i.test(err)
+        ? '被站点风控挡了（' + err.slice(0, 90) + '）—— 过一会儿再试'
+        : (err ? err.slice(0, 140) : ('yt-dlp 退出码 ' + (r && r.status)))
+      return []
+    }
+    const lines = decodeOut(r && r.stdout).split(/\r?\n/).map((x) => x.trim()).filter(Boolean)
+    const out = []
+    const seen = new Set()
+    for (const line of lines) {
+      if (!/^https?:\/\//i.test(line)) continue
+      if (seen.has(line)) continue
+      seen.add(line)
+      out.push({ title: '', url: line, needTitle: true })
+      if (out.length >= limit) break
+    }
+    lastYtError = out.length ? '' : 'yt-dlp 没列出任何条目'
+    return out
+  } catch (e) {
+    lastYtError = 'yt-dlp 调用失败：' + ((e && e.message) || e)
+    return []
+  }
+}
+
+/** 给缺标题的条目补标题（读页面 <title>，很轻） */
+export async function fillTitles(items, max = 8) {
+  const targets = (items || []).filter((x) => x.needTitle && x.url).slice(0, max)
+  await Promise.all(targets.map(async (it) => {
+    try {
+      const html = await fetchText(it.url)
+      const t = clean((String(html).match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1])
+      // bilibili 的 <title> 尾巴挂着 "_哔哩哔哩_bilibili"，去掉更像标题
+      it.title = t.replace(/[_\-|]\s*哔哩哔哩.*$/i, '').replace(/^哔哩哔哩[_\-\s]*/i, '').slice(0, 200) || it.url
+    } catch { it.title = it.url }
+    delete it.needTitle
+  }))
+  return items
+}
+
+/** 猜测抓取方式。猜错也无所谓 —— fetchOne 会把各种方式都试一遍。 */
 export function guessKind(url) {
   const u = String(url || '').toLowerCase()
   if (/\.(rss|xml|atom)(\?|$)/.test(u)) return 'rss'
   if (u.includes('/feed') || u.includes('rss') || u.includes('atom')) return 'rss'
   if (u.includes('/api/') || /\.json(\?|$)/.test(u)) return 'json'
+  // 频道页 / 空间页 / 列表页 —— HTML 里挑条目
+  if (/(space\.bilibili\.com|youtube\.com\/(@|c\/|channel\/|user\/)|bilibili\.com\/v\/|v2ex\.com\/\?|news\.ycombinator)/.test(u)) return 'page'
   return 'auto'
 }
 
@@ -450,8 +796,12 @@ export const PRESETS = [
 //   zhihu                      热榜 API 需要 cookie，直连 401
 
 /**
- * 抓一个源。rss / json 都会试 —— 用户填的网址没法预判结构。
- * 命中即返回，全试完都没料才报错。
+ * 抓一个源。rss / json / html 列表页 / yt-dlp 频道页 都会试 ——
+ * 用户填的网址没法预判结构。
+ *
+ * ⚠️ 顺序是有讲究的：**先便宜的后贵的**。
+ *    rss / json 解析是纯字符串操作；HTML 要下载整页；
+ *    yt-dlp 要起一个外部进程（几秒起步）—— 所以放最后，而且只在前面全空时才试。
  */
 export async function fetchOne(src) {
   const text = await fetchText(src.url)
@@ -460,12 +810,22 @@ export async function fetchOne(src) {
   if (src.kind === 'json') tries.push('json', 'rss')
   else if (src.kind === 'rss') tries.push('rss', 'json')
   else tries.push('rss', 'json')
+
   for (const how of tries) {
     let list = []
     if (how === 'rss') list = parseRss(text, limit)
     else { try { list = parseJsonAny(JSON.parse(text), limit) } catch { list = [] } }
     if (list.length) return list
   }
+
+  // ③ HTML 列表页（bilibili 主页、博客索引、新闻站首页…）
+  const htmlList = parseHtmlList(text, src.url, limit)
+  if (htmlList.length) return htmlList
+
+  // ④ JS 渲染的频道页 —— 交给 yt-dlp。慢，所以放最后。
+  const viaYt = listViaYtDlp(src.url, limit)
+  if (viaYt.length) return viaYt
+
   return []
 }
 

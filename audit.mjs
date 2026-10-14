@@ -22,7 +22,7 @@ const md5 = (f) => crypto.createHash('md5').update(fs.readFileSync(f)).digest('h
 
 // ───────────────────────────── A. 文件层
 head('A. 文件同步')
-const FILES = ['index.js', 'sessions.js', 'store.js', 'memory.js', 'diary.js', 'news.js', 'proactive.js', 'client.js', 'package.json', 'icon.svg', 'cordis.patch.yml', 'README.md', 'PORTING.md', '手机版_心情提示词.md', 'LICENSE']
+const FILES = ['index.js', 'frames.js', 'sessions.js', 'store.js', 'memory.js', 'diary.js', 'news.js', 'proactive.js', 'client.js', 'package.json', 'icon.svg', 'cordis.patch.yml', 'README.md', 'PORTING.md', '手机版_心情提示词.md', 'LICENSE']
 for (const f of FILES) {
   const a = SRC + '/' + f, b = DST + '/' + f
   if (!fs.existsSync(a)) { NG('源缺 ' + f); continue }
