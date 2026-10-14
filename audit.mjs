@@ -22,7 +22,7 @@ const md5 = (f) => crypto.createHash('md5').update(fs.readFileSync(f)).digest('h
 
 // ───────────────────────────── A. 文件层
 head('A. 文件同步')
-const FILES = ['index.js', 'sessions.js', 'store.js', 'memory.js', 'diary.js', 'news.js', 'proactive.js', 'client.js', 'package.json', 'icon.svg', 'cordis.patch.yml', 'README.md', '手机版_心情提示词.md', 'LICENSE']
+const FILES = ['index.js', 'sessions.js', 'store.js', 'memory.js', 'diary.js', 'news.js', 'proactive.js', 'client.js', 'package.json', 'icon.svg', 'cordis.patch.yml', 'README.md', 'PORTING.md', '手机版_心情提示词.md', 'LICENSE']
 for (const f of FILES) {
   const a = SRC + '/' + f, b = DST + '/' + f
   if (!fs.existsSync(a)) { NG('源缺 ' + f); continue }
@@ -294,6 +294,8 @@ const N = M.MOOD_IDS.length
     // ⚠️ 路由能跑 ≠ 事件能跑。三个主动行为（归档 / 心情 / 重启汇报）
     //    全挂在 session/event 上，而**没有一个测试喂过事件** ——
     //    所以"检测到了重启但一句话没说"只能靠主人在界面上发现。
+    const portDoc = fs.existsSync(SRC + '/PORTING.md') && fs.existsSync(SRC + '/test-porting.mjs')
+    portDoc ? OK('有 PORTING.md + test-porting.mjs（移植说明配了验证）') : NG('移植说明或它的测试缺了')
     const evTest = fs.existsSync(SRC + '/test-events.mjs')
     const toolTest = fs.existsSync(SRC + '/test-tools.mjs')
     toolTest ? OK('有 test-tools.mjs（真调每个工具 + 看提示词段正文）') : NG('缺 test-tools.mjs —— 工具的 execute 从没被调过')
