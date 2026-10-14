@@ -7,9 +7,23 @@
  * ⚠️ 原来**根本没有这个文件**：news.js 660 行、五种解析器（RSS / Atom /
  *    JSON / HTML / VTT），一个测试都没有。而它是唯一一个会**主动往外发请求**
  *    的模块 —— 解析错了的后果不是报错，是"时事那栏里躺着一条胡说八道的东西"。
+ *
+ * ⚠️ **必须先把 DSH_HOME 指到临时目录再 import。**
+ *    不然 `clearFrames()` 会去删**真实数据目录**里的东西 ——
+ *    实测把自己的帧目录清空了（那次是"功能"和"测试"分不清：
+ *    目录空了，但动手的是测试，不是抽帧逻辑）。
+ *    **测试永远不该碰用户的真东西。**
  */
-import * as N from 'file:///D:/chajian/dsh-mood/news.js'
-import { suite } from './testkit.mjs'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+
+const TMP_HOME = path.join(os.tmpdir(), 'dsh-mood-testnews-' + Date.now())
+fs.mkdirSync(TMP_HOME, { recursive: true })
+process.env.DSH_HOME = TMP_HOME
+
+const N = await import('file:///D:/chajian/dsh-mood/news.js')
+const { suite } = await import('./testkit.mjs')
 
 const t = suite('时事解析')
 
@@ -261,8 +275,12 @@ const t = suite('时事解析')
   const r2 = await N.fetchVideoFrames('')
   t.eq(r2.ok, false, '空网址 → 失败')
   t.ok(typeof N.framesBaseDir() === 'string' && N.framesBaseDir().length > 0, '有帧目录')
+  t.ok(N.framesBaseDir().startsWith(TMP_HOME), '帧目录指向**临时目录**（不碰用户的真东西）')
   t.ok(typeof N.clearFrames === 'function', '有手动清理入口')
   t.noThrow(() => N.clearFrames(), '手动清理不崩')
 }
+
+// 清理临时 home
+try { fs.rmSync(TMP_HOME, { recursive: true, force: true }) } catch { /* 不管 */ }
 
 t.done()

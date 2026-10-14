@@ -382,6 +382,20 @@ const N = M.MOOD_IDS.length
     const kit = fs.existsSync(SRC + '/testkit.mjs')
     kit ? OK('有 testkit.mjs（共用的断言工具）') : NG('缺 testkit.mjs')
 
+    // ⚠️ **测试不许碰用户的真数据。**
+    //    实测栽过一次：test-news 调了 clearFrames() 清理入口，而它没设 DSH_HOME ——
+    //    于是把**真实数据目录**里的帧全删了。目录空掉之后我一开始还以为是功能在干活，
+    //    查了半天才发现动手的是测试。
+    //    规则：凡是会写/清数据的测试，必须先把自己的 DSH_HOME 指到临时目录。
+    const RISKY = /(clearFrames|saveDiary|saveNews|saveProactive|dataFile\(|framesBaseDir)\(/
+    const notIsolated = tFiles.filter((f) => {
+      const x = readT(f)
+      return RISKY.test(x) && !/process\.env\.DSH_HOME\s*=/.test(x)
+    })
+    notIsolated.length
+      ? NG('这些测试会写数据但没隔离 DSH_HOME（会动用户的真东西）：' + notIsolated.join(', '))
+      : OK('会写数据的测试都隔离了 DSH_HOME（' + tFiles.length + ' 个）')
+
     // ⚠️ 跨站写保护。这个接口里是**全部对话原文**，还能一键清空。
     //    DSH 只绑 127.0.0.1、跨站读也拿不到响应 —— 但**跨站写**能打进来：
     //    页面用 mode:"no-cors" + 字符串 body（→ text/plain → 不触发预检），
