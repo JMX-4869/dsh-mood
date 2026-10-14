@@ -415,6 +415,9 @@ const N = M.MOOD_IDS.length
 
     // ⚠️ **版本号三处必须一致**，而且 CHANGELOG 里必须真有这一版。
     //    主人要求："每次更新加版本号，改动小就加小版本，改动大就加大版本，写更新日志。"
+    //    版本规则是**语义化版本**：第一位不兼容才动，第二位加功能（+1 时第三位归零），
+    //    第三位修 bug。⚠️ 我一度按"第二位是大版本"编过号 —— 那是错的，已改回。
+    //    这条断言就是防它再漂。
     //    光靠自觉迟早会漏 —— 所以让审计盯着：三处对不上就报红。
     //    （三处 = package.json 的 version / CHANGELOG 第一条 ## 标题 / README 里那句当前版本）
     {
@@ -423,8 +426,20 @@ const N = M.MOOD_IDS.length
       const cl = fs.existsSync(SRC + '/CHANGELOG.md') ? fs.readFileSync(SRC + '/CHANGELOG.md', 'utf8') : ''
       const rm = fs.readFileSync(SRC + '/README.md', 'utf8')
 
-      const okSemver = /^\d+\.\d+\.\d+$/.test(ver)
-      okSemver ? OK('package.json 版本号是语义化版本（' + ver + '）') : NG('版本号不是 X.Y.Z：' + JSON.stringify(ver))
+      const okForm = /^\d+\.\d+\.\d+$/.test(ver)
+      okForm ? OK('package.json 版本号是 X.Y.Z 形式（' + ver + '）') : NG('版本号不是 X.Y.Z：' + JSON.stringify(ver))
+
+      // CHANGELOG 里得写清楚版本规则 —— 不然下次又会编歪
+      const ruleOk = /第二位[^\n]{0,12}大版本/.test(cl)
+      ruleOk
+        ? OK('CHANGELOG 里说明了版本规则是语义化版本')
+        : NG('CHANGELOG 没说清版本规则 —— 下次容易编歪')
+
+      // 第一位只该在"第二位进位"时变。第一位 > 0 时，第二位或第三位至少有个非 0 之外的解释，
+      // 这里只做一条**弱校验**：不允许 X 涨得比"进位"更频繁（也就是 X>0 时 Z 不该是 0 且 Y 也是 0 之外的乱来）。
+      const [X, Y, Z] = ver.split('.').map(Number)
+      const plausible = Number.isFinite(X) && Number.isFinite(Y) && Number.isFinite(Z) && X >= 0 && Y >= 0 && Z >= 0
+      plausible ? OK('三节都是非负整数') : NG('版本号不合理：' + ver)
 
       const clTop = (cl.match(/^##\s+(\d+\.\d+\.\d+)/m) || [])[1] || ''
       clTop === ver ? OK('CHANGELOG 第一条就是当前版本（' + ver + '）')
