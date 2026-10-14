@@ -2414,7 +2414,12 @@ export function apply(root, rawConfig) {
             kind: { type: 'string', enum: ['good', 'bad'], description: 'add：正例还是反例（默认 good）' },
             said: { type: 'string', description: 'add/edit：**主人对它的原话** —— 最该收的东西' },
             note: { type: 'string', description: 'add/edit：我自己的说明（可空）' },
-            tags: { type: 'object', description: 'add/edit：按维度打标，键取 style/color/comp/type/texture/mood/density' },
+            // ⚠️ **别用 `type: 'object'`。**
+            //    别的工具参数全是 string/number，我在这里写了 object ——
+            //    结果工具注册失败，而外面那个 try/catch 只打日志，
+            //    于是「taste 工具不存在」这件事**一点提示都没有**（实测踩到）。
+            //    改成字符串，格式 `color:近黑底,comp:内容压左`。
+            tags: { type: 'string', description: 'add/edit：打标，格式 color:近黑底,comp:内容压左（维度取 style/color/comp/type/texture/mood/density）' },
             id: { type: 'string', description: 'edit/confirm/remove 时必填：条目或原则的 id，先 list 看' },
             target: { type: 'string', enum: ['principle', 'item'], description: 'edit/remove 时指明改哪个（默认按 id 前缀猜）' },
           },
@@ -2426,6 +2431,17 @@ export function apply(root, rawConfig) {
             try {
               const action = args && args.action ? String(args.action) : 'list'
               const tk = taste           // ← **模块级那份活的**，改它就等于改了注入源
+              // 打标从字符串解析：color:近黑底,comp:内容压左
+              const parseTags = (v) => {
+                if (!v) return undefined
+                if (typeof v === 'object') return v          // 容错：万一传了对象
+                const out = {}
+                for (const part of String(v).split(/[,，]/)) {
+                  const m = part.match(/^([^:：]+)[:：](.+)$/)
+                  if (m) out[m[1].trim()] = m[2].trim()
+                }
+                return Object.keys(out).length ? out : undefined
+              }
               const save = () => { if (!saveTaste(tk)) throw new Error('写盘失败（看日志）') }
 
               if (action === 'list') {
@@ -2454,7 +2470,7 @@ export function apply(root, rawConfig) {
 
               if (action === 'add') {
                 const r = addItem(tk, {
-                  ref: args.ref, kind: args.kind, tags: args.tags,
+                  ref: args.ref, kind: args.kind, tags: parseTags(args.tags),
                   note: args.note, said: args.said, by: args.by,
                 })
                 if (!r.ok) return { ok: false, message: r.error }
@@ -2474,7 +2490,7 @@ export function apply(root, rawConfig) {
                 const isP = String(args.target || '') === 'principle' || (!args.target && id.startsWith('p'))
                 const r = isP
                   ? editPrinciple(tk, id, { text: args.text, why: args.why, unless: args.unless })
-                  : updateItem(tk, id, { kind: args.kind, note: args.note, said: args.said, tags: args.tags })
+                  : updateItem(tk, id, { kind: args.kind, note: args.note, said: args.said, tags: parseTags(args.tags) })
                 if (!r.ok) return { ok: false, message: r.error }
                 save()
                 // 改过原则就自动算成他的 —— 说清楚，免得他以为还是我那条
@@ -2521,7 +2537,14 @@ export function apply(root, rawConfig) {
         })
         ctx.effect(() => tools.register(tasteDef), 'dsh-mood taste tool')
       } catch (err) {
-        try { log('dsh-mood 注册 taste 工具失败：' + ((err && err.message) || err)) } catch {}
+        // ⚠️ 这里原来只 log，**看起来什么都没发生** ——
+        //    实测：工具注册失败时我在对话里只看到"unknown tool"，
+        //    而这边一点痕迹都没有。所以现在**同时**打 console.error，
+        //    并在状态里留一个标记（设置页能看到）。
+        const m = (err && err.message) || String(err)
+        try { log('dsh-mood 注册 taste 工具失败：' + m) } catch {}
+        try { console.error('[dsh-mood] 注册 taste 工具失败：' + m) } catch {}
+        try { state.tasteToolError = m } catch {}
       }
 
       // 4.6) memory 工具 —— 翻查硬盘上的旧对话
