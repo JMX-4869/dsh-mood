@@ -16,7 +16,7 @@
  *   任何一步不过就整个中止，一个字节都不动。
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, copyFileSync, statSync, unlinkSync, readdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, copyFileSync, statSync, unlinkSync } from 'node:fs'
 import { join, dirname, resolve, isAbsolute } from 'node:path'
 import os from 'node:os'
 

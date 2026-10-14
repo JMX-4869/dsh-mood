@@ -14,7 +14,7 @@ import { dataFile } from './store.js'
  * 存储：$DSH_HOME/dsh-mood-diary.json
  *   { version, entries:[{date, text, mood, createdAt, edited}], daily:{ 'YYYY-MM-DD': {...} } }
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import os from 'node:os'
 

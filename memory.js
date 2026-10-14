@@ -255,7 +255,3 @@ export function createMemory(opts) {
   return { note, flush, search, recent, stats, clear, moveTo, path, load, FILE, grams }
 }
 
-/** 给检索结果算一个稳定的短 id（界面上显示、日志里定位用） */
-export function shortId(o) {
-  return createHash('sha1').update(String(o.id || '') + o.t).digest('hex').slice(0, 8)
-}

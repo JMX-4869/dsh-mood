@@ -1,4 +1,4 @@
-import { dataFile, dataDir, storageStatus, migrateStorage, humanSize, POINTER_FILE, invalidateDataDir } from './store.js'
+import { dataFile, storageStatus, migrateStorage, humanSize, invalidateDataDir } from './store.js'
 /**
  * dsh-mood — DeepSeek Harness 心情插件
  *
@@ -26,9 +26,9 @@ import { createMemory, MIN_CHARS as MEM_MIN_CHARS, DEFAULT_LIMIT as MEM_LIMIT } 
 import {
   diaryFile, DIARY_HOUR, DIARY_MINUTE,
   dateKey, yesterdayKey, diaryDue,
-  loadDiary, saveDiary, blankDiary,
+  loadDiary, saveDiary,
   noteMood, noteSwitch, noteActivity,
-  ensureDiary, dominantMood, pruneDaily,
+  ensureDiary, pruneDaily,
   // 给"当时在干什么"取高频词用（只读日记素材，不写）
   topWords as diaryTopWords,
   // 注意：**故意不导入 writeDiary** —— 日记只能由 23:59 的自动生成写入，
@@ -36,7 +36,7 @@ import {
   setAccess, canRead,
 } from './diary.js'
 import {
-  newsFile, NEWS_FRESH_MS, NEWS_PROMPT_MAX,
+  newsFile, NEWS_PROMPT_MAX,
   PRESETS as NEWS_PRESETS, refreshNews, loadNews, saveNews,
   addSource as newsAddSource, removeSource as newsRemoveSource,
   isFresh as newsFresh, ageMinutes as newsAge, renderForPrompt as renderNews,
@@ -48,7 +48,7 @@ import {
   loadProactive, saveProactive, canSpeak, buildNudge,
   markSpoke, markReplied, sentToday,
   SLOTS, slotOf, slotAllowed,
-  processStart, noteBoot, buildRestartNudge, markReported,
+  noteBoot, buildRestartNudge, markReported,
 } from './proactive.js'
 
 export const name = 'dsh-mood'
