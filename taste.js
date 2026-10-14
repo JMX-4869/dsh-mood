@@ -699,12 +699,15 @@ export function fmtItem(x) {
   const head = [x.ref]
   if (x.domain) head.push('[' + x.domain + ']')
   if (tags) head.push('（' + tags + '）')
-  if (x.note) head.push('—— ' + x.note)
+  // ⚠️ `note` **不能**塞进 head 那一行 —— 它是我写的一段话，常常几十上百字，
+  //    拼上去会把"指代 + 标签"那行撑成一条长带子，读起来全是糊的。
+  //    （第一版就是这样，实测很难看。）它自己一行。
   if (!x.confirmed) head.push('〔待确认〕')
 
   // ⚠️ 这里**不加**开头的 "- " —— 调用方（renderForPrompt）自己会加。
   //    两边都加就变成 "- - promo/封面…"（第一版就是这样）。
   const lines = [head.join(' ')]
+  if (x.note) lines.push('  · 我的备注：' + x.note)
   // 顺序不能反：先我的读法，再他的反应 —— 反过来就变成事后合理化了
   if (x.myRead) lines.push('  · 我当时读的是：「' + x.myRead + '」')
   if (x.said) lines.push('  · 他说：「' + x.said + '」')
