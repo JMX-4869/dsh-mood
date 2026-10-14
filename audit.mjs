@@ -234,6 +234,43 @@ const N = M.MOOD_IDS.length
 
     const hasPanel = /id: 'memory', order: 29/.test(cl2)
     hasPanel ? OK('设置页有「硬盘记忆」那一格') : NG('设置页没有那一格')
+
+    // ────────────────────────────────────────────────────────────
+    //  下面三条是**真实踩过的坑**，每条都曾经静默失败（不报错、只是数据丢）
+    // ────────────────────────────────────────────────────────────
+
+    // ⚠️ 坑一：钩子插在了 user/message 的 early return 后面。
+    //    结果"用户消息一条都没存"，而且完全不报错。端到端测试才抓出来。
+    //    断言方式：钩子的位置必须**早于**那个 if。
+    //    ⚠️ 要匹配**带缩进的代码行**。第一版用裸的 indexOf("if (type === 'user/message') {")，
+    //       先匹配到了我自己写的注释（注释里引用了这行），断言反而报错 —— 检查检查错了对象。
+    const iWrite = host.indexOf("memory.note(type === 'assistant/message'")
+    const iUserIf = host.indexOf("\n          if (type === 'user/message') {")
+    const orderOk = iWrite > 0 && iUserIf > 0 && iWrite < iUserIf
+    orderOk ? OK('归档钩子在 user/message 早退之前（否则用户那半边全丢）')
+      : NG('归档钩子被放到了早退后面 —— 用户消息会一条都存不进去')
+
+    // ⚠️ 坑二：extractText 不认 assistant/message 的包了一层。
+    //    user/message 的 data 是消息本身；assistant/message 是 { turn, step, message }。
+    //    只认前者的话助手回复**全部静默丢失**。
+    const handlesNested = /data\.message && typeof data\.message === 'object'/.test(host)
+    handlesNested ? OK('extractText 认 assistant/message 的嵌套形状（data.message）')
+      : NG('extractText 不认嵌套形状 —— 助手回复会全丢')
+
+    // ⚠️ 坑三：归档 id 只到时间戳 → 同一毫秒的两条不同消息被判重复丢掉。
+    //    正文指纹不能省（重复投递同一条时指纹一样，照样挡得住）。
+    const hasFp = /const fp = createHash\('sha1'\)\.update\(clipped\)/.test(memSrc)
+    hasFp ? OK('归档 id 带正文指纹（同毫秒两条不会被误判重复）')
+      : NG('归档 id 没带正文指纹 —— 同毫秒消息会丢')
+
+    // 会话名必须是哈希不是前缀（取前缀多长都可能撞）
+    const sidHash = /createHash\('sha1'\)\.update\(String\(sessionId/.test(memSrc)
+    sidHash ? OK('会话名取哈希不取前缀（前缀多长都会撞）') : NG('会话名还是取前缀')
+
+    // 两个测试文件必须在，并且能被跑
+    const t1 = fs.existsSync(SRC + '/test-memory.mjs')
+    const t2 = fs.existsSync(SRC + '/test-memory-e2e.mjs')
+    t1 && t2 ? OK('两个记忆测试都在（存储层 + 端到端）') : NG('测试文件缺: ' + [!t1 && 'test-memory', !t2 && 'test-memory-e2e'].filter(Boolean).join(' '))
   }
 N === 33 ? OK('33 种心情（基础 + 复合 + 当代）') : NG('心情数 = ' + N)
 const need = ['sulk', 'hurt', 'proud', 'gloomy', 'anxious', 'numb', 'lonely',

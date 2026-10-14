@@ -826,26 +826,54 @@ function tryTransition(state, reason, now = Date.now(), around = null) {
 
 // ---------------------------------------------------------------- 判定：用户消息
 
-/** 从 UserMessage 事件里尽量稳地取纯文本 */
+/**
+ * 从消息事件里尽量稳地取纯文本。
+ *
+ * ⚠️ **两种事件的形状不一样**，这一点是翻 DSH 源码才确认的：
+ *
+ *   user/message        data 本身就是那条消息
+ *                       { role:'user', content:[{type:'text', text:'…'}] }
+ *
+ *   assistant/message   data 是**包了一层的**
+ *                       { turn, step, message:{ role:'assistant', content:[…] }, usage?, stream? }
+ *                       （dsh-agent-loop 里 append 的是 { turn, step, message } ）
+ *
+ * 第一版只认第一种 —— 助手回复**一条都取不到**，归档会变成半截对话。
+ * 而且它是静默失败的：没有报错，只是磁盘上永远只有用户那半边。
+ */
 function extractText(data) {
   if (!data) return ''
   if (typeof data === 'string') return data
-  const out = []
-  const push = (v) => { if (typeof v === 'string' && v.trim()) out.push(v) }
-  if (typeof data.text === 'string') push(data.text)
-  const content = data.content
-  if (Array.isArray(content)) {
-    for (const block of content) {
-      if (!block) continue
-      if (typeof block === 'string') push(block)
-      else if (typeof block.text === 'string') push(block.text)
-      else if (block.type === 'text' && typeof block.value === 'string') push(block.value)
+
+  const fromBlocks = (node) => {
+    if (!node) return []
+    if (typeof node === 'string') return node.trim() ? [node] : []
+    const out = []
+    const push = (v) => { if (typeof v === 'string' && v.trim()) out.push(v) }
+    if (typeof node.text === 'string') push(node.text)
+    const content = node.content
+    if (Array.isArray(content)) {
+      for (const block of content) {
+        if (!block) continue
+        if (typeof block === 'string') push(block)
+        else if (typeof block.text === 'string') push(block.text)
+        else if (block.type === 'text' && typeof block.value === 'string') push(block.value)
+      }
+    } else if (content && typeof content === 'object' && typeof content.text === 'string') {
+      push(content.text)
     }
-  } else if (content && typeof content === 'object' && typeof content.text === 'string') {
-    push(content.text)
+    if (!out.length && typeof node.message === 'string') push(node.message)
+    return out
   }
-  if (!out.length && typeof data.message === 'string') push(data.message)
-  return out.join('\n')
+
+  const direct = fromBlocks(data)
+  if (direct.length) return direct.join('\n')
+  // assistant/message：正文在 data.message 里（对象，不是字符串）
+  if (data.message && typeof data.message === 'object') {
+    const nested = fromBlocks(data.message)
+    if (nested.length) return nested.join('\n')
+  }
+  return ''
 }
 
 function countHits(text, words) {
@@ -1423,6 +1451,26 @@ export function apply(root, rawConfig) {
         try {
           const type = event && event.type
           const d = event && event.data
+          // ── 硬盘记忆：把对话正文抄一份到磁盘 ──
+          //
+          // ⚠️ **必须在最前面**，在下面那些早退之前。
+          //    `if (type === 'user/message') { … return }` 里有个 return ——
+          //    第一版把这段放在它后面，结果**用户消息一条都没存**，
+          //    而且完全不报错。是端到端测试才把它抓出来的。
+          //
+          // 为什么每条都抄、而不是等压缩时抄：压缩是 DSH 内部的事，
+          // 插件拿不到"哪些被丢了"。与其去猜，不如每一条都存 ——
+          // 上下文里没有的，磁盘上一定有。
+          if (type === 'user/message' || type === 'assistant/message') {
+            try {
+              const sid = (session && (session.id || session.sessionId)) || ''
+              const txt = extractText(d)
+              // seq 优先于时间戳：同一毫秒可能发出两条不同消息，
+              // 只按时间做 id 会把后一条当成重复丢掉。
+              const when = event.seq !== undefined ? event.seq : (event.at || event.ts || Date.now())
+              if (txt) memory.note(type === 'assistant/message' ? 'assistant' : 'user', txt, sid, when)
+            } catch { /* 归档失败不能影响对话 */ }
+          }
           // ── 主动开口用到的三个观察点 ──
           if (session) liveSession = session
           if (type === 'user/message') {
@@ -1455,18 +1503,6 @@ export function apply(root, rawConfig) {
             periodicIfDue()
             diaryTick()
             return
-          }
-          // ── 硬盘记忆：把对话正文抄一份到磁盘 ──
-          //
-          // 为什么在这里抄、而不是等压缩时抄：压缩是 DSH 内部的事，
-          // 插件拿不到"哪些被丢了"。与其去猜，不如**每一条都存** ——
-          // 上下文里没有的，磁盘上一定有。
-          if (type === 'user/message' || type === 'assistant/message') {
-            try {
-              const sid = (session && (session.id || session.sessionId)) || ''
-              const txt = extractText(d)
-              if (txt) memory.note(type === 'assistant/message' ? 'assistant' : 'user', txt, sid, event.at || event.ts || Date.now())
-            } catch { /* 归档失败不能影响对话 */ }
           }
           if (type === 'turn/end') {
             state.turns += 1

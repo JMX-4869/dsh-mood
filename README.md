@@ -500,6 +500,38 @@ Object.keys(d)      // 心情键里看不到它，不会污染加减分
 长度惩罚是必须的 —— 否则一条几千字的长回复因为"碰巧包含所有词"永远排第一，
 把真正精确的短句压下去。
 
+### 自检
+
+```
+node test-memory.mjs        26 项 —— 存储层
+                            批内去重 / 跨批去重 / 长度惩罚 / 迁移合并 /
+                            坏行跳过 / 超长截断 / 跨会话
+
+node test-memory-e2e.mjs    18 项 —— 端到端
+                            真实事件形状 → apply → session/event →
+                            memory.note → 落盘 → memory 工具查
+```
+
+端到端那份用的是**从 DSH 源码里抄下来的真实形状** —— 因为这里最容易出错：
+
+```
+user/message        data 就是那条消息
+                    { role:'user', content:[{type:'text', text}] }
+
+assistant/message   data 包了一层
+                    { turn, step, message:{ role:'assistant', content:[…] } }
+```
+
+**两种形状不一样，而取错是静默失败的** —— 不报错，只是磁盘上永远只有半截对话。
+
+写这个测试的时候它一次抓出三个 bug：
+
+1. 归档钩子插在了 `user/message` 的 early `return` 后面 → **用户消息一条都没存**
+2. `extractText` 不认 `assistant/message` 的嵌套形状 → **助手回复一条都没存**
+3. 归档 id 只到时间戳 → **同一毫秒的两条不同消息被判重复丢掉**
+
+三条都在 `audit.mjs` 里留了断言，防止改回去。
+
 ### dsh-mood 自带一份**兜底人设**
 
 **没有别的插件提供人设时**，设置页会出现「人设」那一格，可以填：

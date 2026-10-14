@@ -102,15 +102,25 @@ export function createMemory(opts) {
   /**
    * 记一条。
    *
-   * 去重靠 id（会话 + 方向 + 时间戳）：同一个事件被重复投递时不会写两遍。
+   * 去重靠 id：会话 + 方向 + 时间 + **正文指纹**。
+   *
+   * ⚠️ 最后那个指纹不能省。第一版 id 只到时间戳，结果**同一毫秒发出的两条
+   *    不同消息**被判成重复，后一条直接被丢掉 —— 端到端测试里三条助手回复
+   *    只存下两条。而重复投递同一条（这才该去重）的正文指纹是一样的，
+   *    照样能挡住。
    */
   function note(kind, text, sessionId, ts) {
     const x = String(text || '').trim()
     if (x.length < MIN_CHARS) return false
     const clipped = x.length > MAX_CHARS ? x.slice(0, MAX_CHARS) + '…[截断]' : x
     const t = ts || Date.now()
-    const s = String(sessionId || '').slice(0, 8)
-    const id = s + '#' + (kind === 'assistant' ? 'a' : 'u') + '#' + t
+    // ⚠️ 会话名取的是**完整 id 的哈希**，不是前缀。
+    //    第一版取前 8 位、第二版取前 12 位，都还是"取前缀" ——
+    //    前缀多长都可能撞（测试里 `e2e-session-1` / `-2` 前 13 位完全一样）。
+    //    哈希之后长度固定、碰撞概率与 id 结构无关。
+    const s = createHash('sha1').update(String(sessionId || '')).digest('hex').slice(0, 8)
+    const fp = createHash('sha1').update(clipped).digest('hex').slice(0, 10)
+    const id = s + '#' + (kind === 'assistant' ? 'a' : 'u') + '#' + t + '#' + fp
     pending.push({ id, t, s, k: kind === 'assistant' ? 'a' : 'u', x: clipped })
     scheduleFlush()
     return true
