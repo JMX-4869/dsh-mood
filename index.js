@@ -1121,6 +1121,19 @@ export function apply(root, rawConfig) {
   // mountCore 拿到真实状态后会把这个换掉；mountApi 的路由调它。
   // 默认返回"不可用" —— 没会话控制器时设置页显示的就是这个。
   let proactiveStatus = () => ({ ok: true, available: false, enabled: false, sentToday: 0, gates: [] })
+  /**
+   * 主动开口那份状态 —— **给 mountApi 用的引用**。
+   *
+   * ⚠️ `proactive` 本身定义在 mountCore 里，而路由注册在 mountApi 里，**两个作用域**。
+   *    上一次改"开关点了没反应"时我直接写了 `const p = proactive` ——
+   *    语法没错、apply 也不报错，因为**路由处理函数只在收到请求时才执行**。
+   *    表现就是：点一下设置页的按钮，整格变成
+   *    「读不到数据：proactive is not defined」。
+   *
+   *    所以照着 `proactiveStatus` 那套来：外层留引用，mountCore 里赋值，mountApi 里读。
+   *    对象是**原地改**的，赋一次就够。
+   */
+  let proactiveRef = null
   const log = (...a) => { try { root?.logger?.info?.(...a) } catch {} }
 
   // 额外层：可在配置里单独关掉，不影响人设插件，也不留残留。
@@ -1544,6 +1557,7 @@ export function apply(root, rawConfig) {
     let lastUserAt = 0                // 用户上次说话
     let turnBusy = false              // 是不是有回合在跑
     let proactive = loadProactive()   // 主动开口的状态（默认 enabled:false）
+    proactiveRef = proactive          // ← 给 mountApi 的路由用（见外层那段注释）
     /**
      * 认一下这次是不是"重启"。
      *
@@ -2098,6 +2112,26 @@ export function apply(root, rawConfig) {
               })
               res.end(body)
             }
+            /**
+             * 读 POST 的 body。
+             *
+             * ⚠️ 原来 `/persona` 和 `/memory` 里写的是 `JSON.parse(raw || '{}')`，
+             *    而 **`raw` 从来没定义过** —— 那是另一个函数里的局部变量。
+             *    后果分两种：`/memory` 一点就 500「raw is not defined」；
+             *    `/persona` 因为前面先返回了 409，一直没暴露出来。
+             *    （这个坑和"跨作用域引用 proactive"是同一类：**只在收到请求时才炸**。）
+             *
+             *    流是异步的，所以用回调。调用方写成
+             *      return readBody(req, (j, err) => { ... return send(...) })
+             */
+            const readBody = (req2, cb) => {
+              let buf = ''
+              req2.on('data', (c) => { buf += c; if (buf.length > 65536) req2.destroy() })
+              req2.on('end', () => {
+                try { cb(JSON.parse(buf || '{}')) } catch (e) { cb(null, e) }
+              })
+              return undefined
+            }
             const d = loadDiary()
             if (path === '/' || path === '/state') {
               const s = summary()
@@ -2193,17 +2227,19 @@ export function apply(root, rawConfig) {
                 if (personaSource() === 'external' && !(state.persona && state.persona.force)) {
                   return send({ ok: false, error: '有别的插件在管人设，这份不会生效 —— 先建 persona.force 或卸掉那个插件' }, 409)
                 }
-                const body = JSON.parse(raw || '{}')
-                const cur = state.persona || {}
-                const NEXT = { ...cur }
-                for (const k of ['selfName', 'userName', 'stance', 'tone']) {
-                  if (k in body) NEXT[k] = String(body[k] || '').slice(0, 400)
-                }
-                if ('enabled' in body) NEXT.enabled = !!body.enabled
-                if ('force' in body) NEXT.force = !!body.force
-                state.persona = NEXT
-                saveState(state)
-                return send({ ok: true, own: NEXT, source: personaSource() })
+                return readBody(req, (body, err) => {
+                  if (err) return send({ ok: false, error: 'body 不是合法 JSON' }, 400)
+                  const cur = state.persona || {}
+                  const NEXT = { ...cur }
+                  for (const k of ['selfName', 'userName', 'stance', 'tone']) {
+                    if (k in body) NEXT[k] = String(body[k] || '').slice(0, 400)
+                  }
+                  if ('enabled' in body) NEXT.enabled = !!body.enabled
+                  if ('force' in body) NEXT.force = !!body.force
+                  state.persona = NEXT
+                  saveState(state)
+                  return send({ ok: true, own: NEXT, source: personaSource() })
+                })
               }
               return send({ ok: false, error: '只支持 GET / POST' }, 405)
             }
@@ -2231,27 +2267,29 @@ export function apply(root, rawConfig) {
                 return send({ ok: true, query: q, stats: st, hits: memory.search(q, lim) })
               }
               if (req.method === 'POST') {
-                const body = JSON.parse(raw || '{}')
-                const action = String(body.action || '')
-                if (action === 'clear') {
-                  memory.clear()
-                  return send({ ok: true, stats: memory.stats() })
-                }
-                if (action === 'move') {
-                  const dir = String(body.dir || '').trim()
-                  if (!dir) return send({ ok: false, error: '得给一个目录' }, 400)
-                  const r = memory.moveTo(dir, (d2) => {
-                    const cfg = readStoreConfig()
-                    const dirs = { ...(cfg.dirs || {}) }
-                    dirs.memory = d2
-                    writeStoreConfig({ ...cfg, dirs })
-                    invalidateDataDir()
-                  })
-                  return send(r.ok
-                    ? { ok: true, stats: memory.stats() }
-                    : { ok: false, error: r.error }, r.ok ? 200 : 500)
-                }
-                return send({ ok: false, error: '未知 action：' + action }, 400)
+                return readBody(req, (body, err) => {
+                  if (err) return send({ ok: false, error: 'body 不是合法 JSON' }, 400)
+                  const action = String(body.action || '')
+                  if (action === 'clear') {
+                    memory.clear()
+                    return send({ ok: true, stats: memory.stats() })
+                  }
+                  if (action === 'move') {
+                    const dir = String(body.dir || '').trim()
+                    if (!dir) return send({ ok: false, error: '得给一个目录' }, 400)
+                    const r = memory.moveTo(dir, (d2) => {
+                      const cfg = readStoreConfig()
+                      const dirs = { ...(cfg.dirs || {}) }
+                      dirs.memory = d2
+                      writeStoreConfig({ ...cfg, dirs })
+                      invalidateDataDir()
+                    })
+                    return send(r.ok
+                      ? { ok: true, stats: memory.stats() }
+                      : { ok: false, error: r.error }, r.ok ? 200 : 500)
+                  }
+                  return send({ ok: false, error: '未知 action：' + action }, 400)
+                })
               }
               return send({ ok: false, error: '只支持 GET / POST' }, 405)
             }
@@ -2340,7 +2378,13 @@ export function apply(root, rawConfig) {
                     //    —— 存盘是对的，但 `canSpeak` / `maybeSpeak` 读的是模块里那份，
                     //    从来没被改过。表现就是：**开关点了没反应，只有重启才生效**。
                     //    （主人截图里"打不开主动开口"就是这个。）
-                    const p = proactive
+                    //
+                    //    ⚠️ 而且 `proactive` 本身**不在这个作用域** —— 它在 mountCore 里。
+                    //       直接写 `const p = proactive` 会 ReferenceError，而且是**只在
+                    //       收到请求时才炸**：语法检查过、apply 也过，点一下才现形。
+                    //       所以走 proactiveRef 这个外层引用。
+                    const p = proactiveRef
+                    if (!p) return send({ ok: false, error: '主动开口还没挂载（mountCore 没跑）' }, 503)
                     if (typeof j.enabled === 'boolean') p.cfg.enabled = j.enabled
                     for (const k of ['idleMs', 'minGapMs', 'maxPerDay']) {
                       const v = Number(j[k])

@@ -275,8 +275,31 @@ const N = M.MOOD_IDS.length
     // ⚠️ POST /proactive 必须改**模块里那份活的**。
     //    loadProactive() 每次返回新副本 —— 改副本+存盘的话，canSpeak 读的那份
     //    从来没变过。表现就是：**开关点了没反应，只有重启才生效**。主人踩过这个。
-    const writesLive = /const p = proactive\b/.test(host2)
-    const writesCopy = /const p = loadProactive\(\)[\s\S]{0,80}?typeof j\.enabled/.test(host2)
+    // ⚠️ 路由处理函数是闭包 —— **只在收到请求时才执行**。
+    //    所以语法检查和 apply 都抓不到"跨作用域引用"或"用了没定义的变量"。
+    //    真实事故两起：`const p = proactive`（proactive 在 mountCore 里）、
+    //    `JSON.parse(raw)`（raw 从没定义过）。都是点一下按钮就炸。
+    //    唯一的防线是 test-api.mjs —— 它真的把每个路由调一遍。
+    const apiTest = fs.existsSync(SRC + '/test-api.mjs')
+    apiTest ? OK('有 test-api.mjs（真的去调每个路由）') : NG('缺 test-api.mjs —— 跨作用域的坑没人拦')
+
+    // ⚠️ 检查代码文本之前**必须先把注释剥掉**。
+    //    这个坑栽过三次了：断言用 indexOf 找一个字符串，结果先匹配到
+    //    **我自己写的注释里引用的同一段代码**，断言反过来报错。
+    //    检查检查错了对象 —— 比不检查更坏，因为它会教人忽略红灯。
+    const stripComments = (t) => t
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+    const code = stripComments(host2)
+
+    const noRaw = !/JSON\.parse\(raw\b/.test(code)
+    noRaw ? OK('路由里没有引用未定义的 raw') : NG('路由用了未定义的 raw —— 请求一到就 500')
+
+    // 主动开口那份状态必须走外层引用；mountApi 里不许裸名字
+    const noBarePro = !/const p = proactive\b(?!Ref)/.test(code)
+    noBarePro ? OK('mountApi 里没有裸引用 mountCore 的 proactive') : NG('mountApi 里裸引用了 proactive —— 跨作用域，请求时才会炸')
+    const writesLive = /const p = proactiveRef\b/.test(code)
+    const writesCopy = /const p = loadProactive\(\)[\s\S]{0,80}?typeof j\.enabled/.test(code)
     writesLive && !writesCopy
       ? OK('POST /proactive 改的是活的那份（开关点了立刻生效）')
       : NG('POST /proactive 改了副本 —— 开关点了不会生效，只有重启才行')
