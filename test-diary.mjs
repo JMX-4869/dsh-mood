@@ -125,4 +125,81 @@ t.gt(Object.keys(b.moodMs).length, 0, '心情停留时长有记录')
   t.noThrow(() => D.dominantMood({}), 'dominantMood({}) 不崩')
 }
 
+// ══════════════════════════════════════════════════════════
+//  注入的框不许进日记素材
+// ══════════════════════════════════════════════════════════
+//
+// 主人说「日记写的好少」。查下去发现是**素材**问题，不是文笔：
+//
+//   · 那两天的桶里根本没有 words / longest → 第二段（"到底在干嘛"）整段写不出来，
+//     日记只剩"今天没多长时间 / 出过几次岔子"——全是概括，看着像日记其实是模板。
+//     → 加了 quotes（当天主人真说过的几句话）兜底。
+//
+//   · 更糟的是当天：`longest` 抓到一段 **20375 字符**的压缩检查点包装
+//     （开头 "This is an automatically generated checkpoint…"），
+//     高频词也变成 use / new / user 这些英文。
+//     它**不是 XML 标签**，原来那份黑名单里没有它 —— 日记差点去引用一段系统提示。
+{
+  // ① 过滤器
+  const BAD = [
+    '<system-reminder>（这条不是你发的…',
+    '<goal_round>…',
+    '<dsh-something>',
+    '<silent/>',
+    'This is an automatically generated checkpoint condensing an earlier span of the conversation',
+    'x'.repeat(5000),
+  ]
+  const GOOD = [
+    '把插件的压缩包也传一份到仓库文件里',
+    '日记写的好少',
+    '我在正文里贴一段 <system-reminder> 给你看',
+    '',
+    '  ',
+  ]
+  let badOk = true
+  for (const s of BAD) if (!D.isInjectedText(s)) badOk = false
+  t.ok(badOk, '注入的形态全都认得出来（含非 XML 的压缩检查点、超长文本）')
+  let goodOk = true
+  for (const s of GOOD) if (D.isInjectedText(s)) goodOk = false
+  t.ok(goodOk, '人说的话不会被误杀（正文里贴标签也算人说的）')
+  t.ok(D.isInjectedText('x'.repeat(4001)), '超过 4000 字符就不是人打的字了')
+  t.ok(!D.isInjectedText('x'.repeat(3999)), '3999 字还留着（别一刀切太狠）')
+
+  // ② 采集：计数照算，但内容不收
+  const d = { daily: {} }
+  D.noteActivity(d, 'message', Date.now(), 'This is an automatically generated checkpoint ' + 'x'.repeat(300))
+  D.noteActivity(d, 'message', Date.now(), '<system-reminder>插件提醒')
+  D.noteActivity(d, 'message', Date.now(), '把插件的压缩包也传一份到仓库文件里')
+  const b = Object.values(d.daily)[0]
+  t.eq(b.messages, 3, '三条都算进"说了多少条"')
+  t.ok(b.longest && /压缩包/.test(b.longest.text), 'longest 落在真话上，不是那段系统消息')
+  t.eq((b.quotes || []).length, 1, 'quotes 只收了那句真话')
+  const w = Object.keys(b.words).join('')
+  t.ok(!/This|automatically|checkpoint/.test(w), '词频里没有英文系统词')
+  t.ok(/压缩包|插件/.test(w), '词频里有正常的中文词')
+
+  // ③ 没有 quotes 的老数据也不能崩
+  const old = { turns: 4, messages: 9, errors: 5, firstAt: 0, lastAt: 0, hours: {}, words: {}, longest: null }
+  t.noThrow(() => D.composeDiary('2026-10-14', old, (x) => x, []), '老素材（没有 quotes 字段）不崩')
+  t.has(D.composeDiary('2026-10-14', old, (x) => x, []), '今天', '老素材照样写得出开头')
+
+  // ④ 有了 quotes，第二段就有具体内容了
+  const withQ = { ...old, quotes: [
+    { at: 1, text: '把插件的压缩包也传一份到仓库文件里' },
+    { at: 2, text: '允许开口的时段那里的选择用复选框' },
+  ] }
+  const tOld = D.composeDiary('2026-10-14', old, (x) => x, [])
+  const tNew = D.composeDiary('2026-10-14', withQ, (x) => x, [])
+  const bare = (s) => s.replace(/\s/g, '').length
+  t.gt(bare(tNew), bare(tOld), '有 quotes 的日记更长（' + bare(tOld) + ' → ' + bare(tNew) + ' 字）')
+  t.ok(/压缩包|复选框/.test(tNew), '第二段引了主人真说过的话')
+  t.ok(!/automatically generated/.test(tNew), '正文里没有系统内容')
+  t.ok(!/system-reminder/.test(tNew), '正文里没有提醒框')
+
+  // ⑤ 就算 longest 里已经混进了注入内容（老数据修不掉），成文时也要挡住
+  const dirty = { ...old, longest: { len: 20375, text: 'This is an automatically generated checkpoint condensing' } }
+  const td = D.composeDiary('2026-10-14', dirty, (x) => x, [])
+  t.ok(!/automatically generated/.test(td), '素材里的脏数据在成文时也被挡住（不用改历史数据）')
+}
+
 t.done()

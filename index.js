@@ -999,9 +999,18 @@ function extractText(data) {
  *
  * 只认**开头**，不做全文匹配：用户真的在正文里贴一段 XML 是另一回事。
  */
-const INJECTED_HEADS = ['<system-reminder>', '<goal_round>', '<dsh-', '<silent/>']
+const INJECTED_HEADS = [
+  '<system-reminder>', '<goal_round>', '<dsh-', '<silent/>',
+  // ⚠️ 压缩检查点那段包装**不是 XML 标签**，原来漏了。
+  //    实测它长达 20375 字符、开头是 "This is an automatically generated checkpoint…"，
+  //    被日记当成"当天最长的一条"抓走，差点写进日记里。
+  'This is an automatically generated',
+]
+/** 长到这个份上就不是人打的字了（压缩检查点、整份文件…）。 */
+const MAX_QUOTABLE = 4000
 function isInjected(text) {
   const t = String(text || '').trimStart()
+  if (t.length > MAX_QUOTABLE) return true
   return INJECTED_HEADS.some((h) => t.startsWith(h))
 }
 

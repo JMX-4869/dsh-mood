@@ -132,10 +132,13 @@ export function dayBucket(d, key) {
       hours: {},           // { '22': 7 }  每小时多少条
       words: {},           // { 压缩包: 4 }  当天反复出现的词
       longest: null,       // { len, text }  最长的一条
+      quotes: [],          // [{ at, text }] 当天几句**主人真说过**的话（最多 4 条）
       stuckFrom: 0,        // 这一串报错是从什么时候开始的
       stuckMs: 0,          // 卡得最久的一次，累计毫秒
     }
   }
+  // ⚠️ 老数据没有 quotes 字段 —— 补上，别让成文时读到 undefined。
+  if (!Array.isArray(d.daily[key].quotes)) d.daily[key].quotes = []
   return d.daily[key]
 }
 
@@ -226,6 +229,37 @@ export function noteSwitch(d, from, to, now = Date.now()) {
 }
 
 /**
+ * 这一条是不是**被注入的框**，而不是人说的话。
+ *
+ * DSH 和插件自己都会往对话里塞东西（`<system-reminder>` 提醒、`<goal_round>` 续跑包装），
+ * 它们走的是同一个 `user/message` 事件 —— 不挡就会被当成"主人说过的话"。
+ *
+ * ⚠️ 实测后果：某天的 `longest` 抓到了一段 **20375 字符**的系统消息
+ *    （开头是 "This is an automatically generated check"），
+ *    高频词也变成了 `use` / `new` / `user` 这些英文 ——
+ *    日记要是去引用它，就会把一段系统提示当成主人说的话写进去。
+ *
+ * 只认**开头**，不做全文匹配：主人真的在正文里贴一段 XML 是另一回事。
+ * （index.js 里有一份同样的判断给归档用；这里自带一份，
+ *   是为了让 diary.js 单独搬走时也不会漏掉这条。）
+ */
+const INJECTED_HEADS = [
+  '<system-reminder>', '<goal_round>', '<dsh-', '<silent/>',
+  // ⚠️ 还有**压缩检查点**那段包装。实测它抓成了当天的"最长那条"：
+  //    20375 字符，开头是 "This is an automatically generated checkpoint…"。
+  //    它不是 XML 标签，原来那份黑名单里没有它 —— 于是日记差点去引用一段系统提示。
+  'This is an automatically generated',
+]
+/** 长到这个份上就不是人打的字了（压缩检查点、贴进来的整份文件…）。
+ *  当引语用不了，还会把词频带偏，所以干脆不收。 */
+const MAX_QUOTABLE = 4000
+export function isInjectedText(text) {
+  const t = String(text || '').trimStart()
+  if (t.length > MAX_QUOTABLE) return true
+  return INJECTED_HEADS.some((h) => t.startsWith(h))
+}
+
+/**
  * 记录活动：'message' | 'turn' | 'error'
  *
  * @param {string} [text] 用户这条消息的原文 —— 只有 message 用得上。
@@ -239,9 +273,20 @@ export function noteActivity(d, kind, now = Date.now(), text = '') {
     const hour = String(new Date(now).getHours())
     b.hours[hour] = (b.hours[hour] || 0) + 1
     const raw = String(text || '').trim()
-    if (raw) {
+    // ⚠️ **注入的框不算主人说的话** —— 不计词频、不参与"最长那条"、不当引语。
+    if (raw && !isInjectedText(raw)) {
       for (const w of words(raw)) b.words[w] = (b.words[w] || 0) + 1
       if (!b.longest || raw.length > b.longest.len) b.longest = { len: raw.length, text: raw.slice(0, 120) }
+      // ⚠️ 另外存**几句真话**。
+      //    光靠"高频词 + 最长那条"有个大漏洞：两者都空的时候（那两天就是这样），
+      //    成文时第二段整段写不出来，日记只剩"今天没多长时间 / 出了几次岔子"这种概括 ——
+      //    全是空话，一件具体的事都没有。而问题出在**素材**，不在文笔。
+      //    所以顺手留几句主人真说过的话，成文时可以拿来当"到底在干嘛"。
+      const t = raw.replace(/\s+/g, ' ').slice(0, 60)
+      if (t.length >= 12 && !b.quotes.some((q) => q.text === t)) {
+        b.quotes.push({ at: now, text: t })
+        if (b.quotes.length > 4) b.quotes.shift()
+      }
     }
   } else if (kind === 'turn') b.turns += 1
   else if (kind === 'error') {
@@ -508,9 +553,31 @@ export function composeDiary(key, bucket, moodLabel = (id) => id, headlines = []
     ], seed))
   } else if (words.length === 1) {
     work.push(`就围着${words[0]}转，别的什么也没干成。`)
+  } else {
+    // ⚠️ **词频和"最长那条"都空的时候，第二段原来整段写不出来。**
+    //    实测就是那两天的样子：只剩"今天没多长时间""出过几次岔子"——
+    //    全是概括，一件具体的事都没有。看着像日记，其实是模板。
+    //    问题不在文笔，在**素材**：那两天没攒下 words / longest。
+    //    现在改用当天留下的**真话**（quotes）兜底。
+    const qs = Array.isArray(bucket.quotes) ? bucket.quotes : []
+    if (qs.length) {
+      const q1 = qs[0].text.replace(/\s+/g, ' ').slice(0, 46)
+      work.push(pick([
+        `今天他提过「${q1}……」。就聊了这么点东西。`,
+        `印象最深的一句是「${q1}……」。`,
+        `翻来覆去其实就一件事 —— 他说「${q1}……」。`,
+      ], seed))
+      if (qs.length >= 2) {
+        const q2 = qs[1].text.replace(/\s+/g, ' ').slice(0, 32)
+        work.push(pick([
+          `后来又说「${q2}……」。`,
+          `还有一句：「${q2}……」。`,
+        ], seed))
+      }
+    }
   }
   // 自我暴露：真人不装，承认当时没底/犯了蠢
-  if (bucket.longest && bucket.longest.len >= 30 && bucket.longest.text) {
+  if (bucket.longest && bucket.longest.len >= 30 && bucket.longest.text && !isInjectedText(bucket.longest.text)) {
     const q = bucket.longest.text.replace(/\s+/g, ' ').slice(0, 50)
     work.push(pick([
       `中间他一次说了挺长一段，从「${q}……」开始的。我看了两遍才动手 —— 其实第一遍就没看懂，没敢说。`,
