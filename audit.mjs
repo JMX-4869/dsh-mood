@@ -253,6 +253,19 @@ const N = M.MOOD_IDS.length
     // ⚠️ 坑二：extractText 不认 assistant/message 的包了一层。
     //    user/message 的 data 是消息本身；assistant/message 是 { turn, step, message }。
     //    只认前者的话助手回复**全部静默丢失**。
+    // ⚠️ 坑二之二：**只取 type === 'text' 的块**。
+    //    活体验证时磁盘上躺的全是推理块（「Hmm — 我得想想」那种），
+    //    真正说出去的回复一句没有。DSH 自己的 textOf 也是按 type 取的。
+    const textOnly = /\(ty !== undefined && ty !== 'text'\) continue/.test(host)
+    textOnly ? OK('extractText 只取 text 块（推理块不进归档）')
+      : NG('extractText 不挑块类型 —— 归档会全是内心话')
+
+    // ⚠️ 坑二之三：时间只能用时间戳，**不许拿 event.seq 当时间**。
+    //    活体上 seq 是 17152 这种小整数，拿去当时间戳归档全变 1970。
+    const timeOk = /Number(event.at || event.ts || 0) || Date.now()/.test(host)
+      && !/event.seq !== undefined ? event.seq/.test(host)
+    timeOk ? OK('归档时间用时间戳不用 seq（否则全是 1970）') : NG('归档时间被 event.seq 污染')
+
     const handlesNested = /data\.message && typeof data\.message === 'object'/.test(host)
     handlesNested ? OK('extractText 认 assistant/message 的嵌套形状（data.message）')
       : NG('extractText 不认嵌套形状 —— 助手回复会全丢')

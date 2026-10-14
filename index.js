@@ -855,9 +855,17 @@ function extractText(data) {
     if (Array.isArray(content)) {
       for (const block of content) {
         if (!block) continue
-        if (typeof block === 'string') push(block)
-        else if (typeof block.text === 'string') push(block.text)
-        else if (block.type === 'text' && typeof block.value === 'string') push(block.value)
+        if (typeof block === 'string') { push(block); continue }
+        // ⚠️ **只取"给人看的正文"**，其余类型一律跳过。
+        //
+        //    活体验证时发现的：不挑类型的话，`content[]` 里的**推理块**也会被
+        //    当正文存进归档 —— 磁盘上躺的全是「Hmm — 这个我得想想」那种内心话，
+        //    真正说出去的回复一句没有，检索出来的也是这些。
+        //    DSH 自己的 textOf 就是按 `block.type === 'text'` 取的，跟着它走。
+        const ty = block.type
+        if (ty !== undefined && ty !== 'text') continue
+        if (typeof block.text === 'string') push(block.text)
+        else if (ty === 'text' && typeof block.value === 'string') push(block.value)
       }
     } else if (content && typeof content === 'object' && typeof content.text === 'string') {
       push(content.text)
@@ -1465,9 +1473,11 @@ export function apply(root, rawConfig) {
             try {
               const sid = (session && (session.id || session.sessionId)) || ''
               const txt = extractText(d)
-              // seq 优先于时间戳：同一毫秒可能发出两条不同消息，
-              // 只按时间做 id 会把后一条当成重复丢掉。
-              const when = event.seq !== undefined ? event.seq : (event.at || event.ts || Date.now())
+              // ⚠️ 时间只认**时间戳**，不要用 `event.seq`。
+              //    seq 是会话内的**序号**（活体上看到的是 17152 这种小整数），
+              //    拿去当时间戳的话归档里全是 1970-01-01，时间衰减和界面显示全废。
+              //    同毫秒两条的碰撞由 memory.js 的正文指纹解决，不靠这个。
+              const when = Number(event.at || event.ts || 0) || Date.now()
               if (txt) memory.note(type === 'assistant/message' ? 'assistant' : 'user', txt, sid, when)
             } catch { /* 归档失败不能影响对话 */ }
           }

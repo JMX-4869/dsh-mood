@@ -107,24 +107,66 @@ say('assistant/message', {
   },
 })
 
+// ⚠️ 推理块必须**不**被当成正文。
+//    活体验证时磁盘上躺的全是「Hmm — 这个我得想想」这种内心话，
+//    真正说出去的回复一句没有。DSH 自己的 textOf 也是按 type === 'text' 取的。
+say('assistant/message', {
+  turn: 4, step: 1,
+  message: {
+    role: 'assistant',
+    content: [
+      { type: 'reasoning', text: '这里我得想想，用户问的其实是存储位置那件事，先别急着答' },
+      { type: 'text', text: '存储位置我改好了，你去设置页刷新一下就能看到' },
+      { type: 'reasoning', text: '再说一句就收尾吧，别啰嗦' },
+    ],
+  },
+})
+
+// ⚠️ 时间只认时间戳，不能拿 event.seq 当时间。
+//    这里**故意**带上 seq（活体上看到的是 17152 这种小整数），断言时间没被它污染。
+onEvent(SESSION, {
+  type: 'assistant/message', seq: 17152,
+  data: { turn: 5, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: '这条带 seq，时间必须还是现在而不是 1970' }] } },
+})
+
 M.memory.flush()
 
 // ── 断言 ──
 console.log()
 const st = M.memory.stats()
 ok('归档文件真的落盘了', fs.existsSync(st.path), st.path)
-ok('条数 = 5（2 用户 + 3 助手）', st.count === 5, '实际 ' + st.count)
+ok('条数 = 7（2 用户 + 5 助手）', st.count === 7, '实际 ' + st.count)
 
 const rows = M.memory.load()
 const users = rows.filter((r) => r.k === 'u')
 const assts = rows.filter((r) => r.k === 'a')
 ok('用户消息 2 条', users.length === 2, users.length + '')
-ok('✨ 助手消息 3 条（第一版这里是 0 —— 形状不对，静默丢）', assts.length === 3, assts.length + '')
+ok('✨ 助手消息 5 条（第一版这里是 0 —— 形状不对，静默丢）', assts.length === 5, assts.length + '')
 ok('助手那条正文取对了',
   assts.some((r) => r.x.includes('改指针文件')), assts.map((r) => r.x.slice(0, 20)).join(' | '))
 ok('多段内容拼起来了（工具块被跳过）',
   assts.some((r) => r.x.includes('先看一眼目录') && r.x.includes('改成追加') && !r.x.includes('ops_glob')),
   assts.map((r) => r.x).filter((x) => x.includes('目录'))[0])
+
+// 推理块
+console.log()
+ok('✨ 推理块没被当正文存（活体上踩过）',
+  !rows.some((r) => r.x.includes('先别急着答') || r.x.includes('别啰嗦')),
+  rows.filter((r) => r.x.includes('啰嗦') || r.x.includes('急着答')).length + ' 条混进了推理')
+ok('同一段里的正文块照常取到',
+  assts.some((r) => r.x.includes('存储位置我改好了')),
+  assts.map((r) => r.x.slice(0, 16)).join(' | '))
+
+// 时间戳
+console.log()
+const nowMs = Date.now()
+const badTime = rows.filter((r) => Math.abs(nowMs - r.t) > 10 * 60 * 1000)
+ok('✨ 时间是真时间戳，不是 seq（活体上踩过）', badTime.length === 0,
+  badTime.length ? '有 ' + badTime.length + ' 条时间不对，最早 ' + new Date(Math.min(...rows.map((r) => r.t))).toISOString() : '')
+ok('带 seq 的那条时间也是现在',
+  rows.some((r) => r.x.includes('这条带 seq') && Math.abs(nowMs - r.t) < 60000),
+  rows.filter((r) => r.x.includes('这条带 seq')).map((r) => new Date(r.t).toISOString()).join(','))
+
 ok('跨会话：两条来源不同',
   new Set(rows.map((r) => r.s)).size === 2, [...new Set(rows.map((r) => r.s))].join(','))
 
@@ -138,7 +180,7 @@ ok('工具输出里带会话来源', /\[.*·.*\]/.test(r1.message), (r1.message 
 const r2 = tool.execute({ action: 'search', query: '不存在的东西zzz' })
 ok('查不到时说清楚', r2.ok && /没有/.test(r2.message), r2.message)
 const r3 = tool.execute({ action: 'stats' })
-ok('stats 报条数', r3.ok && /5 条/.test(r3.message), r3.message)
+ok('stats 报条数', r3.ok && /7 条/.test(r3.message), r3.message)
 const r4 = tool.execute({ action: 'recent', limit: 2 })
 ok('recent 返回 2 条', r4.ok && (r4.message.match(/\n/g) || []).length >= 2, (r4.message || '').slice(0, 60))
 const r5 = tool.execute({ action: 'search' })
