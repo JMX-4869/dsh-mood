@@ -19,6 +19,7 @@
     "sessions.js",
     "store.js",
     "test-api.mjs",
+    "test-events.mjs",
     "test-memory-e2e.mjs",
     "test-memory.mjs",
     "test-proactive.mjs",

@@ -1134,6 +1134,15 @@ export function apply(root, rawConfig) {
    *    对象是**原地改**的，赋一次就够。
    */
   let proactiveRef = null
+  /**
+   * 「立刻试一次重启汇报」的入口 —— mountCore 里赋值。
+   *
+   * 有这个是因为：**这个功能只能等下一次重启才能验证**，而重启不是随时能做的。
+   * 有了它，设置页就能放一个「试一次」按钮 —— 标成欠一次 + 当场跑一遍，
+   * 成不成、为什么不成，都写在 lastReportCheck 里。
+   * （写测试时也靠它 —— 不然碰不到 mountCore 里那份活的状态。）
+   */
+  let tryReportRef = null
   const log = (...a) => { try { root?.logger?.info?.(...a) } catch {} }
 
   // 额外层：可在配置里单独关掉，不影响人设插件，也不留残留。
@@ -1558,6 +1567,7 @@ export function apply(root, rawConfig) {
     let turnBusy = false              // 是不是有回合在跑
     let proactive = loadProactive()   // 主动开口的状态（默认 enabled:false）
     proactiveRef = proactive          // ← 给 mountApi 的路由用（见外层那段注释）
+    tryReportRef = maybeReportRestart // ← 同上：路由要能立刻试一次
     /**
      * 认一下这次是不是"重启"。
      *
@@ -1679,6 +1689,9 @@ export function apply(root, rawConfig) {
         pendingStale: !!proactive.pendingStale,
         reportedAt: proactive.reportedAt || 0,
         procStart: proactive.procStart || 0,
+        // 上一次"重启汇报"检查的结论 —— 没触发时**为什么**没触发。
+        // 没这个字段的话，主人只能问"怎么没汇报"，然后两边一起猜。
+        lastReportCheck: proactive.lastReportCheck || null,
         lastUserAt, lastSpokeAt: proactive.lastSpokeAt || 0,
         sentToday: sentToday(proactive, now),
         awaitingReply: !!proactive.awaitingReply,
@@ -1686,6 +1699,19 @@ export function apply(root, rawConfig) {
         gates,
         file: proactiveFile(),
       }
+    }
+
+    /**
+     * 从会话对象里取 id。
+     *
+     * ⚠️ 别只赌一个字段名。原来 `maybeSpeak` 里写的是 `liveSession.header.id`，
+     *    而硬盘记忆那边用的是 `session.id` —— **同一个会话对象，两处取法不一样**，
+     *    说明当时我不确定哪个才对。猜错的后果是 `!sid` 直接 return：
+     *    **什么都不发生，而且完全不报错** —— 重启汇报就是这么被吞掉的。
+     */
+    function sessionIdOf(s) {
+      if (!s) return ''
+      return (s.header && s.header.id) || s.id || s.sessionId || ''
     }
 
     /**
@@ -1703,7 +1729,7 @@ export function apply(root, rawConfig) {
         const now = Date.now()
         const verdict = canSpeak(proactive, now, { lastUserAt, busy: turnBusy })
         if (!verdict.ok) return
-        const sid = liveSession.header && liveSession.header.id
+        const sid = sessionIdOf(liveSession)
         if (!sid) return
         const idleMs = now - lastUserAt
         // 先记账再投递：投递失败也不能无限重试（宁可少说，不能刷屏）
@@ -1728,28 +1754,40 @@ export function apply(root, rawConfig) {
      *    等于永远不说。但**静默/允许时段照样管** —— 凌晨三点重启也不该吵。
      *
      * 说不说仍然由模型决定（投的是 <silent/> 可回绝的框），跟普通开口一个路子。
+     *
+     * ⚠️ **每一道 return 都留一条诊断**（proactive.lastReportCheck）。
+     *    第一版没留，结果主人问"怎么没汇报"时只能靠猜 ——
+     *    这类"静默 return"从外面完全看不出来。诊断一路透到设置页。
      */
     async function maybeReportRestart() {
+      const skip = (s) => { proactive.lastReportCheck = { at: Date.now(), why: s } }
       try {
-        if (!sessionCtl || typeof sessionCtl.prompt !== 'function') return
-        if (!liveSession) return
+        if (!sessionCtl || typeof sessionCtl.prompt !== 'function') { skip('拿不到会话控制器'); await persistProactive(); return }
+        if (!liveSession) { skip('还没见过任何会话事件'); await persistProactive(); return }
         const c = proactive.cfg || PRO_CFG
-        if (!c.enabled) return
+        if (!c.enabled) { skip('主动开口关着'); await persistProactive(); return }
         const kind = proactive.pendingRestart ? 'restart' : (proactive.pendingStale ? 'stale' : '')
-        if (!kind) return
-        if (turnBusy) return
+        if (!kind) { skip('没有欠着的汇报'); await persistProactive(); return }
+        if (turnBusy) { skip('回合还在跑'); await persistProactive(); return }
         const now = Date.now()
         const h = new Date(now).getHours()
         // 时段/静默照样管 —— 只是不要求空闲
-        if (!slotAllowed(c, h)) return
+        if (!slotAllowed(c, h)) { skip(h + ' 点不在允许时段里'); await persistProactive(); return }
         const { quietFrom: a, quietTo: b } = c
         const isQuiet = a < b ? (h >= a && h < b) : (h >= a || h < b)
-        if (isQuiet) return
-        const sid = liveSession.header && liveSession.header.id
-        if (!sid) return
+        if (isQuiet) { skip(a + '~' + b + ' 点静默'); await persistProactive(); return }
+        const sid = sessionIdOf(liveSession)
+        // 这一条最阴：会话对象里字段名猜错 → 什么都不发生、也不报错。
+        if (!sid) {
+          skip('会话对象里取不到 id（顶层：' + Object.keys(liveSession).slice(0, 8).join('/')
+            + (liveSession.header ? ' · header：' + Object.keys(liveSession.header).slice(0, 8).join('/') : ' · 没有 header') + '）')
+          await persistProactive()
+          return
+        }
         // 先清标记再投递：投递失败也不能在下一个回合重来（宁可少说，不能刷屏）
         markReported(proactive, now)
         markSpoke(proactive, now)
+        skip('已投递（' + kind + '）')
         await persistProactive()
         await sessionCtl.prompt({
           requestId: 'dsh-mood-boot-' + now.toString(36) + '-' + Math.random().toString(36).slice(2, 8),
@@ -1758,8 +1796,9 @@ export function apply(root, rawConfig) {
           content: [{ type: 'text', text: buildRestartNudge(kind) }],
         }, new AbortController().signal)
         ctx.logger?.info?.('[dsh-mood] 重启汇报已投递（' + kind + '）')
-      } catch (e) {
-        ctx.logger?.warn?.('[dsh-mood] 重启汇报失败：' + ((e && e.message) || e))
+      } catch (err) {
+        proactive.lastReportCheck = { at: Date.now(), why: '抛错：' + ((err && err.message) || err) }
+        ctx.logger?.warn?.('[dsh-mood] 重启汇报失败：' + ((err && err.message) || err))
       }
     }
 
@@ -2398,6 +2437,29 @@ export function apply(root, rawConfig) {
                     }
                     if (typeof j.reportRestart === 'boolean') p.cfg.reportRestart = j.reportRestart
                     if (typeof j.warnStale === 'boolean') p.cfg.warnStale = j.warnStale
+
+                    // ── 两个"试一下"的动作 ──
+                    //
+                    // 重启汇报**只能等下一次真重启才能验证**，而重启不是随时能做的。
+                    // 有了这两个，界面上就能放个按钮当场试：
+                    //   markRestart —— 标成"欠一次汇报"（下一次回合结束会走正常流程）
+                    //   tryReport   —— 立刻跑一遍，成没成写在 lastReportCheck 里
+                    if (j.action === 'markRestart') {
+                      p.pendingRestart = true
+                      p.reportedAt = 0
+                      p.lastReportCheck = null
+                      saveProactive(p)
+                      return send(proactiveStatus())
+                    }
+                    if (j.action === 'tryReport') {
+                      if (!p.pendingRestart && !p.pendingStale) p.pendingRestart = true
+                      saveProactive(p)
+                      const fn = tryReportRef
+                      if (typeof fn !== 'function') return send({ ok: false, error: '还没挂载' }, 503)
+                      return Promise.resolve(fn()).then(() => send(proactiveStatus()))
+                        .catch((e2) => send({ ok: false, error: String((e2 && e2.message) || e2) }, 500))
+                    }
+
                     saveProactive(p)
                     return send(proactiveStatus())
                   } catch (e) {

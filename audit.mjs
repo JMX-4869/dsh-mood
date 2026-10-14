@@ -291,6 +291,25 @@ const N = M.MOOD_IDS.length
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/(^|[^:])\/\/[^\n]*/g, '$1')
     const code = stripComments(host2)
+    // ⚠️ 路由能跑 ≠ 事件能跑。三个主动行为（归档 / 心情 / 重启汇报）
+    //    全挂在 session/event 上，而**没有一个测试喂过事件** ——
+    //    所以"检测到了重启但一句话没说"只能靠主人在界面上发现。
+    const evTest = fs.existsSync(SRC + '/test-events.mjs')
+    evTest ? OK('有 test-events.mjs（真的喂 session/event）') : NG('缺 test-events.mjs —— 事件那半边没人管')
+
+    // ⚠️ 会话 id 不许只赌一个字段名。
+    //    `liveSession.header.id` 猜错的话 `!sid` 直接 return ——
+    //    **什么都不发生、也不报错**。重启汇报就是这么被吞掉的。
+    const sidHelper = /function sessionIdOf\(/.test(code)
+    sidHelper ? OK('会话 id 走 sessionIdOf（三个字段都试）') : NG('会话 id 只赌一个字段名 —— 猜错就静默失效')
+
+    // ⚠️ 静默 return 必须留诊断，否则"怎么没触发"只能靠猜
+    const hasDiag = /lastReportCheck/.test(code) && /proactive\.lastReportCheck = /.test(code)
+    hasDiag ? OK('重启汇报每道 return 都留诊断（lastReportCheck）') : NG('重启汇报的静默 return 没有诊断')
+
+    // 必须有"立刻试一次"的入口 —— 不然这个功能只能等下一次真重启才能验证
+    const tryNow = /tryReportRef/.test(code) && /action === 'tryReport'/.test(code)
+    tryNow ? OK('有「立刻试一次」入口（不用等重启就能验证）') : NG('没有立刻试一次的入口')
 
     const noRaw = !/JSON\.parse\(raw\b/.test(code)
     noRaw ? OK('路由里没有引用未定义的 raw') : NG('路由用了未定义的 raw —— 请求一到就 500')

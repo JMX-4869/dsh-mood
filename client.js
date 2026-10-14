@@ -1251,6 +1251,13 @@ window.__ModuleLoader__.load({
             '两条都', h('b', null, '受静默和允许时段约束'),
             ' —— 凌晨三点重启也不吵你。而且说不说仍然由它自己决定，可以只回一个回绝标记。',
           ),
+          // 上一次检查的结论 —— 没触发时**为什么**没触发。
+          // 没有这一行，"怎么没汇报"就只能两边一起猜。
+          d.lastReportCheck
+            ? h('div', { className: 'hintline' },
+              '上次检查：', h('b', null, d.lastReportCheck.why),
+              '（' + new Date(d.lastReportCheck.at).toLocaleTimeString('zh-CN') + '）')
+            : null,
         ),
 
         h('div', { className: 'tools' },
