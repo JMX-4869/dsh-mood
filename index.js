@@ -887,6 +887,20 @@ function extractText(data) {
   return ''
 }
 
+/**
+ * 这一条是不是**被注入的框**，而不是人说的话。
+ *
+ * DSH 和插件自己都会往对话里塞东西，它们同样走 user/message 事件 ——
+ * 不挡的话会被当成用户说过的话归档，检索时返回一堆机器生成的提醒。
+ *
+ * 只认**开头**，不做全文匹配：用户真的在正文里贴一段 XML 是另一回事。
+ */
+const INJECTED_HEADS = ['<system-reminder>', '<goal_round>', '<dsh-', '<silent/>']
+function isInjected(text) {
+  const t = String(text || '').trimStart()
+  return INJECTED_HEADS.some((h) => t.startsWith(h))
+}
+
 function countHits(text, words) {
   let n = 0
   for (const w of words) if (text.includes(w)) n++
@@ -1405,7 +1419,14 @@ export function apply(root, rawConfig) {
             dyn.push(`这是**混合态**：以「${s.primaryLabel}」为主导，同时掺着 ${s.mixed.map((m) => '「' + m.label + '」').join('、')}。`)
             dyn.push('两个味道都要透出来，但**主导的那个定调，其它的只是点缀**，别平均分力气。')
           }
-          dyn.push(`行为倾向：${s.hintLines.join('；')}`)
+          // ⚠️ 拼接前把每条末尾的句号去掉。
+          //    每条 hint 自己结尾都带「。」，join('；') 之后就变成
+          //    「…回复保持常态节奏。；还带点开心：…」—— 看着像没写完。
+          //    这个 bug **每一轮提示词里都有**，但没有任何测试覆盖到：
+          //    提示词段只测了"跑得通""有这几段"，没人看标点。
+          const joinHints = (xs) => xs.map((x) => String(x).replace(/[。．.]+$/, '')).join('；')
+          dyn.push(`行为倾向：${joinHints(s.hintLines)}。`)
+          // innerLines 是连着写的（每条自带括号开头），不加分隔符
           dyn.push(`内心语气：${s.innerLines.join('')}`)
           if (persona) {
             const who = persona.name ? `「${persona.name}」` : ''
@@ -1503,7 +1524,14 @@ export function apply(root, rawConfig) {
               //    拿去当时间戳的话归档里全是 1970-01-01，时间衰减和界面显示全废。
               //    同毫秒两条的碰撞由 memory.js 的正文指纹解决，不靠这个。
               const when = Number(event.at || event.ts || 0) || Date.now()
-              if (txt) memory.note(type === 'assistant/message' ? 'assistant' : 'user', txt, sid, when)
+              // ⚠️ **注入的框不是对话，别归档。**
+              //    DSH 和插件自己都会往对话里塞东西：`<system-reminder>`（插件提醒）、
+              //    `<goal_round>`（自动续跑的包装）。它们走的是 user/message 事件，
+              //    所以会被当成"用户说的话"存下来 —— 活体上真混进去两条，
+              //    检索时会被当成历史对话返回，把人带偏。
+              if (txt && !isInjected(txt)) {
+                memory.note(type === 'assistant/message' ? 'assistant' : 'user', txt, sid, when)
+              }
             } catch { /* 归档失败不能影响对话 */ }
           }
           // ── 主动开口用到的三个观察点 ──
@@ -1686,6 +1714,7 @@ export function apply(root, rawConfig) {
         reportRestart: c.reportRestart !== false,
         warnStale: c.warnStale !== false,
         pendingRestart: !!proactive.pendingRestart,
+        pendingSince: proactive.pendingSince || 0,
         pendingStale: !!proactive.pendingStale,
         reportedAt: proactive.reportedAt || 0,
         procStart: proactive.procStart || 0,

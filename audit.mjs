@@ -295,6 +295,14 @@ const N = M.MOOD_IDS.length
     //    全挂在 session/event 上，而**没有一个测试喂过事件** ——
     //    所以"检测到了重启但一句话没说"只能靠主人在界面上发现。
     const evTest = fs.existsSync(SRC + '/test-events.mjs')
+    const toolTest = fs.existsSync(SRC + '/test-tools.mjs')
+    toolTest ? OK('有 test-tools.mjs（真调每个工具 + 看提示词段正文）') : NG('缺 test-tools.mjs —— 工具的 execute 从没被调过')
+
+    // 提示词是模型每轮都要读的 —— 标点写坏了不报错，只会让人读得别扭。
+    // 「。；」那个 bug 每一轮都在，但没人测过。
+    const hintJoin = /const joinHints = \(xs\) => xs\.map\(\(x\) => String\(x\)\.replace/.test(code)
+    hintJoin ? OK('行为倾向拼接前清掉了末尾句号（不会出现「。；」）') : NG('行为倾向直接 join —— 会出现「。；」')
+
     evTest ? OK('有 test-events.mjs（真的喂 session/event）') : NG('缺 test-events.mjs —— 事件那半边没人管')
 
     // ⚠️ 会话 id 不许只赌一个字段名。

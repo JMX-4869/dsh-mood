@@ -1258,6 +1258,14 @@ window.__ModuleLoader__.load({
               '上次检查：', h('b', null, d.lastReportCheck.why),
               '（' + new Date(d.lastReportCheck.at).toLocaleTimeString('zh-CN') + '）')
             : null,
+          // 从「认出重启」到「真的说出口」隔了多久。
+          // 第一版这里隔了 5 分钟，而当时没有任何数据能看出这件事，只能猜。
+          (d.pendingSince && d.reportedAt)
+            ? h('div', { className: 'hintline' },
+              '上次：从重启到说出口隔了 ',
+              h('b', null, spellMinutes(Math.max(0, Math.round((d.reportedAt - d.pendingSince) / 60000)))),
+              '（' + new Date(d.pendingSince).toLocaleTimeString('zh-CN') + ' → ' + new Date(d.reportedAt).toLocaleTimeString('zh-CN') + '）')
+            : null,
         ),
 
         h('div', { className: 'tools' },

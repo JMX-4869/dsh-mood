@@ -97,6 +97,7 @@ export function blankProactive() {
     //    process.uptime() 反推出来的进程启动时刻不受 HMR 影响。
     procStart: 0,
     pendingRestart: false,   // 检测到重启 → 等下一次回合结束时汇报
+    pendingSince: 0,         // 什么时候挂上的 —— 用来量「从重启到真的说出口」隔了多久
     pendingStale: false,     // 插件文件比进程还新 → 等下一次回合结束时提醒
     reportedAt: 0,
   }
@@ -230,7 +231,11 @@ export function noteBoot(p, now = Date.now(), newestFileMtime = 0) {
   // 但**宿主配置和 cordis.patch.yml 不会跟着变** —— 所以"要重启"这话仍然成立。
   const stale = !!newestFileMtime && newestFileMtime > ps + 5000
 
-  if (restarted && p.cfg && p.cfg.reportRestart !== false) p.pendingRestart = true
+  if (restarted && p.cfg && p.cfg.reportRestart !== false) {
+    // 只在「从没挂过」时记时间 —— 重复挂上不该把起点往后推，否则延迟会越量越小
+    if (!p.pendingRestart) p.pendingSince = now
+    p.pendingRestart = true
+  }
   if (stale && p.cfg && p.cfg.warnStale !== false) p.pendingStale = true
   return { restarted, stale }
 }
