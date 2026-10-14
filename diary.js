@@ -104,7 +104,13 @@ export function saveDiary(d) {
     writeFileSync(tmp, JSON.stringify(d, null, 2), 'utf8')
     renameSync(tmp, diaryFile())
     return true
-  } catch {
+  } catch (e) {
+    // ⚠️ **必须出声。** 原来这里只 `return false`，而调用方（index.js 的 flushAll）
+    //    写的是 `try { saveDiary(diary) } catch {}` —— 函数内部已经 catch 了，
+    //    外层那个 catch 永远不触发，返回的 false 又被丢掉，
+    //    于是"日记没存上"这件事**在整条链上消失了**。
+    //    和 saveState 统一约定：写盘失败一律记一条。
+    try { console.error('[dsh-mood] 日记保存失败:', (e && e.message) || e) } catch { /* 连日志都写不出去就没办法 */ }
     return false
   }
 }

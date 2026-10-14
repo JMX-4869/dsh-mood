@@ -120,7 +120,9 @@ export function saveProactive(p) {
     writeFileSync(tmp, JSON.stringify(p, null, 2), 'utf8')
     renameSync(tmp, proactiveFile())
     return true
-  } catch {
+  } catch (e) {
+    // 和 saveState / saveDiary / saveNews 一个约定：写盘失败必须出声
+    try { console.error('[dsh-mood] 主动开口设置保存失败:', (e && e.message) || e) } catch { /* 没办法 */ }
     return false
   }
 }

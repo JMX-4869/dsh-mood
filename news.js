@@ -618,7 +618,9 @@ export function saveNews(n) {
     writeFileSync(tmp, JSON.stringify(n, null, 2), 'utf8')
     renameSync(tmp, newsFile())
     return true
-  } catch {
+  } catch (e) {
+    // 和 saveState / saveDiary 一个约定：写盘失败必须出声（不然调用方丢掉 false 就没了）
+    try { console.error('[dsh-mood] 时事缓存保存失败:', (e && e.message) || e) } catch { /* 没办法 */ }
     return false
   }
 }
