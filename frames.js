@@ -243,10 +243,32 @@ export function cleanFrames(dir) {
 }
 
 /**
+ * 删掉 `baseDir` 底下**除 `keepName` 之外的所有东西**。
+ *
+ * 这是"抽完、看完就删"的主力：每次抽帧前调一次，
+ * 上一批连同临时视频目录一起没了，磁盘上永远只有**当前这一批**。
+ *
+ * ⚠️ 别拿 `sweepOldFrames(base, 0)` 去凑这个效果 —— 它的判据是 mtime，
+ *    而刚建的那批 mtime 就是"现在"，`now - mtime > 0` 会把它自己也算进去。
+ *    （写这段的时候差点就这么干了。）
+ */
+export function cleanExcept(baseDir, keepName) {
+  let n = 0
+  try {
+    if (!existsSync(baseDir)) return 0
+    for (const f of readdirSync(baseDir)) {
+      if (f === keepName) continue
+      try { rmSync(join(baseDir, f), { force: true, recursive: true }); n++ } catch { /* 删不掉就算了 */ }
+    }
+  } catch { /* 目录不在就是干净的 */ }
+  return n
+}
+
+/**
  * 时限清理：删掉超过 `maxAgeMs` 没动过的批次目录。
  *
- * 为什么还要这个：清理是"下一次抽帧时顺手做"，但如果主人抽完帧就再也没碰过
- * 这个功能，那一批图会一直躺在磁盘上。所以每次抽帧前再按时间扫一遍。
+ * 正常情况下靠 `cleanExcept` 就够了。这个留着当**兜底**：
+ * 万一某次抽帧中途挂了（进程被杀、磁盘满），会留下没人管的孤儿目录。
  */
 export function sweepOldFrames(baseDir, maxAgeMs = 2 * 3600 * 1000, now = Date.now()) {
   let removed = 0

@@ -160,6 +160,27 @@ const t = suite('视频抽帧')
   t.ok(!fs.existsSync(oldDir), '老批次真没了')
   t.ok(fs.existsSync(newDir), '新批次留着（不能把刚抽的删了）')
 
+  // ⚠️ cleanExcept：每次抽帧前"除当前这批外全清" —— 这才是"读取完自动删除"的主力。
+  //    原来只调了 sweepOldFrames(2 小时)，也就是**只删超过两小时的**；
+  //    而工具输出里我写的是"下一批抽帧时这一批会自动删掉" —— **那句话当时是假的**。
+  {
+    const D = path.join(TMP, 'ce')
+    fs.mkdirSync(path.join(D, 'b1'), { recursive: true })
+    fs.mkdirSync(path.join(D, 'b2'), { recursive: true })
+    fs.mkdirSync(path.join(D, 'b3'), { recursive: true })
+    fs.mkdirSync(path.join(D, '_tmp_video'), { recursive: true })
+    for (const [d, f] of [['b1', 'a.png'], ['b2', 'b.png'], ['b3', 'c.png'], ['_tmp_video', 'v.mp4']]) {
+      fs.writeFileSync(path.join(D, d, f), 'x')
+    }
+    t.eq(fs.readdirSync(D).length, 4, '造了 4 个目录')
+    t.eq(F.cleanExcept(D, 'b3'), 3, 'cleanExcept 删掉另外 3 个')
+    t.eq(fs.readdirSync(D).join(','), 'b3', '只剩当前这批')
+    t.ok(fs.existsSync(path.join(D, 'b3', 'c.png')), '当前这批的文件**没被误删**')
+    t.ok(!fs.existsSync(path.join(D, '_tmp_video')), '上次的临时视频目录也清了')
+    t.noThrow(() => F.cleanExcept(path.join(TMP, '不存在'), 'x'), '清不存在的目录不崩')
+    t.eq(F.cleanExcept(D, 'b3'), 0, '已经只剩它了，再清不报错也不多数')
+  }
+
   fs.rmSync(TMP, { recursive: true, force: true })
 }
 

@@ -495,9 +495,18 @@ export async function fetchVideoFrames(url, opts = {}) {
   F.ensureDir(batch)
   F.ensureDir(tmp)
 
-  // 上一批 + 超时的批次先清掉 —— "读取完自动删除"落地在这儿
-  F.sweepOldFrames(base, 2 * 3600 * 1000)
-  F.cleanFrames(tmp)
+  // ── 清理：**每次抽帧都把旧的整批删掉** ──
+  //
+  // ⚠️ 原来这里只有 `sweepOldFrames(base, 2 小时)` —— 也就是**只删超过两小时的**。
+  //    但工具输出里我写的是「下一批抽帧时这一批会自动删掉」——**那句话是假的**：
+  //    下一批来的时候上一批还老老实实躺在磁盘上。
+  //    主人要的是"抽完、看完就删"，不是"攒两小时再删"。
+  //
+  //    改成：把 base 底下**除这一批之外的全部删掉**（含上一次的临时视频目录）。
+  //    代价：一轮里连着抽两个视频的话，第一个的图会被第二个冲掉 ——
+  //    所以工具输出里提醒了"要看就现在看"。这比默默攒着更符合要求。
+  //    （sweepOldFrames 留着当兜底：万一某次抽帧中途挂了、留下孤儿目录。）
+  F.cleanExcept(base, batch.split(/[\\/]/).pop())
 
   let title = ''
   let durationSec = 0
