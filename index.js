@@ -15,7 +15,7 @@ import { dataFile, storageStatus, migrateStorage, humanSize, invalidateDataDir }
  *
  * 状态持久化在 $DSH_HOME/dsh-mood.json（默认 ~/.dsh/dsh-mood.json）。
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, statSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, statSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
@@ -1736,14 +1736,20 @@ export function apply(root, rawConfig) {
         let newest = 0
         try {
           const here = dirname(fileURLToPath(import.meta.url))
-          for (const f of ['index.js', 'client.js', 'proactive.js', 'memory.js', 'diary.js', 'news.js', 'store.js']) {
+          // ⚠️ **扫目录，别写死清单。**
+          //    原来是一串硬编码的文件名，加了 `frames.js` 之后忘了往里补 ——
+          //    于是"只改了 frames.js"这种情况检测不到，重启汇报也不会欠上。
+          //    这种清单迟早会漏，索性让插件自己数自己有哪些 .js。
+          //    （只数跟运行时有关的：client.js 是界面代码，改了也确实要重启才生效。）
+          for (const f of readdirSync(here)) {
+            if (!/\.js$/.test(f) || /^test-/.test(f) || f === 'audit.mjs') continue
             try { const st = statSync(join(here, f)); if (st.mtimeMs > newest) newest = st.mtimeMs } catch { /* 没有就算了 */ }
           }
         } catch { /* 拿不到自己的目录就算了 */ }
         const r = noteBoot(proactive, Date.now(), newest)
         if (r.restarted || r.stale) {
           await persistProactive()
-          log('dsh-mood: 重启检测 → restarted=' + r.restarted + ' stale=' + r.stale)
+          log('dsh-mood: 重启检测 → restarted=' + r.restarted + ' stale=' + r.stale + ' needed=' + r.needed)
         }
       } catch (e) { log('dsh-mood 重启检测失败：' + ((e && e.message) || e)) }
     }
