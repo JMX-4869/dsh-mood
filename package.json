@@ -88,6 +88,6 @@
     "jsdom": "^30.0.0"
   },
   "scripts": {
-    "test": "node audit.mjs && node test-fixtures.mjs && node test-client.mjs && node test-tools.mjs && node test-events.mjs && node test-api.mjs && node test-proactive.mjs && node test-memory.mjs && node test-memory-e2e.mjs && node test-porting.mjs"
+    "test": "node test-api.mjs && node test-client.mjs && node test-decay.mjs && node test-deep.mjs && node test-diary.mjs && node test-events.mjs && node test-fixtures.mjs && node test-logic.mjs && node test-memory-e2e.mjs && node test-memory.mjs && node test-modern.mjs && node test-order.mjs && node test-porting.mjs && node test-proactive.mjs && node test-romance.mjs && node test-sessions.mjs && node test-tools.mjs && node test-voice.mjs"
   }
 }

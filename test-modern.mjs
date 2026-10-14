@@ -1,40 +1,74 @@
+/**
+ * 当代说法那 4 种（内耗 / 破防 / 摆烂 / 上头）。
+ *
+ * ⚠️ 原来这个文件**只打印**得分，没有任何断言 —— 连那个"零误报"的结论
+ *    也只是 `console.log` 一句，红了也没人知道。
+ */
 import * as M from 'file:///D:/chajian/dsh-mood/index.js'
+import { suite, acc, top } from './testkit.mjs'
 
+const t = suite('当代说法')
+const J = M.judgeMessage
 const L = (id) => M.MOODS[id].label
-const acc = (msgs) => {
-  const a = {}
-  for (const t of msgs) {
-    const d = M.judgeMessage(t)
-    for (const [k, v] of Object.entries(d)) a[k] = (a[k] || 0) + v
+const MODERN = M.MOOD_TIERS.modern
+
+t.eq(MODERN.length, 4, '当代层正好 4 种')
+t.has(MODERN, 'burnout', '有内耗')
+t.has(MODERN, 'cracked', '有破防')
+t.has(MODERN, 'checkedout', '有摆烂')
+t.has(MODERN, 'hyper', '有上头')
+{
+  let ok = true
+  for (const id of MODERN) if (M.MOODS[id].tier !== 'modern') ok = false
+  t.ok(ok || !('tier' in M.MOODS[MODERN[0]]), '当代层这几种存在')
+}
+
+// ── 各自能被自己的说法点亮 ──
+{
+  const cases = [
+    ['burnout', ['内耗太严重了', '一直在想太多', '又绕回来了，自我怀疑']],
+    ['cracked', ['这句话破防了', '绷不住，扎心', '心态崩了']],
+    ['checkedout', ['算了摆烂吧', '卷不动了，躺平', '爱咋咋地']],
+    ['hyper', ['这个太上头了', '根本停不下来', '越看越来劲']],
+  ]
+  for (const [id, msgs] of cases) {
+    const got = top(acc(J, msgs), 3).map((x) => x[0])
+    t.has(got, id, L(id) + ' 被自己那组说法点亮（前 3 里有它）')
   }
-  return Object.entries(a).sort((x, y) => y[1] - x[1]).slice(0, 3)
-    .map(([k, v]) => L(k) + ' +' + (Math.round(v * 10) / 10)).join('  ')
 }
 
-console.log('=== 心情总数:', M.MOOD_IDS.length, '===')
-console.log('  ' + M.MOOD_IDS.map(L).join(' · '))
-console.log()
-
-console.log('=== 当代说法触发 ===')
-console.log('  内耗:', acc(['内耗太严重了', '一直在想太多', '又绕回来了，自我怀疑']))
-console.log('  破防:', acc(['这句话破防了', '绷不住，扎心', '心态崩了']))
-console.log('  摆烂:', acc(['算了摆烂吧', '卷不动了，躺平', '爱咋咋地']))
-console.log('  上头:', acc(['这个太上头了', '根本停不下来', '越看越来劲']))
-console.log()
-
-console.log('=== 区分度：新词 vs 老词不该被混为一谈 ===')
-console.log('  内耗 vs 焦虑  : 内耗=', acc(['想太多了，内耗']), ' | 焦虑=', acc(['怕来不及，万一出事']))
-console.log('  摆烂 vs 麻木  : 摆烂=', acc(['摆烂，不想卷']), ' | 麻木=', acc(['无所谓，没感觉']))
-console.log('  上头 vs 兴奋  : 上头=', acc(['上头，停不下来']), ' | 兴奋=', acc(['太好了！！']))
-console.log('  破防 vs 委屈  : 破防=', acc(['破防了，绷不住']), ' | 委屈=', acc(['都怪你，明明不是我的错']))
-console.log()
-
-console.log('=== 误报检查 ===')
-const tech = ['把这个细分补绘做成Live2D模型', '帮我看下这个报错', '图层分割成三份', '这个方案不行，重来', '继续优化压缩包']
-let dirty = 0
-for (const t of tech) {
-  const d = M.judgeMessage(t)
-  const hit = Object.entries(d).filter(([k, v]) => v > 0 && ['burnout', 'cracked', 'checkedout', 'hyper'].includes(k))
-  if (hit.length) { dirty++; console.log('  ❌ "' + t + '" → ' + hit.map(([k]) => L(k)).join(',')) }
+// ── ⚠️ 误报：技术对话绝不能被当成"摆烂/破防/内耗/上头" ──
+// 这是插件最容易翻车的地方 —— 用户说的是代码，不能被读成情绪。
+{
+  const TECH = ['把这个细分补绘做成Live2D模型', '帮我看下这个报错', '图层分割成三份',
+    '这个方案不行，重来', '继续优化压缩包', '把这个函数重构一下',
+    '压缩包里的材质全部绑定上去', '绑定顺序错了，面部变形器就选不到部件']
+  let dirty = []
+  for (const msg of TECH) {
+    const d = J(msg)
+    const hit = MODERN.filter((k) => d[k] > 0)
+    if (hit.length) dirty.push(JSON.stringify(msg.slice(0, 16)) + ' → ' + hit.map(L).join(','))
+  }
+  t.eq(dirty.length, 0, TECH.length + ' 条技术消息零误报' + (dirty.length ? '\n       ' + dirty.join('\n       ') : ''))
 }
-console.log(dirty === 0 ? '  ✅ 5 条技术消息零误报' : '  ❌ ' + dirty + ' 条误报')
+
+// ── 区分度：新词和老词不该被混为一谈 ──
+{
+  t.ok(top(acc(J, ['想太多了，内耗']), 1)[0][0] === 'burnout', '内耗 ≠ 焦虑')
+  t.ok(top(acc(J, ['摆烂，不想卷']), 1)[0][0] === 'checkedout', '摆烂 ≠ 麻木')
+  t.ok(top(acc(J, ['上头，停不下来']), 1)[0][0] === 'hyper', '上头 ≠ 兴奋')
+  t.ok(top(acc(J, ['破防了，绷不住']), 1)[0][0] === 'cracked', '破防 ≠ 委屈')
+}
+
+// ── 这四种也必须在提示词里有对应写法（不然模型不认识）──
+{
+  let ok = true
+  const missing = []
+  for (const id of MODERN) {
+    const m = M.MOODS[id]
+    if (!m.hint || !m.inner || !m.label) { ok = false; missing.push(id) }
+  }
+  t.ok(ok, '四种都有 label / hint / inner' + (missing.length ? '（缺 ' + missing.join(',') + '）' : ''))
+}
+
+t.done()

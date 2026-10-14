@@ -516,6 +516,27 @@ const DISTRESS = [
   '伤害自己', '自残', '跳下去', '遗书', '交代后事',
 ]
 
+/**
+ * 命中 DISTRESS 但**其实是别的话**的例外。
+ *
+ * ⚠️ 为什么需要这个：`想死` 是上面最短、也是最重要的一条，
+ *    但它在中文里同时是**两句很常见的习语**的一部分：
+ *
+ *      「想死我了」「想死你了」   = 太想你了（撒娇、不是痛苦）
+ *      「想死了这需求」          = 开发里的夸张（不是痛苦）
+ *
+ *    按上面那条"误报比漏报更糟"的原则，这些得挡掉 ——
+ *    不然主人随口撒个娇就被切成"严肃模式"，几次之后真出事时就不当回事了。
+ *
+ * ⚠️ 例外只挡**明确的习语**，不用模糊规则：
+ *    写宽了会漏掉真的信号，那比误报更糟。
+ */
+const DISTRESS_EXCEPT = [
+  '想死我', '想死你',            // 想死我了 / 想死你了
+  '想死了这', '想死这',          // 想死了这需求 / 想死这需求
+]
+
+
 // ---- 亲密类 ----
 // 心动：被直接表达好感时的那一下。
 const FLUTTER = ['喜欢你', '爱你', '想你', '抱抱', '亲亲', '心动', '害羞', '好可爱', '么么', '想你了']
@@ -743,6 +764,28 @@ function clamp(v) {
   return Math.max(0, Math.min(100, n))
 }
 
+/**
+ * 向基线回落一步。**纯函数** —— 不碰 state、不读时钟、随机源可以注入。
+ *
+ * ⚠️ 为什么单独抽出来：原来这段数学**写在 `periodic` 闭包里**，从外面根本测不到。
+ *    于是 `test-decay.mjs` 只能**自己把公式抄一遍**再跑 —— 真逻辑改错了它也不会红，
+ *    因为测的是抄的那份。这种"测了个副本"的测试比没有更坏：它给的是"已验证"的错觉。
+ *
+ *    抽成纯函数之后，测试直接调这个；`periodic` 也调这个，只有一处实现。
+ */
+function decayValues(values, opts = {}) {
+  const ratio = opts.ratio === undefined ? CFG.decayRatio : opts.ratio
+  const noise = opts.noise === undefined ? 0 : opts.noise
+  const rand = opts.rand || Math.random
+  const out = {}
+  for (const id of MOOD_IDS) {
+    const base = MOODS[id].baseline
+    const cur = Number(values && values[id]) || 0
+    out[id] = clamp(cur + (base - cur) * ratio + (rand() * 2 - 1) * noise)
+  }
+  return out
+}
+
 function loadState() {
   try {
     const raw = JSON.parse(readFileSync(stateFile(), 'utf8'))
@@ -861,6 +904,11 @@ function tryTransition(state, reason, now = Date.now(), around = null) {
     // ★ 当时在干什么（事实，不是因果）。没有就不写这个字段。
     ...(around ? { around } : {}),
   })
+  // ⚠️ 上限**必须在这儿也执行一次**。
+  //    loadState 里那句只在**读盘时**裁剪 —— 也就是说运行中每次切换都会涨一条，
+  //    一直涨到进程重启为止。实测跑 200 次切换，history 就是 200 条（上限写的是 60）。
+  //    每条的 values 是 33 个数字的快照，不裁就是实打实的内存和落盘体积。
+  if (state.history.length > CFG.historyMax) state.history = state.history.slice(-CFG.historyMax)
   return { switched: true, from, to: candidate, candidate }
 }
 
@@ -987,7 +1035,11 @@ export function judgeMessage(text) {
   // ⚠️ 真实痛苦信号：不参与心情计算，直接标记出来。
   //    命中时调用方应该让模型**停止情绪表演**（见 MOOD_OUTPUT_RULE 的硬线）。
   //    同时记下**是哪个词**命中的 —— 误报要能立刻定位。
-  const distressWord = DISTRESS.find((w) => t.includes(w)) || ''
+  //
+  //    命中之后还要过一遍 DISTRESS_EXCEPT：
+  //    「想死我了」（=太想你了）和「想死了这需求」（开发夸张）不是痛苦信号。
+  //    例外只挡明确的习语 —— 写宽了会漏真的，那更糟。
+  const distressWord = DISTRESS.find((w) => t.includes(w) && !DISTRESS_EXCEPT.some((x) => t.includes(x))) || ''
   const distress = !!distressWord
 
   // ── 补的基础 / 复合情绪 ──
@@ -1312,12 +1364,8 @@ export function apply(root, rawConfig) {
   const periodic = (now = Date.now()) => {
     const st = state
     const activity = { turns: st.turns, errors: st.toolErrors }
-    for (const id of MOOD_IDS) {
-      const base = MOODS[id].baseline
-      let v = st.values[id] + (base - st.values[id]) * CFG.decayRatio
-      v += (Math.random() * 2 - 1) * CFG.noise
-      st.values[id] = clamp(v)
-    }
+    // 回落数学在 decayValues 里（纯函数，可测）—— 这里只负责"什么时候用、用完再叠加什么"
+    Object.assign(st.values, decayValues(st.values, { noise: CFG.noise }))
     // 这段时间干活多 → 更专注也更累
     if (activity.turns >= 8) { bump(st, 'focused', 4); bump(st, 'tired', Math.min(6, activity.turns)) }
     else if (activity.turns >= 3) { bump(st, 'focused', 2); bump(st, 'tired', 2) }
@@ -2678,4 +2726,6 @@ export function apply(root, rawConfig) {
 export const _internal = {
   loadState, saveState, blankState, tryTransition, judgeMessage, CFG, MOODS, MOOD_IDS, stateFile,
   aroundOf,
+  // 纯函数：向基线回落一步。测试直接调这个，别再自己抄公式（test-decay 原来就是抄的）
+  decayValues, randPeriod, clamp,
 }

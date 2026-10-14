@@ -1,57 +1,98 @@
 /**
- * 检验：分到底会不会减，以及"没人说话"时会不会自然回落
+ * 周期回落。
+ *
+ * ⚠️ 原来这个文件**只在打印**（还自己把回落公式抄了一遍）——
+ *    真逻辑改错了它不会红。现在直接测 `_internal.decayValues`（真实现）。
  */
+import fs from 'node:fs'
 import * as M from 'file:///D:/chajian/dsh-mood/index.js'
+import { suite } from './testkit.mjs'
 
-const L = (id) => M.MOODS[id].label
-const show = (s, tag) => {
-  const r = M.MOOD_IDS.map((id) => ({ id, label: L(id), value: Math.round(s.values[id] * 10) / 10 }))
-    .sort((a, b) => b.value - a.value)
-  console.log('  ' + tag.padEnd(14) + r.slice(0, 4).map((x) => x.label + x.value).join('  '))
+const t = suite('周期回落')
+const { CFG, MOODS, MOOD_IDS, blankState, decayValues } = M._internal
+const L = (id) => MOODS[id].label
+const SRC = fs.readFileSync('D:/chajian/dsh-mood/index.js', 'utf8')
+
+// ── 参数 ──
+t.eq(CFG.decayRatio, 0.25, '回落比例是 25%')
+t.eq(CFG.periodMinMs / 3600000, 3, '周期下限 3 小时')
+t.eq(CFG.periodMaxMs / 3600000, 6, '周期上限 6 小时')
+t.lt(CFG.periodMinMs, CFG.periodMaxMs, '下限小于上限')
+
+// ── 数学：往基线走，不是"减固定分" ──
+{
+  const vals = {}
+  for (const id of MOOD_IDS) vals[id] = MOODS[id].baseline
+  vals.happy = 95          // 远高于基线
+  vals.calm = 5            // 远低于基线
+  const out = decayValues(vals, { noise: 0 })   // 关掉随机，结果可预期
+
+  const baseHappy = MOODS.happy.baseline
+  const baseCalm = MOODS.calm.baseline
+  t.near(out.happy, 95 + (baseHappy - 95) * 0.25, 0.001, '高分那项按比例往基线落（不是减固定分）')
+  t.near(out.calm, 5 + (baseCalm - 5) * 0.25, 0.001, '低分那项也往基线升')
+  t.lt(out.happy, 95, '高的会降')
+  t.gt(out.calm, 5, '低的会升')
+  t.gt(out.happy, baseHappy + 0.001, '一次回落**不会**直接落到基线（要好几次）')
+
+  let v = { ...vals }
+  for (let i = 0; i < 40; i++) v = decayValues(v, { noise: 0 })
+  t.near(v.happy, baseHappy, 0.5, '40 次之后基本等于基线')
+  t.near(v.calm, baseCalm, 0.5, '40 次之后基本等于基线（低的那项）')
 }
 
-console.log('=== 1. 消息判定里的"对冲"：加分常常伴随另一个减分 ===')
-const cases = [
-  ['正面词', '谢谢，做得不错'],
-  ['负面词', '还是不行，又错了'],
-  ['冷淡打发', '随便你，算了'],
-  ['真心的夸', '还是你行，多亏你'],
-  ['被怪', '都怪你'],
-  ['提不起劲', '好累，不想动'],
-]
-for (const [name, t] of cases) {
-  const d = M.judgeMessage(t)
-  const up = Object.entries(d).filter(([, v]) => v > 0).map(([k, v]) => L(k) + '+' + (Math.round(v * 10) / 10))
-  const down = Object.entries(d).filter(([, v]) => v < 0).map(([k, v]) => L(k) + (Math.round(v * 10) / 10))
-  console.log('  ' + name.padEnd(8) + '↑ ' + up.join(' ') + (down.length ? '   ↓ ' + down.join(' ') : ''))
+// ── 边界：不越界、不 NaN ──
+{
+  const odd = decayValues({ happy: 1e9, calm: -1e9, tired: NaN, curious: undefined }, { noise: 0 })
+  let allOk = true
+  for (const id of MOOD_IDS) if (!(Number.isFinite(odd[id]) && odd[id] >= 0 && odd[id] <= 100)) allOk = false
+  t.ok(allOk, '怪输入（1e9 / -1e9 / NaN / undefined）之后每一项都还在 0~100 且有限')
 }
 
-console.log()
-console.log('=== 2. 周期判定：向基线回落 25% ===')
-let s = M._internal.blankState()
-// 造一个"嗨过头"的状态
-s.values.happy = 95; s.values.excited = 88; s.values.calm = 5; s.values.tired = 5
-s.current = 'happy'; s.lastSwitchAt = 0
-show(s, '判定前')
-const CFG = M._internal.CFG
-for (let i = 0; i < 4; i++) {
-  for (const id of M.MOOD_IDS) {
-    const base = M.MOODS[id].baseline
-    s.values[id] = Math.max(0, Math.min(100, s.values[id] + (base - s.values[id]) * CFG.decayRatio))
-  }
-  show(s, '第 ' + (i + 1) + ' 次判定后')
+// ── 纯函数：不改传进去的对象 ──
+{
+  const before = { happy: 90 }
+  const snapshot = JSON.stringify(before)
+  decayValues(before, { noise: 0 })
+  t.eq(JSON.stringify(before), snapshot, 'decayValues 不改传进来的对象（纯函数）')
 }
-console.log('  → 4 次判定后，开心的 95 掉到 ' + Math.round(s.values.happy * 10) / 10 + '，平静从 5 升到 ' + Math.round(s.values.calm * 10) / 10)
 
-console.log()
-console.log('=== 3. 无人说话时的自然回落（修复前的漏洞）===')
-const fresh = M._internal.blankState()
-fresh.values.happy = 90
-fresh.lastPeriodicAt = Date.now() - 5 * 3600 * 1000   // 假装已经过去 5 小时
-fresh.nextPeriodicMs = 3 * 3600 * 1000                // 窗口是 3 小时 → 已到期
-const due = (Date.now() - fresh.lastPeriodicAt) >= fresh.nextPeriodicMs
-console.log('  距上次判定 5 小时 / 周期 3 小时 → 到点:', due ? '是' : '否')
-console.log('  修复前: 只在收到消息时才检查 → 没人说话就永远不判定（分数冻结）')
-console.log('  修复后: 30 秒心跳里也会检查 → 到点就自动回落 ✅')
-console.log()
-console.log('  周期区间: ' + (M._internal.CFG.periodMinMs / 3600000) + '~' + (M._internal.CFG.periodMaxMs / 3600000) + ' 小时，每次回落 ' + (CFG.decayRatio * 100) + '%')
+// ── 随机扰动 ──
+{
+  const vals = {}
+  for (const id of MOOD_IDS) vals[id] = MOODS[id].baseline
+  const a = decayValues(vals, { noise: 0 })
+  const b = decayValues(vals, { noise: 0 })
+  t.eq(JSON.stringify(a), JSON.stringify(b), 'noise=0 时两次结果完全一样（可复现）')
+
+  const seq = [0, 1, 0.5]
+  let i = 0
+  const r = decayValues(vals, { noise: 3, rand: () => seq[(i++) % seq.length] })
+  let inRange = true
+  for (const id of MOOD_IDS) if (Math.abs(r[id] - MOODS[id].baseline) > 3.001) inRange = false
+  t.ok(inRange, '扰动幅度不超 ±noise')
+}
+
+// ── 只有一处实现 ──
+{
+  t.has(SRC, "bump(st, 'focused'", '干活多会加专注')
+  t.has(SRC, "bump(st, 'tired'", '干活多会加累')
+  t.has(SRC, "bump(st, 'annoyed'", '工具报错会加烦躁')
+  t.has(SRC, 'decayValues(st.values', 'periodic 用的是抽出来的那个纯函数')
+  // ⚠️ 数**出现次数**，别用"存在性"—— 那个 for 循环在 decayValues 自己里就有一次（该有）。
+  //    第一版写成"存在就算失败"，结果把真实现本身判成了重复实现。
+  const decayLoops = (SRC.match(/for \(const id of MOOD_IDS\) \{\s*const base = MOODS\[id\]\.baseline/g) || []).length
+  t.eq(decayLoops, 1, '回落公式全仓库只有一份（在 decayValues 里）')
+}
+
+// ── 没人说话也会回落（修复前的漏洞：只在收到消息时才判定）──
+{
+  const s = blankState()
+  s.lastPeriodicAt = Date.now() - 5 * 3600 * 1000
+  s.nextPeriodicMs = 3 * 3600 * 1000
+  t.ok(Date.now() - s.lastPeriodicAt >= s.nextPeriodicMs, '距上次 5 小时 / 周期 3 小时 → 已到期')
+  t.has(SRC, 'periodicIfDue', '有心跳用的 periodicIfDue')
+  t.has(SRC, 'try { periodicIfDue() }', '心跳里真的调了它')
+}
+
+t.done()

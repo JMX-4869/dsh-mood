@@ -325,6 +325,35 @@ const N = M.MOOD_IDS.length
     const dayWord = /const dayWord = whole \? /.test(diarySrc) && /spanMin >= 240/.test(diarySrc)
     dayWord ? OK('日记措辞按跨度选（不到四小时不说「一整天」）') : NG('日记里「一整天」是写死的')
     const cliTest = fs.existsSync(SRC + '/test-client.mjs')
+    // ⚠️ **每个 test-*.mjs 都必须能失败。**
+    //    仓库里曾经有 8 个文件名叫 `test-*`，内容却是"打印 + exit 0"：
+    //    test-decay / test-deep / test-diary / test-logic /
+    //    test-modern / test-order / test-romance / test-voice。
+    //    它们检查的东西是好的，但**改了代码它红不了** ——
+    //    一个永远绿的测试等于没有测试，而且更坏：它给的是"这块验过了"的错觉。
+    const tFiles = fs.readdirSync(SRC).filter((f) => /^test-.*\.mjs$/.test(f))
+    const readT = (f) => fs.readFileSync(SRC + '/' + f, 'utf8')
+    // ⚠️ 判"有没有退出码"不能只找字面的 process.exit ——
+    //    用 testkit 的文件是靠 t.done()（退出码在 testkit 里）。
+    //    第一版只找 process.exit，把刚转好的 8 个全报成"永远不会失败"。
+    const noExit = tFiles.filter((f) => {
+      const x = readT(f)
+      return !/process\.exit\(/.test(x) && !/\bt\.done\(\)/.test(x)
+    })
+    // ⚠️ 判"有没有断言"也一样：老的几个用自己定义的 ok(...) / OK(...)，不叫 t.ok。
+    //    三个坑都踩过：① 只看小写 ② 加了行首锚点（实际写法是 `条件 ? OK(...) : NG(...)`）
+    //    ③ 忘了 require('assert') 那种。所以：**任意位置 + 不分大小写**。
+    const noAssert = tFiles.filter((f) => {
+      const x = readT(f)
+      return !/(\bt\.(ok|eq|near|gt|lt|has|throws|noThrow)\(|\b(ok|assert|expect|check)\s*\(|\brequire\(['"]assert)/i.test(x)
+    })
+    noExit.length ? NG('这些 test 文件永远不会失败（既没有 process.exit 也没有 t.done）：' + noExit.join(', '))
+      : OK('每个 test 文件都有退出码（' + tFiles.length + ' 个）')
+    noAssert.length ? NG('这些 test 文件没有断言：' + noAssert.join(', '))
+      : OK('每个 test 文件都有真断言（' + tFiles.length + ' 个）')
+    const kit = fs.existsSync(SRC + '/testkit.mjs')
+    kit ? OK('有 testkit.mjs（共用的断言工具）') : NG('缺 testkit.mjs')
+
     // ⚠️ 跨站写保护。这个接口里是**全部对话原文**，还能一键清空。
     //    DSH 只绑 127.0.0.1、跨站读也拿不到响应 —— 但**跨站写**能打进来：
     //    页面用 mode:"no-cors" + 字符串 body（→ text/plain → 不触发预检），
