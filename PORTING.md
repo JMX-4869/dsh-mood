@@ -11,7 +11,7 @@
 
 | 层 | 文件 | 大小 | DSH 依赖 | 怎么办 |
 |---|---|---|---|---|
-| **逻辑** | `store.js` `diary.js` `news.js` `proactive.js` `memory.js` `frames.js` | 123 KB | **0 处** | **原样搬，一行不改** |
+| **逻辑** | `store.js` `diary.js` `news.js` `proactive.js` `memory.js` `frames.js` | 125 KB | **0 处** | **原样搬，一行不改** |
 | 逻辑（边缘） | `sessions.js` | 7 KB | 2 处 | 改两行 |
 | **接线** | `index.js` | 99 KB | 25 处 | 照着重写 |
 | **界面** | `client.js` | 71 KB | 44 处 | 重写 |
@@ -28,7 +28,7 @@
 
 ## 二、已验证：那 5 个模块真的能脱离 DSH 跑
 
-把 `store.js` / `diary.js` / `news.js` / `proactive.js` / `memory.js` / `frames.js`（**123 KB**）拷到一个**空目录**
+把 `store.js` / `diary.js` / `news.js` / `proactive.js` / `memory.js` / `frames.js`（**125 KB**）拷到一个**空目录**
 （没有 `dsh-mood`、没有 `@deepseek-ai`、没有 `package.json`），然后：
 
 ```
@@ -82,7 +82,8 @@ FRAME_TABLE / nearestFps(fps) / frameOffsets(fps, perSecond)
 absoluteFrameIndex(sec, offset, fps) / planFrames(durationSec, opts) / selectExpr(indices)
 mediaToolCandidates(name) / findMediaTool(name) / probe(videoPath, ffprobePath)
 extractFrames(videoPath, plan, outDir, ffmpegPath)   ← 用 ffmpeg 的 select 精确抓帧
-cleanFrames(dir) / sweepOldFrames(baseDir, maxAgeMs) / batchDir(baseDir, stamp) / ensureDir(p)
+cleanFrames(dir) / cleanExcept(baseDir, keepName) / sweepOldFrames(baseDir, maxAgeMs)
+batchDir(baseDir, stamp) / ensureDir(p)
 ```
 
 **视频抽帧**：把关键画面抽成 PNG，把路径交给模型（它用 `read_image` 真看画面）。
