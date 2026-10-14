@@ -11,7 +11,7 @@
 
 | 层 | 文件 | 大小 | DSH 依赖 | 怎么办 |
 |---|---|---|---|---|
-| **逻辑** | `store.js` `diary.js` `news.js` `proactive.js` `memory.js` | 87 KB | **0 处** | **原样搬，一行不改** |
+| **逻辑** | `store.js` `diary.js` `news.js` `proactive.js` `memory.js` | 91 KB | **0 处** | **原样搬，一行不改** |
 | 逻辑（边缘） | `sessions.js` | 7 KB | 2 处 | 改两行 |
 | **接线** | `index.js` | 99 KB | 25 处 | 照着重写 |
 | **界面** | `client.js` | 71 KB | 44 处 | 重写 |
@@ -28,7 +28,7 @@
 
 ## 二、已验证：那 5 个模块真的能脱离 DSH 跑
 
-把 `store.js` / `diary.js` / `news.js` / `proactive.js` / `memory.js`（**87 KB**）拷到一个**空目录**
+把 `store.js` / `diary.js` / `news.js` / `proactive.js` / `memory.js`（**91 KB**）拷到一个**空目录**
 （没有 `dsh-mood`、没有 `@deepseek-ai`、没有 `package.json`），然后：
 
 ```
@@ -107,13 +107,16 @@ buildRestartNudge(kind) / markReported(p, now)
 ### `memory.js`（完全独立）
 
 ```
-createMemory({ file, log }) → {
+createMemory({ file, log, maxBytes, onlyUser }) → {
   note(kind, text, sessionId, ts)   kind: 'user' | 'assistant'
   flush() / search(query, limit) / recent(n) / stats()
   clear() / moveTo(newDir, onMoved) / load() / path()
 }
-MIN_CHARS(8) / MAX_CHARS(8000) / DEFAULT_LIMIT(8)
+MIN_CHARS(8) / MAX_CHARS(8000) / DEFAULT_LIMIT(8) / DEFAULT_MAX_BYTES(50 MB)
 ```
+
+**`maxBytes` 和 `onlyUser` 要传函数**，别传死值 —— 用户在设置页改完必须立刻生效，
+传死值的话得重载插件（这个坑在 proactive 那边栽过：改的是副本）。
 
 **路径要传函数**（`file: () => ...`）不要传字符串 —— 用户迁移之后要立刻走新路径。
 `moveTo` 的 `onMoved` 回调里必须写配置 + 让缓存失效，**只搬文件是不够的**。
@@ -168,6 +171,20 @@ sessionController.prompt({sessionId, mode, content})
 
 6. **别赌字段名。** 会话对象里的 id 有 `header.id` / `id` / `sessionId` 三种可能，
    只试一个的话猜错就是静默失效。
+
+7. **归档必须有体积上限。** 没有上限的东西就是会一直涨 ——
+   实测一场重度使用 1 小时 98 条 / 51 KB（约 530 B/条），
+   外推每天 1.2 MB、每月 35 MB、每年 0.4 GB。
+   数字不吓人，但"装完就不管、三年后打开一个 1 GB 的文件"是错的。
+   做法：超上限就**从最旧的开始丢**（刚聊过的比三个月前的有用），丢到 90% 停手
+   （别每写一条就重写一次大文件）。
+
+8. **模块级的函数看不见宿主闭包里的变量。**
+   这是最阴的一类：`memoryCfg()` / `personaSource()` / `readPersona()` 写在模块级，
+   而 `state` 定义在挂载函数**里面**。写 `typeof state !== 'undefined'` 看着像在防，
+   其实**永远拿到 undefined** —— 于是静默退回默认值。
+   症状：接口返回 `ok: true`、配置文件也写对了，就是读不回来。
+   做法：模块级留一个 `liveState`，在挂载时赋值，模块级函数一律走它。
 
 ---
 

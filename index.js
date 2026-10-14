@@ -351,10 +351,47 @@ export const MOOD_TIERS = {
  *    下一次调用要立刻走新路径。传字符串的话这里会一直指着旧的。
  *    （memory.js 的 moveTo 也留了 onMoved 回调，两边一起才生效。）
  */
+/**
+ * 模块级的 state 引用 —— **mountCore 里赋值**。
+ *
+ * ⚠️ 这是今晚第三次栽同一个坑了：
+ *    let state = loadState()
+ *    这行在 **mountCore 里面**（缩进两格），
+ *    而模块级的函数（memoryCfg / personaSource / readPersona）看不见它。
+ *    写 typeof state !== "undefined" 看着像在防这个，其实**永远拿到 undefined**，
+ *    于是静默退回默认值 —— 接口返回 ok、文件也写对了，就是读不回来。
+ *
+ *    实测：设 state.memory.maxMB = 3（文件里确实是 3），memoryCfg() 却还是 50。
+ *    同一个 bug 也让 persona 的 force 开关一直是坏的。
+ *
+ *    规范：**模块级的函数要用 state，一律走 liveState。**
+ */
+export let liveState = null
 export const memory = createMemory({
   file: () => dataFile('dsh-mood-memory.jsonl'),
+  // ⚠️ 这两个都传**函数**：用户在设置页改完要立刻生效。
+  //    传死值的话得重载插件 —— 这个坑在 proactive 那边栽过（改了副本）。
+  maxBytes: () => memoryCfg().maxMB * 1024 * 1024,
+  onlyUser: () => memoryCfg().onlyUser === true,
   log: (m) => { try { console.error('[dsh-mood] ' + m) } catch { /* 不管 */ } },
 })
+
+/**
+ * 归档的设置 —— 存在心情状态文件里（和 persona 一样）。
+ *
+ * ⚠️ **默认必须有上限**。第一版没有，它只会一直涨：
+ *    实测一场重度使用 1 小时 98 条 / 51 KB，外推每月 35 MB、每年 0.4 GB。
+ *    数字不吓人，但"永远不封顶"是错的 —— 装完不管，三年后打开一个 1 GB 的文件。
+ */
+export const MEMORY_DEFAULTS = { maxMB: 50, onlyUser: false }
+export function memoryCfg() {
+  const m = (liveState && liveState.memory) || {}
+  const mb = Number(m.maxMB)
+  return {
+    maxMB: Number.isFinite(mb) && mb > 0 ? Math.min(2000, mb) : MEMORY_DEFAULTS.maxMB,
+    onlyUser: m.onlyUser === true,
+  }
+}
 
 /** 把归档里的一条压成一行给模型看（省 token，但保留会话来源和时间） */
 function fmt(o) {
@@ -570,7 +607,7 @@ export function personaSource(stIn) {
   //    不传时用模块里那份活的 state（线上路径）；
   //    传了就用传进来的（测试路径）。两条走的是同一段逻辑，
   //    不会出现"测的是副本、跑的是别的"那种假绿。
-  const st = stIn !== undefined ? stIn : (typeof state !== 'undefined' ? state : null)
+  const st = stIn !== undefined ? stIn : liveState
   // 用户手动强制用自己那份（设置页里的开关）
   if (st && st.persona && st.persona.force) return 'own'
   for (const src of PERSONA_SOURCES) {
@@ -600,7 +637,7 @@ export function readPersona() {
   let value = null
 
   if (src === 'own') {
-    const p = (state && state.persona) || {}
+    const p = (liveState && liveState.persona) || {}
     value = {
       source: 'own',
       name: String(p.selfName || ''),
@@ -1170,6 +1207,7 @@ export function apply(root, rawConfig) {
   }
 
   let state = loadState()
+  liveState = state               // ← 模块级的函数靠这个看见它（见 liveState 那段注释）
 
   // 过期的痛苦信号标记没必要留着：窗口（30 分钟）一过就当没有。
   // 不清的话它会永远躺在状态文件里，看审计/看状态时容易被误导。
@@ -2244,7 +2282,14 @@ export function apply(root, rawConfig) {
                 memory: (() => {
                   try {
                     const st = memory.stats()
-                    return { count: st.count, bytes: st.bytes, sessions: st.sessions, path: st.path, oldest: st.oldest, newest: st.newest }
+                    return {
+                      count: st.count, bytes: st.bytes, sessions: st.sessions,
+                      path: st.path, oldest: st.oldest, newest: st.newest,
+                      // 上限 / 占用比 / 增长估算 / 已丢多少 —— 设置页要显示这些
+                      maxBytes: st.maxBytes, usedRatio: st.usedRatio,
+                      perDayBytes: st.perDayBytes, daysLeft: st.daysLeft,
+                      trimmed: st.trimmed, onlyUser: st.onlyUser,
+                    }
                   } catch {
                     return { count: 0, bytes: 0, sessions: 0, path: '', oldest: null, newest: null }
                   }
@@ -2350,6 +2395,18 @@ export function apply(root, rawConfig) {
                   const action = String(body.action || '')
                   if (action === 'clear') {
                     memory.clear()
+                    return send({ ok: true, stats: memory.stats() })
+                  }
+                  if (action === 'limits') {
+                    const cur = state.memory || {}
+                    const NEXT = { ...cur }
+                    if ('maxMB' in body) {
+                      const mb = Number(body.maxMB)
+                      if (Number.isFinite(mb) && mb > 0) NEXT.maxMB = Math.min(2000, mb)
+                    }
+                    if ('onlyUser' in body) NEXT.onlyUser = !!body.onlyUser
+                    state.memory = NEXT
+                    saveState(state)
                     return send({ ok: true, stats: memory.stats() })
                   }
                   if (action === 'move') {

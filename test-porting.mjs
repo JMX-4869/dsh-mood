@@ -39,9 +39,17 @@ for (const f of MODS) {
   const real = new Set(exportsOf(f))
   const sec = doc.split('### `' + f + '`')[1]
   if (!sec) continue
-  for (const m of sec.split('\n### ')[0].matchAll(/`([A-Za-z_$][\w$]*)\(/g)) if (!real.has(m[1])) wrong.push(f + '→' + m[1])
+  // ⚠️ 切到**下一个 ## 或 ### 为止**。
+  //    第一版只切 `\n### `，而 `sessions.js` 是最后一个模块节 ——
+  //    它的"正文"一直拖到文末，把后面的"宿主必须提供的四样东西"也算了进来，
+  //    于是 tools.register / section / prompt 全被当成 sessions.js 的假导出。
+  const body = sec.split(/\n##+ /)[0]
+  // 只看代码块，而且**只认行首的名字** ——
+  // 缩进的名字是返回对象的**方法**（note / flush / search…），不是导出。
+  const blocks = [...body.matchAll(/```[\s\S]*?```/g)].map((m) => m[0]).join('\n')
+  for (const m of blocks.matchAll(/^([A-Za-z_$][\w$]*)\(/gm)) if (!real.has(m[1])) wrong.push(f + '→' + m[1])
 }
-ok('文档里的函数名都是真导出', wrong.length === 0, wrong.join(', '))
+ok('文档接口里写的函数名都是真导出', wrong.length === 0, wrong.join(', '))
 
 // ── ③ 大小 ──
 console.log()

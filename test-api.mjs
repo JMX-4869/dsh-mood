@@ -105,6 +105,21 @@ const on = call('POST', '/dsh-mood-api/proactive', { enabled: true })
 ok('打开 → 立刻返回 enabled=true（不是等重启）', on.json && on.json.enabled === true, JSON.stringify(on.json && { e: on.json.enabled }))
 const off = call('POST', '/dsh-mood-api/proactive', { enabled: false })
 ok('关掉 → 立刻返回 enabled=false', off.json && off.json.enabled === false, JSON.stringify(off.json && { e: off.json.enabled }))
+
+// ── 归档的体积上限 /「只存用户的话」──
+// 这两个是**函数式配置**：用户在设置页改完要立刻生效。
+// 踩过的坑：选项名写成 userOnly 而调用方传 onlyUser —— 静默失效；
+// 以及 memoryCfg 读的是 mountCore 里的 state，模块级看不见 —— 也是静默失效。
+console.log()
+const lim = call('POST', '/dsh-mood-api/memory', { action: 'limits', maxMB: 3 })
+ok('改上限 → 当场返回 3 MB', !!(lim.json && lim.json.ok && Math.round(lim.json.stats.maxBytes / 1048576) === 3), JSON.stringify(lim.json && lim.json.stats && lim.json.stats.maxBytes))
+const stLim = call('GET', '/dsh-mood-api/memory')
+ok('再读一次还是 3 MB（真的改到活的那份）', !!(stLim.json && Math.round(stLim.json.stats.maxBytes / 1048576) === 3), JSON.stringify(stLim.json && stLim.json.stats && stLim.json.stats.maxBytes))
+ok('stats 带占用比/增长估算/丢弃计数', !!(stLim.json && stLim.json.stats && 'usedRatio' in stLim.json.stats && 'perDayBytes' in stLim.json.stats && 'trimmed' in stLim.json.stats))
+const ou = call('POST', '/dsh-mood-api/memory', { action: 'limits', onlyUser: true })
+ok('打开「只存用户的话」', !!(ou.json && ou.json.ok && ou.json.stats.onlyUser === true))
+const back = call('POST', '/dsh-mood-api/memory', { action: 'limits', maxMB: 50, onlyUser: false })
+ok('改回默认', !!(back.json && Math.round(back.json.stats.maxBytes / 1048576) === 50 && back.json.stats.onlyUser === false))
 const after = call('GET', '/dsh-mood-api/proactive')
 ok('再读一次还是 false（真的改到活的那份了）', after.json && after.json.enabled === false, JSON.stringify(after.json && { e: after.json.enabled }))
 

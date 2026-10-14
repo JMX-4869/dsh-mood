@@ -318,6 +318,18 @@ const N = M.MOOD_IDS.length
     //    实证：`turn/end` 这个事件名在 DSH 里确实存在，但**不走 session/event
     //    这条流** —— 状态文件里 `turns: 0` 而 `messages: 66`，回合结束一次都没收到。
     //    只挂 turn/end 的那个功能就永远不动，而且完全不报错。
+    // ⚠️ 模块级的函数**不许**裸用 mountCore 里的 `state`。
+    //    栽过三处：memoryCfg / personaSource / readPersona。
+    //    写法看着像在防（`typeof state !== 'undefined'`），其实**永远拿到 undefined** ——
+    //    于是静默退回默认值：接口返回 ok、文件也写对了，就是读不回来。
+    //    实测：state.memory.maxMB = 3 写进文件了，memoryCfg() 还是 50。
+    //    同一个 bug 也让 persona 的 force 开关一直是坏的。
+    //    规范：模块级的函数一律走 `liveState`。
+    const bareState = /typeof state !== ['"]undefined['"]/.test(code)
+    !bareState ? OK("模块级函数不靠 typeof state 兜底（走 liveState）")
+      : NG('还有模块级函数靠 typeof state —— 它永远拿到 undefined')
+    const hasLive = /export let liveState = null/.test(code) && /^\s*liveState = state\b/m.test(code)
+    hasLive ? OK('liveState 在 mountCore 里被赋值') : NG('liveState 没接上')
     const beat = /setInterval\(\(\) => \{[\s\S]{0,600}?maybeReportRestart\(\)/.test(code)
     beat ? OK('重启汇报挂在心跳上（turn/end 那条流收不到）') : NG('重启汇报只挂 turn/end —— 永远不会触发')
     const hasDiag = /lastReportCheck/.test(code) && /proactive\.lastReportCheck = /.test(code)

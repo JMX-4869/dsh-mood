@@ -51,6 +51,24 @@ export const DEFAULT_LIMIT = 8
 /** 内存里最多缓存多少条（超过就只留最近的） */
 const CACHE_MAX = 200000
 
+/**
+ * 归档体积上限，**默认 50 MB**。
+ *
+ * ────────────────────────────────────────────────────────────────
+ *  为什么必须有这个
+ * ────────────────────────────────────────────────────────────────
+ *  第一版**没有上限** —— 它只会一直涨。实测：一场重度使用 1 小时
+ *  就 98 条 / 51 KB（约 530 B/条），外推每天 1.2 MB、每月 35 MB、每年 0.4 GB。
+ *  数字本身不算吓人，但"**永远不封顶**"这件事是错的：
+ *  用户装完就不管了，三年后打开一个 1 GB 的文件谁受得了。
+ *
+ *  50 MB 对聊天记录是很多的 —— 按上面的速率大约 40 天重度使用。
+ *  超了就从**最旧的**开始丢（新的更有用），丢到 90% 停手（别每次 flush 都重写）。
+ */
+export const DEFAULT_MAX_BYTES = 50 * 1024 * 1024
+/** 超限后丢到剩这么多比例 —— 留余量，避免每写一条就重写一次大文件 */
+const TRIM_TO = 0.9
+
 /** 中文按 2 字滑窗切（Intl.Segmenter 对中文会切成单字，没用） */
 function grams(text) {
   const t = String(text || '')
@@ -66,13 +84,29 @@ function grams(text) {
 }
 
 export function createMemory(opts) {
-  const { file, log = () => {} } = opts || {}
+  // maxBytes / onlyUser 都可以传函数 —— 用户在设置页改了要**立刻生效**，
+  // 传死值的话得重载插件才行（这个坑在别处栽过：改的是副本）。
+  //
+  // ⚠️ 这里曾经把解构名写成 `userOnly`，而调用方传的是 `onlyUser` ——
+  //    **选项名对不上，静默失效**：开关点了没反应，还不报错。
+  //    测试里断言 "打开后助手的不进" 才抓出来。
+  const { file, log = () => {}, maxBytes, onlyUser } = opts || {}
   let cache = null
   let cacheMtime = 0
   let pending = []
   let flushTimer = null
+  let trimmed = 0          // 累计丢了多少条（统计里给用户看）
 
   const path = () => (typeof file === 'function' ? file() : file)
+  const cap = () => {
+    const v = typeof maxBytes === 'function' ? maxBytes() : maxBytes
+    const n = Number(v)
+    return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_BYTES
+  }
+  const onlyUserOn = () => {
+    const v = typeof onlyUser === 'function' ? onlyUser() : onlyUser
+    return v === true
+  }
 
   // ── 读：整份读进内存，按 mtime 判断要不要重读 ──
   function load() {
@@ -112,6 +146,10 @@ export function createMemory(opts) {
   function note(kind, text, sessionId, ts) {
     const x = String(text || '').trim()
     if (x.length < MIN_CHARS) return false
+    // 「只存用户说的话」—— 实测我的回复占了 94% 的体积。
+    // 打开它归档会瘦掉九成，代价是查不到"我上次怎么说的"。
+    // **默认关**：主动丢一半对话是个大决定，不该由插件替用户做。
+    if (kind !== 'user' && onlyUserOn()) return false
     const clipped = x.length > MAX_CHARS ? x.slice(0, MAX_CHARS) + '…[截断]' : x
     const t = ts || Date.now()
     // ⚠️ 会话名取的是**完整 id 的哈希**，不是前缀。
@@ -152,11 +190,52 @@ export function createMemory(opts) {
       }
       if (lines.length) fs.appendFileSync(p, lines.join('\n') + '\n', 'utf8')
       cache = null // 让下次 load 重读
+      trim()
       return lines.length
     } catch (e) {
       log('硬盘记忆写入失败: ' + (e && e.message))
       // 写失败就把这批放回去，别丢
       pending = batch.concat(pending)
+      return 0
+    }
+  }
+
+  /**
+   * 超上限就从**最旧的**开始丢。
+   *
+   * ⚠️ 只在真超了才动手，而且一次丢到 90% —— 不然每写一条就要重写一次大文件。
+   *    50 MB 的速率大约是几十天，也就是说这个函数几十天才跑一次。
+   *
+   * 丢最旧的而不是最新的：**刚聊过的比三个月前的有用**。
+   */
+  function trim() {
+    const p = path()
+    let size = 0
+    try { size = fs.statSync(p).size } catch { return 0 }
+    const limit = cap()
+    if (size <= limit) return 0
+    const target = Math.floor(limit * TRIM_TO)
+    const rows = load()
+    // 从头部开始丢，累积到剩下的部分低于目标大小
+    let drop = 0
+    let rest = size
+    while (drop < rows.length && rest > target) {
+      rest -= Buffer.byteLength(JSON.stringify(rows[drop])) + 1
+      drop++
+    }
+    if (drop <= 0) return 0
+    const keep = rows.slice(drop)
+    try {
+      const tmp = p + '.trim'
+      fs.writeFileSync(tmp, keep.map((o) => JSON.stringify(o)).join('\n') + (keep.length ? '\n' : ''), 'utf8')
+      fs.renameSync(tmp, p)
+      cache = null
+      trimmed += drop
+      log('硬盘记忆超出上限（' + (size / 1048576).toFixed(1) + ' MB > ' + (limit / 1048576).toFixed(0)
+        + ' MB），丢掉最旧的 ' + drop + ' 条，剩 ' + keep.length + ' 条')
+      return drop
+    } catch (e) {
+      log('硬盘记忆清理失败（数据没动）: ' + (e && e.message))
       return 0
     }
   }
@@ -200,13 +279,32 @@ export function createMemory(opts) {
     let bytes = 0
     try { bytes = fs.statSync(path()).size } catch { /* 没文件 */ }
     const sessions = new Set(rows.map((o) => o.s).filter(Boolean))
+    const limit = cap()
+    const oldest = rows.length ? rows[0].t : null
+    const newest = rows.length ? rows[rows.length - 1].t : null
+    // 实测速率：按"条数与时间跨度"估，比拍脑袋准
+    let perDay = 0
+    // 8 条就够估个大概了 —— 门槛设太高的话，刚清理完就估不出来（"每天 0 B"）
+    if (rows.length >= 8 && oldest && newest && newest > oldest) {
+      const days = (newest - oldest) / 86400000
+      if (days > 0) perDay = bytes / days
+    }
+    // 按当前速率还能撑多久（满了就开始丢最旧的）
+    const leftMs = perDay > 0 && bytes < limit ? ((limit - bytes) / perDay) * 86400000 : 0
     return {
       count: rows.length,
       bytes,
       sessions: sessions.size,
-      oldest: rows.length ? rows[0].t : null,
-      newest: rows.length ? rows[rows.length - 1].t : null,
+      oldest,
+      newest,
       path: path(),
+      // 上限与清理
+      maxBytes: limit,
+      usedRatio: limit > 0 ? bytes / limit : 0,
+      trimmed,                                  // 累计丢了多少条
+      perDayBytes: perDay,                      // 估算的每日增长
+      daysLeft: leftMs > 0 ? leftMs / 86400000 : 0,
+      onlyUser: onlyUserOn(),
     }
   }
 

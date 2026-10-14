@@ -104,6 +104,7 @@ window.__ModuleLoader__.load({
       '.dshmood .memstat .k{font-size:11px;color:var(--dsw-alias-label-secondary)}',
       '.dshmood .memrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0}',
       '.dshmood .memlab{font-size:12px;color:var(--dsw-alias-label-secondary);min-width:64px}',
+      '.dshmood .memnum{flex:none;width:88px;text-align:right}',
       '.dshmood .mempath{flex:1;min-width:200px;font-size:12px;padding:6px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.dshmood button.danger{color:#e5534b;border-color:#e5534b55}',
       // 主动开口的时段选择
@@ -786,6 +787,21 @@ window.__ModuleLoader__.load({
       const [hits, setHits] = React.useState(null)
       const [busy, setBusy] = React.useState(false)
 
+      /** 改归档设置（走同一个 /memory POST） */
+      const patch2 = async (body) => {
+        setBusy(true)
+        try {
+          const r = await fetch(API + '/memory', {
+            method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+          })
+          const j = await r.json()
+          if (!j.ok) throw new Error(j.error || ('HTTP ' + r.status))
+          setMsg('已保存'); setTimeout(() => setMsg(''), 2500)
+          await load()
+        } catch (e) { setMsg('失败：' + ((e && e.message) || e)) }
+        setBusy(false)
+      }
+
       const load = React.useCallback(async () => {
         try {
           const d = await getJSON('/memory')
@@ -866,6 +882,46 @@ window.__ModuleLoader__.load({
           h('div', { className: 'memstat' }, h('span', { className: 'v' }, fmtBytes(st.bytes || 0)), h('span', { className: 'k' }, '占用')),
           h('div', { className: 'memstat' }, h('span', { className: 'v' }, String(st.sessions || 0)), h('span', { className: 'k' }, '个会话')),
           h('div', { className: 'memstat' }, h('span', { className: 'v' }, st.oldest ? Math.max(1, Math.round((Date.now() - st.oldest) / 86400000)) + ' 天' : '—'), h('span', { className: 'k' }, '最早')),
+        ),
+
+        // ── 体积上限 + 增长（用户反馈"占用太快"，所以这一块要显眼）──
+        h('div', { className: 'memrow' },
+          h('span', { className: 'memlab' }, '上限'),
+          h('input', {
+            className: 'srcin memnum', type: 'number', min: 1, max: 2000, value: String((data.stats && Math.round((data.stats.maxBytes || 0) / 1048576)) || 50),
+            disabled: busy,
+            onKeyDown: (e) => { if (e.key === 'Enter') void post({ action: 'limits', maxMB: Number(e.target.value) }, '上限已改') },
+            onChange: (e) => { e.target.dataset.v = e.target.value },
+            onBlur: (e) => {
+              const v = Number(e.target.value)
+              const cur = Math.round((data.stats.maxBytes || 0) / 1048576)
+              if (Number.isFinite(v) && v > 0 && v !== cur) void post({ action: 'limits', maxMB: v }, '上限已改成 ' + v + ' MB')
+            },
+          }),
+          h('span', { className: 'memlab', style: { minWidth: 'auto' } }, 'MB'),
+          h('button', { onClick: () => patch2({ action: 'limits', onlyUser: !(data.stats && data.stats.onlyUser) }), disabled: busy },
+            (data.stats && data.stats.onlyUser) ? '只存你说的话：开' : '只存你说的话：关'),
+        ),
+        h('div', { className: 'memstats' },
+          h('div', { className: 'memstat' },
+            h('span', { className: 'v' }, (Math.round((data.stats && data.stats.usedRatio || 0) * 1000) / 10) + '%'),
+            h('span', { className: 'k' }, '已用 ' + fmtBytes((data.stats && data.stats.maxBytes) || 0))),
+          h('div', { className: 'memstat' },
+            h('span', { className: 'v' }, data.stats && data.stats.perDayBytes ? fmtBytes(data.stats.perDayBytes) : '—'),
+            h('span', { className: 'k' }, '每天增长（估）')),
+          h('div', { className: 'memstat' },
+            h('span', { className: 'v' }, data.stats && data.stats.daysLeft ? Math.round(data.stats.daysLeft) + ' 天' : '—'),
+            h('span', { className: 'k' }, '还能撑')),
+          h('div', { className: 'memstat' },
+            h('span', { className: 'v' }, String((data.stats && data.stats.trimmed) || 0)),
+            h('span', { className: 'k' }, '已自动丢弃')),
+        ),
+        h('div', { className: 'hintline' },
+          '超上限会**从最旧的开始丢**（刚聊过的比三个月前的有用），丢到 90% 停手 —— 不会每写一条就重写一次大文件。',
+        ),
+        h('div', { className: 'hintline' },
+          '「只存你说的话」实测能瘦掉 **九成**（我写的回复占了 94% 的体积）。',
+          '代价是查不到"我上次是怎么说的"，所以**默认关**。',
         ),
 
         // ── 路径 + 操作 ──
