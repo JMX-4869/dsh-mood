@@ -972,6 +972,189 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /**
+     * 品味库。
+     *
+     * ⚠️ 这个面板最要紧的不是"能看"，是**能就地改**：
+     *    库里那 22 条种子原则全是**我自己的判断**，主人八成不同意其中一些。
+     *    要改一条得先点开、再进编辑框的话，没人会去改 ——
+     *    所以原则的正文、条目的"他说过什么"都是**直接可编辑的输入框**，失焦即存。
+     *
+     * ⚠️ 改过之后那条会从 by=me（我的判断）变成 by=owner（他亲口定的）——
+     *    这不只是标个字段：注入提示词时两者分量不同，所以界面上要看得出来。
+     */
+    function TastePanel() {
+      const [data, setData] = React.useState(null)
+      const [err, setErr] = React.useState('')
+      const [msg, setMsg] = React.useState('')
+      const [busy, setBusy] = React.useState(false)
+      const [pText, setPText] = React.useState('')
+      const [pUnless, setPUnless] = React.useState('')
+      const [iRef, setIRef] = React.useState('')
+      const [iRead, setIRead] = React.useState('')
+      const [iSaid, setISaid] = React.useState('')
+      const [iKind, setIKind] = React.useState('good')
+
+      const load = React.useCallback(async () => {
+        try { setData(await getJSON('/taste')); setErr('') }
+        catch (e) { setErr(String((e && e.message) || e)) }
+      }, [])
+      React.useEffect(() => { void load() }, [load])
+
+      const post = async (body, okMsg) => {
+        setBusy(true)
+        try {
+          const r = await fetch(API + '/taste', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-dsh-mood': '1' },
+            body: JSON.stringify(body),
+          })
+          const j = await r.json()
+          if (!j.ok) throw new Error(j.error || ('HTTP ' + r.status))
+          if (okMsg) { setMsg(okMsg); setTimeout(() => setMsg(''), 2500) }
+          await load()
+          return true
+        } catch (e) { setMsg('失败：' + ((e && e.message) || e)); return false }
+        finally { setBusy(false) }
+      }
+
+      if (err) return h('div', { className: 'hintline' }, '读不到品味库：' + err)
+      if (!data) return h('div', { className: 'hintline' }, '读取中…')
+
+      const st = data.stats || {}
+      const list = data.principles || []
+      const on = list.filter((x) => x.on)
+      const off = list.filter((x) => !x.on)
+      const BY = { owner: '你亲口', other: '外部', me: '我的' }
+
+      // 原则那一行：正文可直接改，改完失焦就存
+      const prow = (p) => h('div', { className: 'memrow', key: p.id },
+        h('span', { className: 'memlab' }, BY[p.by] || p.by),
+        h('input', {
+          className: 'srcin', value: p.text, disabled: busy,
+          title: p.unless ? ('不适用：' + p.unless) : '',
+          onChange: (e) => {
+            const v = e.target.value
+            setData((d) => ({ ...d, principles: d.principles.map((x) => (x.id === p.id ? { ...x, text: v } : x)) }))
+          },
+          onBlur: (e) => {
+            const v = e.target.value.trim()
+            if (!v) return
+            void post({ action: 'editPrinciple', id: p.id, text: v }, '改好了（这条现在算你亲口的）')
+          },
+          onKeyDown: (e) => { if (e.key === 'Enter') e.target.blur() },
+        }),
+        h('button', { disabled: busy, onClick: () => void post({ action: 'editPrinciple', id: p.id, on: !p.on }) }, p.on ? '关掉' : '打开'),
+        h('button', { disabled: busy, className: 'danger', onClick: () => void post({ action: 'delPrinciple', id: p.id }, '删了') }, '删'),
+      )
+
+      // 条目那一行：他说过什么可直接改 —— 那是库里最有信息量的字段
+      const irow = (x) => h('div', { className: 'memrow', key: x.id },
+        h('span', { className: 'memlab' }, x.kind === 'good' ? '正例' : '反例'),
+        h('code', { className: 'mempath' }, x.ref),
+        h('input', {
+          className: 'srcin', placeholder: '他说过什么（原话最好）', value: x.said || '', disabled: busy,
+          onChange: (e) => {
+            const v = e.target.value
+            setData((d) => ({ ...d, items: d.items.map((y) => (y.id === x.id ? { ...y, said: v } : y)) }))
+          },
+          onBlur: (e) => {
+            const v = e.target.value.trim()
+            if (v === (x.said || '')) return
+            void post({ action: 'editItem', id: x.id, said: v }, '存了')
+          },
+          onKeyDown: (e) => { if (e.key === 'Enter') e.target.blur() },
+        }),
+        x.confirmed ? null : h('button', { disabled: busy, onClick: () => void post({ action: 'editItem', id: x.id, confirmed: true }, '确认了') }, '确认'),
+        h('button', { disabled: busy, onClick: () => void post({ action: 'editItem', id: x.id, kind: x.kind === 'good' ? 'bad' : 'good' }, '换了') }, x.kind === 'good' ? '转反例' : '转正例'),
+        h('button', { disabled: busy, className: 'danger', onClick: () => void post({ action: 'delItem', id: x.id }, '删了') }, '删'),
+      )
+
+      return h('div', { className: 'pane' },
+        h('div', { className: 'hintline' },
+          '这里存的不是「照抄的规则」，是判断的轨迹：' +
+          '我当时读到什么 → 你的反应 → 我学到什么。',
+        ),
+        h('div', { className: 'hintline' },
+          '一共 ' + (st.principlesOn || 0) + ' 条原则（你亲口 ' + (st.byOwner || 0) +
+          ' / 外部 ' + (st.byOther || 0) + ' / 我的 ' + (st.byMe || 0) + '）· ' +
+          (st.items || 0) + ' 个条目（正 ' + (st.good || 0) + ' / 反 ' + (st.bad || 0) +
+          '，待确认 ' + (st.draft || 0) + '）',
+        ),
+        h('div', { className: 'hintline' },
+          '带「待确认」的是我打的标 —— 我的判断，可能读偏。你看一眼再点确认，' +
+          '它就变成你的口味了；没确认之前，提示词里会明确标着那是我猜的。',
+        ),
+
+        msg ? h('div', { className: 'pill' }, msg) : null,
+
+        // ── 加一条原则 ──
+        h('div', { className: 'memrow' },
+          h('span', { className: 'memlab' }, '加原则'),
+          h('input', { className: 'srcin', placeholder: '一句话，比如：标题别压在人脸上', value: pText, onChange: (e) => setPText(e.target.value) }),
+          h('input', { className: 'srcin', placeholder: '什么时候不适用（可空，但强烈建议填）', value: pUnless, onChange: (e) => setPUnless(e.target.value) }),
+          h('button', {
+            disabled: busy || !pText.trim(),
+            onClick: async () => {
+              const ok = await post({ action: 'addPrinciple', text: pText, unless: pUnless, by: 'owner' }, '加了（算你亲口说的）')
+              if (ok) { setPText(''); setPUnless('') }
+            },
+          }, '加'),
+        ),
+
+        // ── 加一个条目 ──
+        h('div', { className: 'memrow' },
+          h('span', { className: 'memlab' }, '加条目'),
+          h('input', { className: 'srcin', placeholder: '指代：文件名 / 网址 / 简短描述', value: iRef, onChange: (e) => setIRef(e.target.value) }),
+          h('input', { className: 'srcin', placeholder: '我当时的读法', value: iRead, onChange: (e) => setIRead(e.target.value) }),
+          h('input', { className: 'srcin', placeholder: '他说了什么', value: iSaid, onChange: (e) => setISaid(e.target.value) }),
+          h('button', { disabled: busy, onClick: () => setIKind(iKind === 'good' ? 'bad' : 'good') }, iKind === 'good' ? '正例' : '反例'),
+          h('button', {
+            disabled: busy || !iRef.trim(),
+            onClick: async () => {
+              const ok = await post({ action: 'addItem', ref: iRef, myRead: iRead, said: iSaid, kind: iKind }, '收了（标着待确认）')
+              if (ok) { setIRef(''); setIRead(''); setISaid('') }
+            },
+          }, '加'),
+        ),
+
+        // ── 摘要 ──
+        h('div', { className: 'hintline' },
+          '摘要：' + (data.summary
+            ? ('写于 ' + new Date(data.summary.at).toLocaleString('zh-CN') + '，当时库里有 ' + data.summary.fromCount + ' 条')
+            : '还没写过') +
+          (data.summaryStale && data.summaryStale.stale ? '　⚠️ 该重压了：' + data.summaryStale.why : ''),
+        ),
+        data.summary && data.summary.text
+          ? h('div', { className: 'hintline' }, data.summary.text)
+          : null,
+
+        // ── 两张表 ──
+        h('div', { className: 'memlist' },
+          h('div', { className: 'memlisthd' }, '原则 · 打开着的 ' + on.length + ' 条（直接改正文，改完自动存）'),
+          on.length ? on.map(prow) : h('div', { className: 'empty' }, '一条都没有。'),
+        ),
+        off.length
+          ? h('div', { className: 'memlist' },
+            h('div', { className: 'memlisthd' }, '关掉的 ' + off.length + ' 条'),
+            off.map(prow))
+          : null,
+
+        h('div', { className: 'memlist' },
+          h('div', { className: 'memlisthd' }, '条目 · ' + (data.items || []).length + ' 个'),
+          (data.items || []).length
+            ? data.items.map(irow)
+            : h('div', { className: 'empty' }, '还没有例子。审美很难用规则描述 —— 给两个例子比写十条原则有用。'),
+        ),
+
+        h('div', { className: 'memrow' },
+          h('button', { disabled: busy, onClick: () => void load() }, '刷新'),
+        ),
+
+        h(StorageBar, { keys: ['taste'] }),
+      )
+    }
+
     function fmtBytes(n) {
       const b = Number(n) || 0
       if (b < 1024) return b + ' B'
@@ -1519,6 +1702,11 @@ window.__ModuleLoader__.load({
       slots.inject('settings.section', () => slots.register(
         { name: 'settings.section', id: 'news', order: 27, label: '时事' },
         () => React.createElement(MoodErrorBoundary, null, React.createElement(NewsPanel, { ctx })),
+      ))
+      // 品味：档案每轮都注入提示词，这个面板是给它"可改"的入口
+      slots.inject('settings.section', () => slots.register(
+        { name: 'settings.section', id: 'taste', order: 30, label: '品味' },
+        () => React.createElement(MoodErrorBoundary, null, React.createElement(TastePanel, {})),
       ))
 
       // ---- 把设置导航里「心情日记」那格的图标换成黑线条书本 ----
