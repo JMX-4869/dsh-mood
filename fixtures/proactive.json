@@ -1,0 +1,141 @@
+{
+  "ok": true,
+  "available": true,
+  "enabled": true,
+  "idleMs": 1500000,
+  "minGapMs": 2700000,
+  "maxPerDay": 6,
+  "quietFrom": 1,
+  "quietTo": 7,
+  "slots": [
+    "deep",
+    "eve2"
+  ],
+  "slotTable": [
+    {
+      "id": "deep",
+      "from": 0,
+      "to": 7,
+      "label": "深夜",
+      "kind": "谷"
+    },
+    {
+      "id": "am1",
+      "from": 7,
+      "to": 9,
+      "label": "早峰",
+      "kind": "峰"
+    },
+    {
+      "id": "am2",
+      "from": 9,
+      "to": 12,
+      "label": "上午",
+      "kind": "平"
+    },
+    {
+      "id": "noon",
+      "from": 12,
+      "to": 14,
+      "label": "午间",
+      "kind": "平"
+    },
+    {
+      "id": "pm",
+      "from": 14,
+      "to": 18,
+      "label": "下午",
+      "kind": "平"
+    },
+    {
+      "id": "eve1",
+      "from": 18,
+      "to": 21,
+      "label": "晚峰",
+      "kind": "峰"
+    },
+    {
+      "id": "eve2",
+      "from": 21,
+      "to": 24,
+      "label": "晚间",
+      "kind": "谷"
+    }
+  ],
+  "nowHour": 23,
+  "reportRestart": true,
+  "warnStale": true,
+  "pendingRestart": false,
+  "pendingSince": 1791990425088,
+  "pendingStale": false,
+  "reportedAt": 1791991200304,
+  "procStart": 1791990423322,
+  "lastReportCheck": {
+    "at": 1791991670729,
+    "why": "没有欠着的汇报"
+  },
+  "lastUserAt": 1791991963001,
+  "lastSpokeAt": 1791991200304,
+  "sentToday": 2,
+  "awaitingReply": false,
+  "canNow": false,
+  "why": "正在跑回合",
+  "gates": [
+    {
+      "name": "总开关",
+      "pass": true,
+      "note": "已打开"
+    },
+    {
+      "name": "会话控制器",
+      "pass": true,
+      "note": "已接上"
+    },
+    {
+      "name": "回合空闲",
+      "pass": false,
+      "note": "有回合在跑"
+    },
+    {
+      "name": "距上次说话",
+      "pass": false,
+      "note": "4 分钟（门槛 25 分钟）"
+    },
+    {
+      "name": "距上次开口",
+      "pass": false,
+      "note": "17 分钟（门槛 45 分钟）"
+    },
+    {
+      "name": "等回复",
+      "pass": true,
+      "note": "没有欠着的"
+    },
+    {
+      "name": "今日配额",
+      "pass": true,
+      "note": "2 / 6 次"
+    },
+    {
+      "name": "深夜静默",
+      "pass": true,
+      "note": "1~7 点不说"
+    },
+    {
+      "name": "允许时段",
+      "pass": true,
+      "note": "深夜 / 晚间（现在 23 点是晚间）"
+    },
+    {
+      "name": "重启汇报",
+      "pass": true,
+      "note": "没有欠着的"
+    },
+    {
+      "name": "改动待生效",
+      "pass": true,
+      "note": "没有"
+    }
+  ],
+  "file": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-proactive.json"
+}

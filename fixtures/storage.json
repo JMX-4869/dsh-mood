@@ -1,0 +1,67 @@
+{
+  "ok": true,
+  "dir": "D:\\xinqing\\ZhuDongKaiKou",
+  "home": "C:\\Users\\asus\\.dsh",
+  "pointerFile": "C:\\Users\\asus\\.dsh\\dsh-mood-store.json",
+  "custom": "D:\\xinqing\\ZhuDongKaiKou",
+  "dirs": {},
+  "isCustom": true,
+  "files": [
+    {
+      "name": "dsh-mood.json",
+      "key": "state",
+      "label": "心情状态",
+      "owner": "mood",
+      "dir": "D:\\xinqing\\ZhuDongKaiKou",
+      "configured": null,
+      "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood.json",
+      "exists": true,
+      "size": 2880
+    },
+    {
+      "name": "dsh-mood-diary.json",
+      "key": "diary",
+      "label": "日记",
+      "owner": "mood",
+      "dir": "D:\\xinqing\\ZhuDongKaiKou",
+      "configured": null,
+      "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-diary.json",
+      "exists": true,
+      "size": 1330
+    },
+    {
+      "name": "dsh-mood-news.json",
+      "key": "news",
+      "label": "时事",
+      "owner": "news",
+      "dir": "D:\\xinqing\\ZhuDongKaiKou",
+      "configured": null,
+      "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-news.json",
+      "exists": true,
+      "size": 7702
+    },
+    {
+      "name": "dsh-mood-proactive.json",
+      "key": "proactive",
+      "label": "主动开口",
+      "owner": "proactive",
+      "dir": "D:\\xinqing\\ZhuDongKaiKou",
+      "configured": null,
+      "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-proactive.json",
+      "exists": true,
+      "size": 605
+    },
+    {
+      "name": "dsh-mood-memory.jsonl",
+      "key": "memory",
+      "label": "硬盘记忆",
+      "owner": "memory",
+      "dir": "D:\\xinqing\\ZhuDongKaiKou",
+      "configured": null,
+      "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-memory.jsonl",
+      "exists": true,
+      "size": 73032
+    }
+  ],
+  "leftovers": []
+}

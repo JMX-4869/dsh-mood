@@ -1,0 +1,243 @@
+{
+  "ok": true,
+  "count": 30,
+  "at": 1791907101721,
+  "ageMin": 1418,
+  "fresh": true,
+  "file": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-news.json",
+  "presets": [
+    {
+      "label": "V2EX",
+      "url": "https://www.v2ex.com/index.xml",
+      "kind": "rss"
+    },
+    {
+      "label": "IT之家",
+      "url": "https://www.ithome.com/rss/",
+      "kind": "rss"
+    },
+    {
+      "label": "少数派",
+      "url": "https://sspai.com/feed",
+      "kind": "rss"
+    },
+    {
+      "label": "Hacker News 首页",
+      "url": "https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=12",
+      "kind": "json"
+    }
+  ],
+  "sources": [
+    {
+      "id": "hn",
+      "label": "Hacker News 首页",
+      "url": "https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=12",
+      "kind": "json",
+      "limit": 10
+    },
+    {
+      "id": "ithome",
+      "label": "IT之家",
+      "url": "https://www.ithome.com/rss/",
+      "kind": "rss",
+      "limit": 10
+    },
+    {
+      "id": "sspai",
+      "label": "少数派",
+      "url": "https://sspai.com/feed",
+      "kind": "rss",
+      "limit": 10
+    },
+    {
+      "id": "v2ex",
+      "label": "V2EX",
+      "url": "https://www.v2ex.com/index.xml",
+      "kind": "rss",
+      "limit": 10
+    }
+  ],
+  "report": [],
+  "items": [
+    {
+      "source": "v2ex",
+      "sourceLabel": "V2EX",
+      "title": "[分享发现] 东欧斯拉夫民族，他们对逆向游戏有这么热爱吗？",
+      "url": "https://www.v2ex.com/t/1248539#reply2"
+    },
+    {
+      "source": "v2ex",
+      "sourceLabel": "V2EX",
+      "title": "[分享发现] Meta 新出的 AI 助手 Muse，我拿它当了半个月&#34;家庭运维总监&#34;",
+      "url": "https://www.v2ex.com/t/1248538#reply0"
+    },
+    {
+      "source": "v2ex",
+      "sourceLabel": "V2EX",
+      "title": "[分享创造] 做了个英文恐怖故事站 LiveLore： AI 辅助写作，读者投票决定剧情走向",
+      "url": "https://www.v2ex.com/t/1248537#reply0"
+    },
+    {
+      "source": "v2ex",
+      "sourceLabel": "V2EX",
+      "title": "[分享创造] 网页版 Photoshop",
+      "url": "https://www.v2ex.com/t/1248536#reply0"
+    },
+    {
+      "source": "v2ex",
+      "sourceLabel": "V2EX",
+      "title": "[推广] 做了个 Godot MCP 资源站，整理了不同 MCP 的区别、安装教程和游戏开发资源",
+      "url": "https://www.v2ex.com/t/1248534#reply0"
+    },
+    {
+      "source": "v2ex",
+      "sourceLabel": "V2EX",
+      "title": "[分享创造] [开源] PicMake：纯前端的 GPT Image 2.5 生图工作台， Key 和图片只存在你的浏览器里",
+      "url": "https://www.v2ex.com/t/1248533#reply0"
+    },
+    {
+      "source": "v2ex",
+      "sourceLabel": "V2EX",
+      "title": "[分享创造] [开源] NonsPlayer 播放器——手机端，新的开始，新的挑战",
+      "url": "https://www.v2ex.com/t/1248532#reply1"
+    },
+    {
+      "source": "v2ex",
+      "sourceLabel": "V2EX",
+      "title": "[分享创造] [送码]从好用到爽用， Mu3ic 重磅更新，现已支持 Navidrome/Jellyfin/Emby",
+      "url": "https://www.v2ex.com/t/1248530#reply27"
+    },
+    {
+      "source": "v2ex",
+      "sourceLabel": "V2EX",
+      "title": "[程序员] 8 月 1 号到现在，我完成了接近 2000 个开发任务，放到以前简直不敢想象",
+      "url": "https://www.v2ex.com/t/1248529#reply4"
+    },
+    {
+      "source": "v2ex",
+      "sourceLabel": "V2EX",
+      "title": "[游戏] switch 最近多了好多老游戏移植啊",
+      "url": "https://www.v2ex.com/t/1248528#reply1"
+    },
+    {
+      "source": "hn",
+      "sourceLabel": "Hacker News 首页",
+      "title": "Hackers activate automatic defrosting in supermarket fridges across Europe",
+      "url": "https://www.tomshardware.com/tech-industry/cyber-security/unprecedented-cyberattack-cripples-supermarket-fridges-across-europe-as-hackers-activate-automatic-defrosting-delivery-and-store-prices-also-impacted-by-incident"
+    },
+    {
+      "source": "hn",
+      "sourceLabel": "Hacker News 首页",
+      "title": "A Modern Web App in C",
+      "url": "https://prophitt.me/writing/a-modern-web-app-in-c"
+    },
+    {
+      "source": "hn",
+      "sourceLabel": "Hacker News 首页",
+      "title": "GLM-Legal",
+      "url": "https://z.ai/blog/glm-legal"
+    },
+    {
+      "source": "hn",
+      "sourceLabel": "Hacker News 首页",
+      "title": "AI is a tool and using it well takes skill",
+      "url": "https://yyhh.org/blog/2026/10/ai-is-a-tool/"
+    },
+    {
+      "source": "hn",
+      "sourceLabel": "Hacker News 首页",
+      "title": "11 year old unsoundness bugs found in Rust borrow checker",
+      "url": "https://github.com/rust-lang/rust/issues/164250"
+    },
+    {
+      "source": "hn",
+      "sourceLabel": "Hacker News 首页",
+      "title": "Turn a WiFi 7 Router into a 320Msps Software Defined Radio Receiver",
+      "url": "https://github.com/h0m3us3r/w1700k-sdr"
+    },
+    {
+      "source": "hn",
+      "sourceLabel": "Hacker News 首页",
+      "title": "Citroen revives the 2CV for an electric age",
+      "url": "https://www.bbc.com/news/articles/c620r33plgppo"
+    },
+    {
+      "source": "hn",
+      "sourceLabel": "Hacker News 首页",
+      "title": "The baffling intelligence of a single cell (2024)",
+      "url": "https://jsomers.net/e-coli-chemotaxis/"
+    },
+    {
+      "source": "hn",
+      "sourceLabel": "Hacker News 首页",
+      "title": "CFTC Staff Were Told to Retract Analysis of Suspicious Oil Trades",
+      "url": "https://www.bloomberg.com/news/features/2026-10-13/cftc-staff-told-to-retract-analysis-of-suspicious-oil-trades-on-iran"
+    },
+    {
+      "source": "hn",
+      "sourceLabel": "Hacker News 首页",
+      "title": "Apple HomeView",
+      "url": "https://www.apple.com/apple-homeview/"
+    },
+    {
+      "source": "ithome",
+      "sourceLabel": "IT之家",
+      "title": "苹果今日举办欢迎回家发布会，盘中股价再创历史新高",
+      "url": "https://www.ithome.com/1/012/599.htm"
+    },
+    {
+      "source": "ithome",
+      "sourceLabel": "IT之家",
+      "title": "红魔 12 Pro+ 手机官宣搭载行业首款 185Hz 全面屏，行业首发 185Hz 高刷显示控制芯片",
+      "url": "https://www.ithome.com/1/012/598.htm"
+    },
+    {
+      "source": "ithome",
+      "sourceLabel": "IT之家",
+      "title": "长安凯程 V919 荣耀版 8 方上市：限时 8.89 万元起，标配宁德时代电芯 CLTC 续航 355km",
+      "url": "https://www.ithome.com/1/012/597.htm"
+    },
+    {
+      "source": "ithome",
+      "sourceLabel": "IT之家",
+      "title": "华为：麒麟 9050 系列安全、音视频全面升级，是首批获权威检测的抗量子攻击移动 SoC",
+      "url": "https://www.ithome.com/1/012/596.htm"
+    },
+    {
+      "source": "ithome",
+      "sourceLabel": "IT之家",
+      "title": "首发入库 XGP 仍热销，《战争机器：事变日》游戏登顶美国、英国 XBOX 商店销量榜",
+      "url": "https://www.ithome.com/1/012/595.htm"
+    },
+    {
+      "source": "ithome",
+      "sourceLabel": "IT之家",
+      "title": "美国 NASA“毅力号”火星车累计行驶里程达 45.2 公里，成地外天体表面行驶距离最远的车辆",
+      "url": "https://www.ithome.com/1/012/591.htm"
+    },
+    {
+      "source": "ithome",
+      "sourceLabel": "IT之家",
+      "title": "特斯拉称中国造电动汽车进口配额耗尽：暂停加拿大 Model 3 Premium 新订单，预计 2027 年 3 月恢复",
+      "url": "https://www.ithome.com/1/012/590.htm"
+    },
+    {
+      "source": "ithome",
+      "sourceLabel": "IT之家",
+      "title": "零散小船赢不了航母巡洋舰！“中国刻蚀机之父”尹志尧提醒国内半导体设备企业不能散兵游勇式发展",
+      "url": "https://www.ithome.com/1/012/589.htm"
+    },
+    {
+      "source": "ithome",
+      "sourceLabel": "IT之家",
+      "title": "网易《逆水寒：新世界》4.2 版本大资料片【苗疆蛊事】官宣月底登场",
+      "url": "https://www.ithome.com/1/012/588.htm"
+    },
+    {
+      "source": "ithome",
+      "sourceLabel": "IT之家",
+      "title": "罗技 MX Master 4 鼠标“特别版”曝光：核心功能不变，创新外观设计",
+      "url": "https://www.ithome.com/1/012/587.htm"
+    }
+  ]
+}

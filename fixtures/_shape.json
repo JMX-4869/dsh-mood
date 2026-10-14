@@ -1,0 +1,318 @@
+{
+  "state": {
+    "top": [
+      "accessAt",
+      "count",
+      "current",
+      "diaries",
+      "diaryFile",
+      "generateAt",
+      "lockedReason",
+      "memory",
+      "mixed",
+      "moodLabels",
+      "nextPeriodicMin",
+      "ok",
+      "persona",
+      "ranked",
+      "sinceSwitchMin",
+      "tiers",
+      "unlocked"
+    ],
+    "stats": null,
+    "recent0": null,
+    "hits0": null,
+    "current": [
+      "id",
+      "label",
+      "mixLabel",
+      "primaryLabel"
+    ],
+    "memory": [
+      "bytes",
+      "count",
+      "newest",
+      "oldest",
+      "path",
+      "sessions"
+    ],
+    "persona": [
+      "effective",
+      "force",
+      "own",
+      "source"
+    ],
+    "items0": null,
+    "sources0": null,
+    "gates0": null,
+    "slot0": null,
+    "diaries0": [
+      "date",
+      "edited",
+      "mood",
+      "moodLabel"
+    ],
+    "dirsKeys": null
+  },
+  "diary": {
+    "top": [
+      "date",
+      "edited",
+      "mood",
+      "moodLabel",
+      "ok",
+      "text"
+    ],
+    "stats": null,
+    "recent0": null,
+    "hits0": null,
+    "current": null,
+    "memory": null,
+    "persona": null,
+    "items0": null,
+    "sources0": null,
+    "gates0": null,
+    "slot0": null,
+    "diaries0": null,
+    "dirsKeys": null
+  },
+  "diary-nodate": {
+    "top": [
+      "error",
+      "ok"
+    ],
+    "stats": null,
+    "recent0": null,
+    "hits0": null,
+    "current": null,
+    "memory": null,
+    "persona": null,
+    "items0": null,
+    "sources0": null,
+    "gates0": null,
+    "slot0": null,
+    "diaries0": null,
+    "dirsKeys": null
+  },
+  "diary-missing": {
+    "top": [
+      "error",
+      "ok"
+    ],
+    "stats": null,
+    "recent0": null,
+    "hits0": null,
+    "current": null,
+    "memory": null,
+    "persona": null,
+    "items0": null,
+    "sources0": null,
+    "gates0": null,
+    "slot0": null,
+    "diaries0": null,
+    "dirsKeys": null
+  },
+  "proactive": {
+    "top": [
+      "available",
+      "awaitingReply",
+      "canNow",
+      "enabled",
+      "file",
+      "gates",
+      "idleMs",
+      "lastReportCheck",
+      "lastSpokeAt",
+      "lastUserAt",
+      "maxPerDay",
+      "minGapMs",
+      "nowHour",
+      "ok",
+      "pendingRestart",
+      "pendingSince",
+      "pendingStale",
+      "procStart",
+      "quietFrom",
+      "quietTo",
+      "reportRestart",
+      "reportedAt",
+      "sentToday",
+      "slotTable",
+      "slots",
+      "warnStale",
+      "why"
+    ],
+    "stats": null,
+    "recent0": null,
+    "hits0": null,
+    "current": null,
+    "memory": null,
+    "persona": null,
+    "items0": null,
+    "sources0": null,
+    "gates0": [
+      "name",
+      "note",
+      "pass"
+    ],
+    "slot0": [
+      "from",
+      "id",
+      "kind",
+      "label",
+      "to"
+    ],
+    "diaries0": null,
+    "dirsKeys": null
+  },
+  "memory": {
+    "top": [
+      "minChars",
+      "ok",
+      "recent",
+      "stats"
+    ],
+    "stats": [
+      "bytes",
+      "count",
+      "newest",
+      "oldest",
+      "path",
+      "sessions"
+    ],
+    "recent0": [
+      "id",
+      "id8",
+      "k",
+      "s",
+      "t",
+      "x"
+    ],
+    "hits0": null,
+    "current": null,
+    "memory": null,
+    "persona": null,
+    "items0": null,
+    "sources0": null,
+    "gates0": null,
+    "slot0": null,
+    "diaries0": null,
+    "dirsKeys": null
+  },
+  "memory-search": {
+    "top": [
+      "hits",
+      "ok",
+      "query",
+      "stats"
+    ],
+    "stats": [
+      "bytes",
+      "count",
+      "newest",
+      "oldest",
+      "path",
+      "sessions"
+    ],
+    "recent0": null,
+    "hits0": [
+      "cover",
+      "id",
+      "k",
+      "s",
+      "score",
+      "t",
+      "x"
+    ],
+    "current": null,
+    "memory": null,
+    "persona": null,
+    "items0": null,
+    "sources0": null,
+    "gates0": null,
+    "slot0": null,
+    "diaries0": null,
+    "dirsKeys": null
+  },
+  "news": {
+    "top": [
+      "ageMin",
+      "at",
+      "count",
+      "file",
+      "fresh",
+      "items",
+      "ok",
+      "presets",
+      "report",
+      "sources"
+    ],
+    "stats": null,
+    "recent0": null,
+    "hits0": null,
+    "current": null,
+    "memory": null,
+    "persona": null,
+    "items0": [
+      "source",
+      "sourceLabel",
+      "title",
+      "url"
+    ],
+    "sources0": [
+      "id",
+      "kind",
+      "label",
+      "limit",
+      "url"
+    ],
+    "gates0": null,
+    "slot0": null,
+    "diaries0": null,
+    "dirsKeys": null
+  },
+  "storage": {
+    "top": [
+      "custom",
+      "dir",
+      "dirs",
+      "files",
+      "home",
+      "isCustom",
+      "leftovers",
+      "ok",
+      "pointerFile"
+    ],
+    "stats": null,
+    "recent0": null,
+    "hits0": null,
+    "current": null,
+    "memory": null,
+    "persona": null,
+    "items0": null,
+    "sources0": null,
+    "gates0": null,
+    "slot0": null,
+    "diaries0": null,
+    "dirsKeys": []
+  },
+  "persona": {
+    "top": [
+      "ok",
+      "own",
+      "source"
+    ],
+    "stats": null,
+    "recent0": null,
+    "hits0": null,
+    "current": null,
+    "memory": null,
+    "persona": null,
+    "items0": null,
+    "sources0": null,
+    "gates0": null,
+    "slot0": null,
+    "diaries0": null,
+    "dirsKeys": null
+  }
+}

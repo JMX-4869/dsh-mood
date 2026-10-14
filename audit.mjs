@@ -298,6 +298,17 @@ const N = M.MOOD_IDS.length
     portDoc ? OK('有 PORTING.md + test-porting.mjs（移植说明配了验证）') : NG('移植说明或它的测试缺了')
     const evTest = fs.existsSync(SRC + '/test-events.mjs')
     const toolTest = fs.existsSync(SRC + '/test-tools.mjs')
+    const cliTest = fs.existsSync(SRC + '/test-client.mjs')
+    cliTest ? OK('有 test-client.mjs（真渲染每个面板）') : NG('缺 test-client.mjs —— 客户端从没被渲染过')
+
+    // ⚠️ 客户端测试的数据**必须来自真接口的快照**，不能手写。
+    //    第一版就是手写的，和真接口对不上（/storage 字段名完全不同、
+    //    /diary 我以为是"今天的日记"其实是单日查询）—— 测的是脑子里的接口。
+    const fxDir = fs.existsSync(SRC + '/fixtures/state.json') && fs.existsSync(SRC + '/fixtures/_shape.json')
+    fxDir ? OK('有真接口快照 fixtures/（客户端测试拿它当数据）') : NG('缺 fixtures/ —— 客户端测试会用编的数据')
+    const fxGuard = fs.existsSync(SRC + '/test-fixtures.mjs')
+    fxGuard ? OK('有 test-fixtures.mjs（快照过期会报出来）') : NG('快照没人守 —— 接口变了测试还是绿的')
+
     toolTest ? OK('有 test-tools.mjs（真调每个工具 + 看提示词段正文）') : NG('缺 test-tools.mjs —— 工具的 execute 从没被调过')
 
     // 提示词是模型每轮都要读的 —— 标点写坏了不报错，只会让人读得别扭。

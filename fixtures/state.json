@@ -1,0 +1,302 @@
+{
+  "ok": true,
+  "current": {
+    "id": "calm",
+    "label": "平静",
+    "mixLabel": "平静混着专注、好奇",
+    "primaryLabel": "平静"
+  },
+  "mixed": [
+    {
+      "id": "focused",
+      "label": "专注"
+    },
+    {
+      "id": "curious",
+      "label": "好奇"
+    }
+  ],
+  "ranked": [
+    {
+      "id": "calm",
+      "label": "平静",
+      "value": 38.4
+    },
+    {
+      "id": "focused",
+      "label": "专注",
+      "value": 34.5
+    },
+    {
+      "id": "curious",
+      "label": "好奇",
+      "value": 31.6
+    },
+    {
+      "id": "happy",
+      "label": "开心",
+      "value": 29.7
+    },
+    {
+      "id": "tired",
+      "label": "疲惫",
+      "value": 28.8
+    },
+    {
+      "id": "excited",
+      "label": "兴奋",
+      "value": 17.7
+    },
+    {
+      "id": "annoyed",
+      "label": "烦躁",
+      "value": 14.3
+    },
+    {
+      "id": "proud",
+      "label": "得意",
+      "value": 13.9
+    },
+    {
+      "id": "anxious",
+      "label": "焦虑",
+      "value": 12.9
+    },
+    {
+      "id": "burnout",
+      "label": "内耗",
+      "value": 12.6
+    },
+    {
+      "id": "numb",
+      "label": "麻木",
+      "value": 11.7
+    },
+    {
+      "id": "hyper",
+      "label": "上头",
+      "value": 11.6
+    },
+    {
+      "id": "love",
+      "label": "恋慕",
+      "value": 11.5
+    },
+    {
+      "id": "flutter",
+      "label": "心动",
+      "value": 11.4
+    },
+    {
+      "id": "hurt",
+      "label": "委屈",
+      "value": 9.6
+    },
+    {
+      "id": "down",
+      "label": "低落",
+      "value": 9.4
+    },
+    {
+      "id": "cracked",
+      "label": "破防",
+      "value": 9.1
+    },
+    {
+      "id": "surprise",
+      "label": "惊讶",
+      "value": 8
+    },
+    {
+      "id": "checkedout",
+      "label": "摆烂",
+      "value": 7.5
+    },
+    {
+      "id": "coy",
+      "label": "撒娇",
+      "value": 7.5
+    },
+    {
+      "id": "jealous",
+      "label": "吃醋",
+      "value": 7
+    },
+    {
+      "id": "awkward",
+      "label": "尴尬",
+      "value": 6.7
+    },
+    {
+      "id": "sympathy",
+      "label": "同情",
+      "value": 6.4
+    },
+    {
+      "id": "conflict",
+      "label": "矛盾",
+      "value": 6.2
+    },
+    {
+      "id": "nostalgia",
+      "label": "怀旧",
+      "value": 5.2
+    },
+    {
+      "id": "guilt",
+      "label": "内疚",
+      "value": 4.3
+    },
+    {
+      "id": "gloomy",
+      "label": "消沉",
+      "value": 4.1
+    },
+    {
+      "id": "sulk",
+      "label": "生闷气",
+      "value": 3.3
+    },
+    {
+      "id": "disappointed",
+      "label": "失望",
+      "value": 3.3
+    },
+    {
+      "id": "lonely",
+      "label": "孤单",
+      "value": 3.2
+    },
+    {
+      "id": "shame",
+      "label": "羞耻",
+      "value": 2.1
+    },
+    {
+      "id": "fear",
+      "label": "恐惧",
+      "value": 0.6
+    },
+    {
+      "id": "disgust",
+      "label": "厌恶",
+      "value": 0
+    }
+  ],
+  "sinceSwitchMin": 66,
+  "nextPeriodicMin": 279,
+  "diaryFile": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-diary.json",
+  "generateAt": "23:59",
+  "unlocked": true,
+  "lockedReason": "",
+  "accessAt": 1791907268608,
+  "count": 1,
+  "moodLabels": {
+    "calm": "平静",
+    "happy": "开心",
+    "curious": "好奇",
+    "focused": "专注",
+    "excited": "兴奋",
+    "tired": "疲惫",
+    "annoyed": "烦躁",
+    "down": "低落",
+    "sulk": "生闷气",
+    "hurt": "委屈",
+    "proud": "得意",
+    "gloomy": "消沉",
+    "anxious": "焦虑",
+    "numb": "麻木",
+    "lonely": "孤单",
+    "flutter": "心动",
+    "love": "恋慕",
+    "jealous": "吃醋",
+    "burnout": "内耗",
+    "cracked": "破防",
+    "checkedout": "摆烂",
+    "hyper": "上头",
+    "fear": "恐惧",
+    "disgust": "厌恶",
+    "surprise": "惊讶",
+    "shame": "羞耻",
+    "guilt": "内疚",
+    "awkward": "尴尬",
+    "sympathy": "同情",
+    "disappointed": "失望",
+    "nostalgia": "怀旧",
+    "coy": "撒娇",
+    "conflict": "矛盾"
+  },
+  "tiers": {
+    "basic": [
+      "calm",
+      "happy",
+      "curious",
+      "focused",
+      "excited",
+      "tired",
+      "annoyed",
+      "down",
+      "fear",
+      "disgust",
+      "surprise"
+    ],
+    "complex": [
+      "hurt",
+      "sulk",
+      "proud",
+      "gloomy",
+      "anxious",
+      "numb",
+      "lonely",
+      "flutter",
+      "love",
+      "jealous",
+      "shame",
+      "guilt",
+      "awkward",
+      "sympathy",
+      "disappointed",
+      "nostalgia",
+      "coy",
+      "conflict"
+    ],
+    "modern": [
+      "burnout",
+      "cracked",
+      "checkedout",
+      "hyper"
+    ]
+  },
+  "memory": {
+    "count": 130,
+    "bytes": 73032,
+    "sessions": 1,
+    "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-memory.jsonl",
+    "oldest": 1791987664514,
+    "newest": 1791992174757
+  },
+  "persona": {
+    "source": "external",
+    "force": false,
+    "own": {
+      "enabled": true,
+      "selfName": "",
+      "userName": "",
+      "stance": "",
+      "tone": ""
+    },
+    "effective": {
+      "name": "小鲸",
+      "userName": "主人",
+      "source": "external"
+    }
+  },
+  "diaries": [
+    {
+      "date": "2026-10-13",
+      "mood": "calm",
+      "moodLabel": "平静",
+      "edited": false
+    }
+  ]
+}
