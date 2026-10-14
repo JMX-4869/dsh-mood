@@ -2146,6 +2146,16 @@ export function apply(root, rawConfig) {
       try { diaryTick() } catch (err) { log('dsh-mood 日记检查出错:', err && err.message) }
       // 主动开口：默认关，且要一堆条件同时满足（见 proactive.js 的 canSpeak）
       try { void maybeSpeak() } catch (err) { log('dsh-mood 主动开口检查出错:', err && err.message) }
+      // ⚠️ 重启汇报**也必须挂在这儿**。
+      //
+      //    原来只挂在 `turn/end` 上 —— 而 **`turn/end` 根本不在 `session/event`
+      //    这条流里**（事件名在 DSH 里确实叫这个，但走的是另一条通道）。
+      //    证据：状态文件 `turns: 0` 而 `messages: 66` ——
+      //    消息收了一大堆，回合结束**一次都没收到**。
+      //
+      //    后果：重启汇报一次都没执行过，而且完全不报错。`maybeSpeak` 没事
+      //    是因为它早就挂了心跳；只有这一个功能是单点挂在 turn/end 上的。
+      try { void maybeReportRestart() } catch (err) { log('dsh-mood 重启汇报检查出错:', err && err.message) }
     }, 30000)
     if (timer && typeof timer.unref === 'function') timer.unref()
     ctx.effect(() => () => clearInterval(timer), 'dsh-mood heartbeat')

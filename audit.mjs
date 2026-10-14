@@ -314,6 +314,12 @@ const N = M.MOOD_IDS.length
     sidHelper ? OK('会话 id 走 sessionIdOf（三个字段都试）') : NG('会话 id 只赌一个字段名 —— 猜错就静默失效')
 
     // ⚠️ 静默 return 必须留诊断，否则"怎么没触发"只能靠猜
+    // ⚠️ 重启汇报**必须挂在心跳上**，不能只挂 turn/end。
+    //    实证：`turn/end` 这个事件名在 DSH 里确实存在，但**不走 session/event
+    //    这条流** —— 状态文件里 `turns: 0` 而 `messages: 66`，回合结束一次都没收到。
+    //    只挂 turn/end 的那个功能就永远不动，而且完全不报错。
+    const beat = /setInterval\(\(\) => \{[\s\S]{0,600}?maybeReportRestart\(\)/.test(code)
+    beat ? OK('重启汇报挂在心跳上（turn/end 那条流收不到）') : NG('重启汇报只挂 turn/end —— 永远不会触发')
     const hasDiag = /lastReportCheck/.test(code) && /proactive\.lastReportCheck = /.test(code)
     hasDiag ? OK('重启汇报每道 return 都留诊断（lastReportCheck）') : NG('重启汇报的静默 return 没有诊断')
 
