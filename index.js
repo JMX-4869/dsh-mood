@@ -2333,7 +2333,14 @@ export function apply(root, rawConfig) {
                 req.on('end', () => {
                   try {
                     const j = JSON.parse(body || '{}')
-                    const p = loadProactive()
+                    // ⚠️ **必须改模块里那份活的 `proactive`**，不能改 loadProactive() 的返回值。
+                    //
+                    //    loadProactive() 每次返回的是一份**新副本**。第一版这里写的是
+                    //      const p = loadProactive(); p.cfg.enabled = ...; saveProactive(p)
+                    //    —— 存盘是对的，但 `canSpeak` / `maybeSpeak` 读的是模块里那份，
+                    //    从来没被改过。表现就是：**开关点了没反应，只有重启才生效**。
+                    //    （主人截图里"打不开主动开口"就是这个。）
+                    const p = proactive
                     if (typeof j.enabled === 'boolean') p.cfg.enabled = j.enabled
                     for (const k of ['idleMs', 'minGapMs', 'maxPerDay']) {
                       const v = Number(j[k])

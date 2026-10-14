@@ -112,6 +112,10 @@ window.__ModuleLoader__.load({
       '.dshmood .slottitle{font-size:13px;font-weight:600}',
       '.dshmood .slotnote{font-size:12px;color:var(--dsw-alias-label-secondary);flex:1;min-width:120px}',
       '.dshmood .slots{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:8px}',
+      '.dshmood .slots3{grid-template-columns:repeat(3,1fr)}',
+      '.dshmood .slotbig{padding:12px 14px;flex-direction:column;align-items:flex-start;gap:4px}',
+      '.dshmood .slotbig .slotkind{width:22px;height:22px;line-height:22px;font-size:12px}',
+      '.dshmood .slotbig .slotname{font-size:14px;font-weight:600;flex:none}',
       '.dshmood .slot{display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:transparent;cursor:pointer;font-size:12.5px;color:var(--dsw-alias-label-primary)}',
       '.dshmood .slot:hover{border-color:var(--dsw-alias-brand-primary)}',
       '.dshmood .slot.on{background:#13241a;border-color:#2ea043}',
@@ -1156,43 +1160,50 @@ window.__ModuleLoader__.load({
             h('span', { className: 'slottitle' }, '允许开口的时段'),
             h('span', { className: 'slotnote' },
               (d.slots && d.slots.length)
-                ? '只在这 ' + d.slots.length + ' 段里开口'
+                ? '只在这几类里开口'
                 : '没选 —— 全时段都能开口'),
             h('button', {
               onClick: () => patch({ slots: [] }),
               disabled: busy || !(d.slots && d.slots.length),
             }, '恢复全时段'),
           ),
-          h('div', { className: 'slots' },
-            ...((d.slotTable || []).map((sl) => {
-              const on = !!(d.slots && d.slots.includes(sl.id))
-              const isNow = d.nowHour >= sl.from && d.nowHour < sl.to
+          // 只按**三类**选：峰 / 平 / 谷。
+          //
+          // 原来是 7 个具体时段，粒度高但没必要 —— 想说的其实是
+          // 「别在人少的时候找我」或者「只在高峰期找我」，而不是"我只要 9 到 12 点"。
+          // 点某一类 = 把属于这类的所有时段一起选上（存储仍然是按段记的，
+          // 所以以后想再细化回去不用改数据）。
+          h('div', { className: 'slots slots3' },
+            ...(['峰', '平', '谷'].map((kind) => {
+              const mine = (d.slotTable || []).filter((s) => s.kind === kind)
+              const ids = mine.map((s) => s.id)
+              const on = ids.length > 0 && ids.every((x) => (d.slots || []).includes(x))
+              const isNow = mine.some((s) => d.nowHour >= s.from && d.nowHour < s.to)
+              const hours = mine.map((s) => String(s.from).padStart(2, '0') + '–' + String(s.to % 24).padStart(2, '0')).join(' · ')
               return h('button', {
-                key: sl.id,
-                className: 'slot' + (on ? ' on' : '') + (isNow ? ' now' : ''),
+                key: kind,
+                className: 'slot slotbig' + (on ? ' on' : '') + (isNow ? ' now' : ''),
                 disabled: busy,
                 onClick: () => {
                   const cur = new Set(d.slots || [])
-                  if (cur.has(sl.id)) cur.delete(sl.id); else cur.add(sl.id)
+                  if (on) { for (const x of ids) cur.delete(x) } else { for (const x of ids) cur.add(x) }
                   patch({ slots: [...cur] })
                 },
               },
-                h('span', { className: 'slotkind' }, sl.kind),
-                h('span', { className: 'slotname' }, sl.label),
-                h('span', { className: 'slothours' },
-                  String(sl.from).padStart(2, '0') + '–' + String(sl.to % 24).padStart(2, '0')),
+                h('span', { className: 'slotkind' }, kind),
+                h('span', { className: 'slotname' }, kind === '峰' ? '高峰' : kind === '平' ? '平峰' : '低谷'),
+                h('span', { className: 'slothours' }, hours),
                 isNow ? h('span', { className: 'slotnow' }, '现在') : null,
               )
             })),
           ),
           h('div', { className: 'hintline' },
-            '峰 = 一般通勤/活跃高峰，平 = 工作时段，谷 = 人少的时候 —— ',
-            h('b', null, '只是标签，不参与判定'),
-            '。真正起作用的是起止整点。',
+            '峰 = 早峰 7–9 + 晚峰 18–21，平 = 上午/午间/下午 9–18，谷 = 深夜 0–7 + 晚间 21–24。',
           ),
           h('div', { className: 'hintline' },
             '⚠️ ', h('b', null, '「深夜静默」比这里优先'),
-            ' —— 两个都开时静默赢。选中的时段如果和静默重叠，那段时间照样不开口。',
+            ' —— 两个都开时静默赢。所以就算选了「低谷」，1~7 点照样不开口；',
+            '想让深夜也能说话，得把静默那段一起调掉（在配置文件里）。',
           ),
         ),
 

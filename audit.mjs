@@ -272,6 +272,15 @@ const N = M.MOOD_IDS.length
     noIdle ? OK('重启汇报不等空闲（等了下一次重启就白等）') : NG('重启汇报走了 canSpeak —— 会被空闲门槛永远拦住')
     stillGated ? OK('重启汇报照样受静默/时段管（凌晨不吵）') : NG('重启汇报绕过了静默/时段')
 
+    // ⚠️ POST /proactive 必须改**模块里那份活的**。
+    //    loadProactive() 每次返回新副本 —— 改副本+存盘的话，canSpeak 读的那份
+    //    从来没变过。表现就是：**开关点了没反应，只有重启才生效**。主人踩过这个。
+    const writesLive = /const p = proactive\b/.test(host2)
+    const writesCopy = /const p = loadProactive\(\)[\s\S]{0,80}?typeof j\.enabled/.test(host2)
+    writesLive && !writesCopy
+      ? OK('POST /proactive 改的是活的那份（开关点了立刻生效）')
+      : NG('POST /proactive 改了副本 —— 开关点了不会生效，只有重启才行')
+
     const repWired = /if \(type === 'turn\/end'\)[\s\S]{0,400}?maybeReportRestart\(\)/.test(host2)
     repWired ? OK('回合结束时检查重启汇报（= 任务结束就查一次）') : NG('重启汇报没接在回合结束上')
 
