@@ -202,6 +202,10 @@ export function blankTaste() {
   // items 现在带 `said`（主人对这条说的**原话**）—— 见下面 addItem 的注释
   return {
     version: 1,
+    // ⚠️ **加了新字段一定要同时在 migrateTaste 里登记。**
+    //    那里是白名单式的重建，漏一个就"写进去能用、一重启就没"，而且不报错。
+    //    （本轮就是这么发现 touchedAt 会被丢的。）
+    touchedAt: 0,
     // 通用原则 + 主人给的规则，同一张表靠 from 区分
     principles: SEED_PRINCIPLES.map((p, i) => ({
       id: 'p' + (i + 1),
@@ -232,6 +236,8 @@ export function migrateTaste(t) {
     principles: Array.isArray(t.principles) ? t.principles : b.principles,
     items: Array.isArray(t.items) ? t.items : [],
     summary: t.summary && typeof t.summary === 'object' ? t.summary : null,
+    // ⚠️ 别漏这个 —— 它是白名单，漏了就"写进去能用、一重启就没了"，还不报错。
+    touchedAt: Number(t.touchedAt) || 0,
   }
   // 逐条补齐
   out.principles = out.principles.map((p, i) => ({
@@ -346,7 +352,7 @@ export function addPrinciple(t, text, opts = {}) {
     at: Date.now(),
   }
   t.principles.push(p)
-  t.summary = null      // 库变了，摘要缓存作废
+  t.touchedAt = Date.now()   // ⚠️ 不清摘要 —— 见上面 saveTaste 那段说明；由 summaryStale 负责提示
   return { ok: true, principle: p }
 }
 
@@ -354,7 +360,7 @@ export function removePrinciple(t, id) {
   const i = t.principles.findIndex((p) => p.id === id)
   if (i < 0) return { ok: false, error: '没找到 ' + id }
   const [p] = t.principles.splice(i, 1)
-  t.summary = null
+  t.touchedAt = Date.now()
   return { ok: true, principle: p }
 }
 
@@ -370,7 +376,7 @@ export function editPrinciple(t, id, patch = {}) {
   //   ⚠️ 但 by **不动**：主人把一条种子改了个字，主意仍然是我的（by 还是 me），
   //      只是他认可了。两个字段管的是两件事，不能一起改。
   if (patch.text !== undefined || patch.why !== undefined || patch.unless !== undefined) p.from = 'user'
-  t.summary = null
+  t.touchedAt = Date.now()
   return { ok: true, principle: p }
 }
 
@@ -415,7 +421,7 @@ export function addItem(t, { ref, kind, tags, note, confirmed, by, said, myRead,
     return { ok: false, error: '这个已经收过了。' }
   }
   t.items.push(x)
-  t.summary = null
+  t.touchedAt = Date.now()
   return { ok: true, item: x }
 }
 
@@ -438,7 +444,7 @@ export function updateItem(t, id, patch = {}) {
       else delete x.tags[k]
     }
   }
-  t.summary = null
+  t.touchedAt = Date.now()
   return { ok: true, item: x }
 }
 
@@ -446,7 +452,7 @@ export function removeItem(t, id) {
   const i = t.items.findIndex((x) => x.id === id)
   if (i < 0) return { ok: false, error: '没找到 ' + id }
   const [x] = t.items.splice(i, 1)
-  t.summary = null
+  t.touchedAt = Date.now()
   return { ok: true, item: x }
 }
 
@@ -537,6 +543,13 @@ export function setSummary(t, note, fromCount) {
     // ★ 记下写它的时候库有多大。库长大了，摘要就"过期"了。
     fromCount: Number(fromCount) || (t.principles.filter((p) => p.on).length + t.items.length),
   }
+  // ★ 刚写完摘要 → 把"内容改过"的标记清掉。
+  //
+  //   ⚠️ 这里**必须是清零，不能只比时间戳**。原来我用 `touchedAt > summary.at` 判断，
+  //      而两者都取 Date.now() —— 同一毫秒内先写摘要再改一条（脚本、自动化流程、
+  //      或者手快）就会判定成"没改过"，漏报。实测就漏了一次。
+  //      用标志位就跟时钟精度无关了。
+  t.touchedAt = 0
   return { ok: true, summary: t.summary }
 }
 
@@ -547,6 +560,18 @@ export function summaryStale(t) {
   const from = Number(t.summary.fromCount) || 0
   if (from && now >= from * 1.3 + 2) {
     return { stale: true, why: `库从 ${from} 条涨到 ${now} 条`, now }
+  }
+  // ② 另一种过期：**库没长大，但内容被改过**（改措辞 / 删条目）。
+  //    这两种不一样 —— 长大是"摘要少覆盖了新东西"，改过是"摘要可能直接说错了"。
+  //    但两种都只该**提示**，不该删数据。
+  //
+  //    ⚠️ 这条是踩过才加的：原来六个写操作直接 `t.summary = null`，
+  //       改一个错别字就把整段摘要销毁掉，而且静默 —— 我查了半天"摘要去哪了"。
+  // ⚠️ touchedAt 是**标志位**，不是时间戳：写摘要时清零，任何内容改动重新置上。
+  //    别改回"比时间戳"—— 同一毫秒内会漏报（实测漏过一次）。
+  const touched = Number(t.touchedAt) || 0
+  if (touched) {
+    return { stale: true, why: '摘要写完之后，库又被改过（内容变了，不是长大了）', now, touchedAt: touched }
   }
   return { stale: false, now }
 }

@@ -203,9 +203,20 @@ const t = suite('品味库')
   t.eq(T.summaryStale(x).stale, false, '刚写完 → 不急着重写')
 
   // 库涨三成以上就该重压
-  for (let i = 0; i < 6; i++) T.addPrinciple(x, '临时原则 ' + i)
-  t.eq(T.summaryStale(x).stale, true, '库涨了三成 → 提示重压')
-  t.gt(T.summaryStale(x).why.length, 2, '而且说明了为什么（' + T.summaryStale(x).why + '）')
+  //
+  // ⚠️ 这段原来是**因为 bug 才绿的**：加 6 条（22→28）其实没到 30%，
+  //    但当年 addPrinciple 里有一句 `t.summary = null`，把摘要清掉了，
+  //    于是 summaryStale 返回的是「还没写过摘要」—— **另一个理由**，
+  //    而断言只看 `.stale`，看不出来。
+  //    后来把那个"清摘要"的 bug 修掉，这条才露馅。
+  //
+  //    所以现在两件事一起锁：数字真要跨过 30%（22 → 31，阈值 30.6），
+  //    而且**理由必须是尺寸**，不能是别的。
+  for (let i = 0; i < 9; i++) T.addPrinciple(x, '临时原则 ' + i)
+  const sv = T.summaryStale(x)
+  t.eq(sv.stale, true, '库涨了三成 → 提示重压')
+  t.has(sv.why, '涨到', '理由是"长大了"，不是别的（' + sv.why + '）')
+  t.eq(T.summaryStale(x).why.includes('还没写过'), false, '而且摘要还在（别把"没摘要"当成"该重压"）')
 
   t.eq(T.setSummary(x, '', 1).ok, false, '空摘要不给写')
   t.eq(T.setSummary(x, 'x'.repeat(3000), 1).ok, false, '超长摘要不给写（摘要的意义就是短）')
