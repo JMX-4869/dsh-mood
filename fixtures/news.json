@@ -1,9 +1,9 @@
 {
   "ok": true,
-  "count": 30,
-  "at": 1791907101721,
-  "ageMin": 1497,
-  "fresh": false,
+  "count": 50,
+  "at": 1792054020932,
+  "ageMin": 5,
+  "fresh": true,
   "file": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-news.json",
   "presets": [
     {
@@ -55,189 +55,346 @@
       "url": "https://www.v2ex.com/index.xml",
       "kind": "rss",
       "limit": 10
+    },
+    {
+      "id": "src-vr94l3",
+      "label": "品味训练法（Dragoon0x/taste-sk",
+      "url": "https://skillsmp.com/creators/dragoon0x/taste-skills/skills-perception-consumption-discipline",
+      "kind": "auto",
+      "limit": 10
+    },
+    {
+      "id": "src-71cn0i",
+      "label": "VAST 审美敏感性测试（MLLM 评测）",
+      "url": "https://aclanthology.org/2025.paclic-1.37/",
+      "kind": "auto",
+      "limit": 10
+    },
+    {
+      "id": "src-o88ohk",
+      "label": "bilibili",
+      "url": "https://www.bilibili.com/",
+      "kind": "auto",
+      "limit": 10
     }
   ],
-  "report": [],
+  "report": [
+    {
+      "id": "v2ex",
+      "label": "V2EX",
+      "ok": true,
+      "count": 10,
+      "error": ""
+    },
+    {
+      "id": "hn",
+      "label": "Hacker News 首页",
+      "ok": true,
+      "count": 10,
+      "error": ""
+    },
+    {
+      "id": "src-o88ohk",
+      "label": "bilibili",
+      "ok": true,
+      "count": 10,
+      "error": ""
+    },
+    {
+      "id": "src-71cn0i",
+      "label": "VAST 审美敏感性测试（MLLM 评测）",
+      "ok": false,
+      "count": 0,
+      "error": "没解析出条目（可能需要换一种 feed / API 地址）"
+    },
+    {
+      "id": "sspai",
+      "label": "少数派",
+      "ok": true,
+      "count": 10,
+      "error": ""
+    },
+    {
+      "id": "ithome",
+      "label": "IT之家",
+      "ok": true,
+      "count": 10,
+      "error": ""
+    },
+    {
+      "id": "src-vr94l3",
+      "label": "品味训练法（Dragoon0x/taste-sk",
+      "ok": false,
+      "count": 0,
+      "error": "没解析出条目（可能需要换一种 feed / API 地址）"
+    }
+  ],
   "items": [
     {
       "source": "v2ex",
       "sourceLabel": "V2EX",
-      "title": "[分享发现] 东欧斯拉夫民族，他们对逆向游戏有这么热爱吗？",
-      "url": "https://www.v2ex.com/t/1248539#reply2"
+      "title": "[职场话题] 996.icu 正式更名 996.club",
+      "url": "https://www.v2ex.com/t/1249088#reply0",
+      "media": "article",
+      "excerpt": "欢迎大家来这爆料职场规则 比如，996 白名单 黑名单公司 比如，入职的好公司，垃圾公司 关于 · 帮助文档 · 自助推广系统 · 博客 · API · FAQ · Privacy · Solana · 5596 人在线 最高记录 6679 · Select Language World is powered by solitude VERSION: 3.9.8.5 · 26ms · UTC 08:47 · PVG 16:47 · LAX 01:47 · JFK 04:47 ♥ Do have faith in what you're doing.",
+      "comments": [],
+      "note": ""
     },
     {
       "source": "v2ex",
       "sourceLabel": "V2EX",
-      "title": "[分享发现] Meta 新出的 AI 助手 Muse，我拿它当了半个月&#34;家庭运维总监&#34;",
-      "url": "https://www.v2ex.com/t/1248538#reply0"
+      "title": "[旅行] [10 月] 错峰前往旅行之一",
+      "url": "https://www.v2ex.com/t/1249087#reply0",
+      "media": "article",
+      "excerpt": "› Time.is 全球时区转换 › American National Parks 国庆没有去人挤人，反而国庆后才决定出行 第一站去清远，原本计划普通吃喝个两天一夜 从深圳出发去清远，一路高速畅通，耗时 2 小时到达清城区，随便选了个连州菜馆吃，味道也意外好吃 第二天临时决定不去清远长隆动物园，于是转头去了就近的黄腾峡漂流+山水丽人演出 门票高德买的 270 双人票，景点外围卖水勺摊贩卖 280 ，如果刷不到好价格可以现场来找他们买(估计本地人)，如果害怕被骗，可以蹲个大学生来，组团帮忙买，黄腾峡景点门口距离职校就几百米，年轻人挺乐意来玩，他们也有渠道买 旅游嘛，就是不赶、人不多的时候才感触多，金秋时刻也不热，体感舒服，下一站决定去广西，不知道大伙有啥推荐好去处。 演出图片(说实话，山水丽人的瑶寨演出比大部分沉浸式表演好看的多，主要女的身材好很加分)： 关于 · 帮助文档 · 自助推广系统 · 博客 · API · FAQ · Privacy · Solana · 5596 人在线 最高记录 6679 · Select Language World is powered by solitude VERSION: 3.9.8.5 · 26ms · UTC 08:47 · PVG 16:47 · LAX 01:47 · JFK 04:47 ♥ Do have faith in wha",
+      "comments": [],
+      "note": ""
     },
     {
       "source": "v2ex",
       "sourceLabel": "V2EX",
-      "title": "[分享创造] 做了个英文恐怖故事站 LiveLore： AI 辅助写作，读者投票决定剧情走向",
-      "url": "https://www.v2ex.com/t/1248537#reply0"
+      "title": "[分享发现] 做了个追剧 App， Flutter 三端（iOS / Android / Web）同一套代码",
+      "url": "https://www.v2ex.com/t/1249086#reply0",
+      "media": "article",
+      "excerpt": "TV Time 七月关停之后决定自己做一个。技术栈和几个踩坑： Flutter 三端同构，Web 端要绕开 dart:io （磁盘缓存改内存） 后端 NestJS + Postgres + Redis ，元数据代理 TMDB + TVMaze 并做服务端缓存 开播推送走 FCM ，按 TVMaze 的 airstamp 减提前量定时；整季一次放出会合并成一条通知 27 种语言的 ARB 由脚本生成，区域变体只覆盖真正分叉的词条 导入器支持 TV Time / Trakt / IMDb / Letterboxd / Showly / Refract 免费无广告不订阅，也不播正片（纯追剧记录工具）。 https://tv-tracker.uk/go?c=v2ex 欢迎挑刺，尤其是导入器——真实导出文件的格式比文档里写的乱得多。 flutter 追剧 App 关于 · 帮助文档 · 自助推广系统 · 博客 · API · FAQ · Privacy · Solana · 5596 人在线 最高记录 6679 · Select Language World is powered by solitude VERSION: 3.9.8.5 · 20ms · UTC 08:47 · PVG 16:47 · LAX 01:47 · JFK 04:47 ♥ Do have faith in what",
+      "comments": [],
+      "note": ""
     },
     {
       "source": "v2ex",
       "sourceLabel": "V2EX",
-      "title": "[分享创造] 网页版 Photoshop",
-      "url": "https://www.v2ex.com/t/1248536#reply0"
+      "title": "[程序员] 有用过 pi 的吗",
+      "url": "https://www.v2ex.com/t/1249083#reply8",
+      "media": "article",
+      "excerpt": "• 请不要在回答技术问题时复制粘贴 AI 生成的内容 有用过 pi 的吗？大家一般搭配哪些扩展，推荐一下 8 条回复 • 2026-10-15 16:39:53 +08:00 用的 omp ，不需要自己装扩展，目前主力，挺好用的 我是搭配 OpenRouter 的免费模型搞搞小活 我就装了一个 pi-lens,感觉这个有点蠢啊，我在个人目录打开后给我启动一大堆服务 pi 搭配 deepseek flash ， 我大部分开发都是这个组合, deepseek 还可以买到 2-3 折的 偶尔一些问题比较傻，找 gpt 解决 直接裸泳就好了，插件都是多余，很爽 现在我都看不懂贴子了，还以为问有没有人用过树莓派 subagent 可以装一下 关于 · 帮助文档 · 自助推广系统 · 博客 · API · FAQ · Privacy · Solana · 5637 人在线 最高记录 6679 · Select Language World is powered by solitude VERSION: 3.9.8.5 · 42ms · UTC 08:42 · PVG 16:42 · LAX 01:42 · JFK 04:42 ♥ Do have faith in what you're doing.",
+      "comments": [
+        "用的 omp ，不需要自己装扩展，目前主力，挺好用的 2 Nasdaq 14 分钟前",
+        "我是搭配 OpenRouter 的免费模型搞搞小活 3 gimp 13 分钟前",
+        "omp +1 4 tysx OP 12 分钟前",
+        "我就装了一个 pi-lens,感觉这个有点蠢啊，我在个人目录打开后给我启动一大堆服务 5 humbass 11 分钟前",
+        "pi 搭配 deepseek flash ， 我大部分开发都是这个组合, deepseek 还可以买到 2-3 折的 偶尔一些问题比较傻，找 gpt 解决 6 mgsv2047 10 分钟前"
+      ],
+      "note": ""
     },
     {
       "source": "v2ex",
       "sourceLabel": "V2EX",
-      "title": "[推广] 做了个 Godot MCP 资源站，整理了不同 MCP 的区别、安装教程和游戏开发资源",
-      "url": "https://www.v2ex.com/t/1248534#reply0"
+      "title": "[推广] 做了一个 AI 视频特效网站 SceneWish，欢迎体验",
+      "url": "https://www.v2ex.com/t/1249082#reply0",
+      "media": "article",
+      "excerpt": "如果想在 V2EX 获得更好的推广效果，欢迎了解 PRO 会员机制： https://www.v2ex.com/pro/about 如果你经常使用铜币置顶主题，持有 V2EX Solana Token 会在每日签到时获得额外铜币： https://www.v2ex.com/solana 最近做了一个 AI 视频创作网站： SceneWish 主要想解决一个问题： 刷到有趣的 AI 特效视频，自己也想做一个，但不知道用什么模型、怎么写 Prompt 。 所以做了 SceneWish ，核心思路是： 热门 AI 视频玩法 ：持续收集最新、有趣的 AI 视频特效。 一键复刻 ：选择喜欢的特效，上传自己的照片，就能生成同款视频。 多模型支持 ：集成 Kling 、Veo 、Seedance 等主流视频模型。 持续更新 ：后续会不断上线新的 AI 视频玩法和模板。 目前还是早期版本，功能和模板都在持续完善中。 网站地址： https://scenewish.com/ 关于 · 帮助文档 · 自助推广系统 · 博客 · API · FAQ · Privacy · Solana · 5626 人在线 最高记录 6679 · Select Language World is powered by solitude VERSION: 3.9.8.5 · 22ms · UTC 08:42 · PVG ",
+      "comments": [],
+      "note": ""
     },
     {
       "source": "v2ex",
       "sourceLabel": "V2EX",
-      "title": "[分享创造] [开源] PicMake：纯前端的 GPT Image 2.5 生图工作台， Key 和图片只存在你的浏览器里",
-      "url": "https://www.v2ex.com/t/1248533#reply0"
+      "title": "[Apple] [免费赠] NasV 播放器界面重做，一年 Pro 码随便领",
+      "url": "https://www.v2ex.com/t/1249081#reply0"
     },
     {
       "source": "v2ex",
       "sourceLabel": "V2EX",
-      "title": "[分享创造] [开源] NonsPlayer 播放器——手机端，新的开始，新的挑战",
-      "url": "https://www.v2ex.com/t/1248532#reply1"
+      "title": "[生活] 谈了三个月的女朋友才发现她和前任有较大经济纠纷",
+      "url": "https://www.v2ex.com/t/1249080#reply58"
     },
     {
       "source": "v2ex",
       "sourceLabel": "V2EX",
-      "title": "[分享创造] [送码]从好用到爽用， Mu3ic 重磅更新，现已支持 Navidrome/Jellyfin/Emby",
-      "url": "https://www.v2ex.com/t/1248530#reply27"
+      "title": "[问与答] 集思广益，有什么开发相关的课题可以快速消耗 Token",
+      "url": "https://www.v2ex.com/t/1249079#reply9"
     },
     {
       "source": "v2ex",
       "sourceLabel": "V2EX",
-      "title": "[程序员] 8 月 1 号到现在，我完成了接近 2000 个开发任务，放到以前简直不敢想象",
-      "url": "https://www.v2ex.com/t/1248529#reply4"
+      "title": "[OpenAI] 又重置了！",
+      "url": "https://www.v2ex.com/t/1249078#reply4"
     },
     {
       "source": "v2ex",
       "sourceLabel": "V2EX",
-      "title": "[游戏] switch 最近多了好多老游戏移植啊",
-      "url": "https://www.v2ex.com/t/1248528#reply1"
+      "title": "[生活] 一直好奇，为啥有的人一整天都不怎么喝水？",
+      "url": "https://www.v2ex.com/t/1249077#reply13"
     },
     {
       "source": "hn",
       "sourceLabel": "Hacker News 首页",
-      "title": "Hackers activate automatic defrosting in supermarket fridges across Europe",
-      "url": "https://www.tomshardware.com/tech-industry/cyber-security/unprecedented-cyberattack-cripples-supermarket-fridges-across-europe-as-hackers-activate-automatic-defrosting-delivery-and-store-prices-also-impacted-by-incident"
+      "title": "Things to know when you get cancer",
+      "url": "https://jjmaxwell4.com/writing/things-to-know-when-you-get-cancer/"
     },
     {
       "source": "hn",
       "sourceLabel": "Hacker News 首页",
-      "title": "A Modern Web App in C",
-      "url": "https://prophitt.me/writing/a-modern-web-app-in-c"
+      "title": "Containment and monitoring failures are to blame for AI hacking reports: experts",
+      "url": "https://www.csoonline.com/article/4234854/ai-agents-arent-going-rogue-frontier-labs-are-skipping-security-basics.html"
     },
     {
       "source": "hn",
       "sourceLabel": "Hacker News 首页",
-      "title": "GLM-Legal",
-      "url": "https://z.ai/blog/glm-legal"
+      "title": "How Amazon pushes up prices all across the Internet",
+      "url": "https://www.not-ship.com/how-amazon-pushes-up-prices-all-across-the-internet/"
     },
     {
       "source": "hn",
       "sourceLabel": "Hacker News 首页",
-      "title": "AI is a tool and using it well takes skill",
-      "url": "https://yyhh.org/blog/2026/10/ai-is-a-tool/"
+      "title": "Do dentists know what they're doing?",
+      "url": "https://mapwriting.substack.com/p/dentists"
     },
     {
       "source": "hn",
       "sourceLabel": "Hacker News 首页",
-      "title": "11 year old unsoundness bugs found in Rust borrow checker",
-      "url": "https://github.com/rust-lang/rust/issues/164250"
+      "title": "OpenCode 2.0",
+      "url": "https://anoma.ly/notes/opencode-2-0/"
     },
     {
       "source": "hn",
       "sourceLabel": "Hacker News 首页",
-      "title": "Turn a WiFi 7 Router into a 320Msps Software Defined Radio Receiver",
-      "url": "https://github.com/h0m3us3r/w1700k-sdr"
+      "title": "Tiny Little Office",
+      "url": "https://tinylittleoffice.com/"
     },
     {
       "source": "hn",
       "sourceLabel": "Hacker News 首页",
-      "title": "Citroen revives the 2CV for an electric age",
-      "url": "https://www.bbc.com/news/articles/c620r33plgppo"
+      "title": "Americans' social activity has steeply declined in the past 30 years",
+      "url": "https://www.dataforprogress.org/blog/2026/9/29/americans-social-activity-has-steeply-declined-in-the-past-30-years"
     },
     {
       "source": "hn",
       "sourceLabel": "Hacker News 首页",
-      "title": "The baffling intelligence of a single cell (2024)",
-      "url": "https://jsomers.net/e-coli-chemotaxis/"
+      "title": "Why is every rationalist blog post way too long?",
+      "url": "https://alexwennerberg.com/blog/2026-10-13-long.html"
     },
     {
       "source": "hn",
       "sourceLabel": "Hacker News 首页",
-      "title": "CFTC Staff Were Told to Retract Analysis of Suspicious Oil Trades",
-      "url": "https://www.bloomberg.com/news/features/2026-10-13/cftc-staff-told-to-retract-analysis-of-suspicious-oil-trades-on-iran"
+      "title": "We’re releasing Jev 1.14.0 along with experimental features for dreamers",
+      "url": "https://typesafe.ai/blog/jev-1-14"
     },
     {
       "source": "hn",
       "sourceLabel": "Hacker News 首页",
-      "title": "Apple HomeView",
-      "url": "https://www.apple.com/apple-homeview/"
+      "title": "Better HTTP/1 connection reuse in Go 1.27",
+      "url": "https://go.dev/blog/http-connection-reuse"
     },
     {
-      "source": "ithome",
-      "sourceLabel": "IT之家",
-      "title": "苹果今日举办欢迎回家发布会，盘中股价再创历史新高",
-      "url": "https://www.ithome.com/1/012/599.htm"
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "【抢先版】人贩子本想拐走五岁萌娃，结果一个没跑掉，还让这孩子白赚了20万！！！",
+      "url": "https://www.bilibili.com/video/BV1fQpb6zEqV"
     },
     {
-      "source": "ithome",
-      "sourceLabel": "IT之家",
-      "title": "红魔 12 Pro+ 手机官宣搭载行业首款 185Hz 全面屏，行业首发 185Hz 高刷显示控制芯片",
-      "url": "https://www.ithome.com/1/012/598.htm"
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "小贺今天请老人吃《冰糖肘子》看看老人们，有多么的开心",
+      "url": "https://www.bilibili.com/video/BV1ruWA6TEKg"
     },
     {
-      "source": "ithome",
-      "sourceLabel": "IT之家",
-      "title": "长安凯程 V919 荣耀版 8 方上市：限时 8.89 万元起，标配宁德时代电芯 CLTC 续航 355km",
-      "url": "https://www.ithome.com/1/012/597.htm"
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "在格聂荒原徒步两天，遭遇冰雹停电，躲在牧屋里露营，vup带你徒步格聂V线！",
+      "url": "https://www.bilibili.com/video/BV1Qtp66REKC"
     },
     {
-      "source": "ithome",
-      "sourceLabel": "IT之家",
-      "title": "华为：麒麟 9050 系列安全、音视频全面升级，是首批获权威检测的抗量子攻击移动 SoC",
-      "url": "https://www.ithome.com/1/012/596.htm"
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "狠狠期待！狠狠期待！狠狠期待！",
+      "url": "https://www.bilibili.com/video/BV1JMWc6FE5i"
     },
     {
-      "source": "ithome",
-      "sourceLabel": "IT之家",
-      "title": "首发入库 XGP 仍热销，《战争机器：事变日》游戏登顶美国、英国 XBOX 商店销量榜",
-      "url": "https://www.ithome.com/1/012/595.htm"
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "地原胚质：伊米尔的脑髓化作苍天云海。",
+      "url": "https://www.bilibili.com/video/BV1CrpQ61EBJ"
     },
     {
-      "source": "ithome",
-      "sourceLabel": "IT之家",
-      "title": "美国 NASA“毅力号”火星车累计行驶里程达 45.2 公里，成地外天体表面行驶距离最远的车辆",
-      "url": "https://www.ithome.com/1/012/591.htm"
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "中俄免签后，这座边境小城挤满了俄罗斯人？",
+      "url": "https://www.bilibili.com/video/BV1g9pX64EgU"
     },
     {
-      "source": "ithome",
-      "sourceLabel": "IT之家",
-      "title": "特斯拉称中国造电动汽车进口配额耗尽：暂停加拿大 Model 3 Premium 新订单，预计 2027 年 3 月恢复",
-      "url": "https://www.ithome.com/1/012/590.htm"
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "向上自成高枝，向下常怀温良。一生匠人-刘欢。",
+      "url": "https://www.bilibili.com/video/BV1qLpb6NEvu"
     },
     {
-      "source": "ithome",
-      "sourceLabel": "IT之家",
-      "title": "零散小船赢不了航母巡洋舰！“中国刻蚀机之父”尹志尧提醒国内半导体设备企业不能散兵游勇式发展",
-      "url": "https://www.ithome.com/1/012/589.htm"
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "人人都要学！Agent 视觉创作全流程～【小白教程】",
+      "url": "https://www.bilibili.com/video/BV1Nyp96pEGD"
     },
     {
-      "source": "ithome",
-      "sourceLabel": "IT之家",
-      "title": "网易《逆水寒：新世界》4.2 版本大资料片【苗疆蛊事】官宣月底登场",
-      "url": "https://www.ithome.com/1/012/588.htm"
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "终末地第一画家采风日记",
+      "url": "https://www.bilibili.com/video/BV1u9pr6oEHN"
     },
     {
-      "source": "ithome",
-      "sourceLabel": "IT之家",
-      "title": "罗技 MX Master 4 鼠标“特别版”曝光：核心功能不变，创新外观设计",
-      "url": "https://www.ithome.com/1/012/587.htm"
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "吃了不烧心的潮汕美食！把鸡当牛肉涮着吃，从排队开始就傻眼了",
+      "url": "https://www.bilibili.com/video/BV1tQWw6UEvf"
+    },
+    {
+      "source": "sspai",
+      "sourceLabel": "少数派",
+      "title": "学得会的快捷指令，零基础入门苹果效率魔法",
+      "url": "https://sspai.com/post/116182"
+    },
+    {
+      "source": "sspai",
+      "sourceLabel": "少数派",
+      "title": "App+1｜Mangata：把每次散步当作一次探索旅行",
+      "url": "https://sspai.com/post/115238"
+    },
+    {
+      "source": "sspai",
+      "sourceLabel": "少数派",
+      "title": "派早报：Mozilla 推出企业版火狐浏览器、DLSS 5 最新模型即将推送等",
+      "url": "https://sspai.com/post/116193"
+    },
+    {
+      "source": "sspai",
+      "sourceLabel": "少数派",
+      "title": "认知心理学背后的播客剪辑技巧",
+      "url": "https://sspai.com/post/114861"
+    },
+    {
+      "source": "sspai",
+      "sourceLabel": "少数派",
+      "title": "带给摄影师更多自由：Austin Mann 评 iPhone 18 Pro 影像体验",
+      "url": "https://sspai.com/post/115426"
+    },
+    {
+      "source": "sspai",
+      "sourceLabel": "少数派",
+      "title": "家中、这里、那里——Sonos Play 体验",
+      "url": "https://sspai.com/post/115382"
+    },
+    {
+      "source": "sspai",
+      "sourceLabel": "少数派",
+      "title": "众测招募 | 从客厅到耳畔，Sonos 双新品 Beam Ultra 与 Ace Ultra 抢先体验",
+      "url": "https://sspai.com/post/116109"
+    },
+    {
+      "source": "sspai",
+      "sourceLabel": "少数派",
+      "title": "已经能测夜间体征的 Apple Watch，为什么要再做一个睡眠呼吸暂停提醒",
+      "url": "https://sspai.com/post/92653"
+    },
+    {
+      "source": "sspai",
+      "sourceLabel": "少数派",
+      "title": "派早报：Apple 发布 HomePod mini 2、HomeView 等新品",
+      "url": "https://sspai.com/post/116138"
+    },
+    {
+      "source": "sspai",
+      "sourceLabel": "少数派",
+      "title": "社区速递 161 | 小米手表 S5、EVA 联名香水与换机热议",
+      "url": "https://sspai.com/post/116068"
     }
   ]
 }

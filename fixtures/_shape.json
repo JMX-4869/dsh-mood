@@ -273,6 +273,10 @@
     "memory": null,
     "persona": null,
     "items0": [
+      "comments",
+      "excerpt",
+      "media",
+      "note",
       "source",
       "sourceLabel",
       "title",

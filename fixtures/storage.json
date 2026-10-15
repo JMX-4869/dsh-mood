@@ -16,7 +16,7 @@
       "configured": null,
       "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood.json",
       "exists": true,
-      "size": 2879
+      "size": 4571
     },
     {
       "name": "dsh-mood-diary.json",
@@ -27,7 +27,7 @@
       "configured": null,
       "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-diary.json",
       "exists": true,
-      "size": 14842
+      "size": 90354
     },
     {
       "name": "dsh-mood-news.json",
@@ -38,7 +38,7 @@
       "configured": null,
       "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-news.json",
       "exists": true,
-      "size": 7702
+      "size": 18937
     },
     {
       "name": "dsh-mood-proactive.json",
@@ -49,7 +49,7 @@
       "configured": null,
       "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-proactive.json",
       "exists": true,
-      "size": 699
+      "size": 787
     },
     {
       "name": "dsh-mood-memory.jsonl",
@@ -60,7 +60,18 @@
       "configured": null,
       "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-memory.jsonl",
       "exists": true,
-      "size": 131195
+      "size": 283555
+    },
+    {
+      "name": "dsh-mood-taste.json",
+      "key": "taste",
+      "label": "品味库",
+      "owner": "taste",
+      "dir": "D:\\xinqing\\ZhuDongKaiKou",
+      "configured": null,
+      "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-taste.json",
+      "exists": true,
+      "size": 11897
     }
   ],
   "leftovers": []
