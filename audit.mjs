@@ -475,6 +475,63 @@ const N = M.MOOD_IDS.length
       bodyLen > 80 ? OK('这一版的日志写实了（' + bodyLen + ' 字符）') : NG('这一版的日志太短（' + bodyLen + ' 字符）—— 是不是占位')
     }
 
+    // ────────────────────────────────────────────────────────
+    // 三条"栽过才写的"规矩。
+    // 共同点：**渲染不崩、测试全绿、但东西是坏的** —— 只有结构检查抓得到。
+    // ────────────────────────────────────────────────────────
+    {
+      // ① 每个面板最外层必须是 dshmood —— 整套 CSS 都挂在这个类下面。
+      //    品味面板漏了它，结果是"样式一条都没生效"，测试完全照不到。
+      const cl = fs.readFileSync(SRC + '/client.js', 'utf8')
+      const clCode = cl.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*$/gm, '')
+      const panels = [...clCode.matchAll(/function (\w*Panel)\s*\(/g)].map((m) => m[1])
+      const noWrap = panels.filter((p) => {
+        const i = clCode.indexOf('function ' + p + '(')
+        const rest = clCode.slice(i)
+        const next = rest.indexOf('\n    function ', 10)
+        return !/className: 'dshmood'/.test(next > 0 ? rest.slice(0, next) : rest)
+      })
+      noWrap.length
+        ? NG('这些面板没包 dshmood（整套 CSS 会失效）：' + noWrap.join(', '))
+        : OK('每个面板都包了 dshmood（' + panels.length + ' 个）')
+    }
+    {
+      // ② 用到的 CSS 类都得定义过 —— "用了不存在的类"是完全隐形的：
+      //    页面照样渲染，只是没样式。品味面板那次的近亲。
+      const cl = fs.readFileSync(SRC + '/client.js', 'utf8')
+      const defined = new Set()
+      for (const m of cl.matchAll(/\.dshmood[^{}]*\{/g)) {
+        for (const c of m[0].matchAll(/\.([a-zA-Z][\w-]*)/g)) defined.add(c[1])
+      }
+      defined.delete('dshmood')
+      const used = new Set()
+      const clCode = cl.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*$/gm, '')
+      for (const m of clCode.matchAll(/className:\s*'([^']+)'/g)) {
+        for (const c of m[1].split(/\s+/)) if (c && c !== 'dshmood') used.add(c)
+      }
+      // 宿主给的 + 动态拼的（'memwho' + (x ? ' me' : '') 这种拆不出来）
+      const HOST = new Set(['pane', 'tools', 'notice', 'page-hd', 'page-title', 'page-sub', 'pill', 'empty', 'me', 'bad', 'good'])
+      const undef = [...used].filter((c) => !defined.has(c) && !HOST.has(c))
+      undef.length ? NG('用了但没定义的 CSS 类：' + undef.join(', '))
+        : OK('用到的 CSS 类都定义过（' + used.size + ' 个）')
+    }
+    {
+      // ③ 每个 .then 都得有 .catch —— 不然 rejection 会把 HTTP 请求挂住。
+      //    查的时候要**跨行**看：本项目的 .catch 习惯写在下一行，逐行扫会全是假阳性
+      //    （我今天就误报过一次）。
+      const files = fs.readdirSync(SRC).filter((f) => /\.js$/.test(f) && !/^test-/.test(f))
+      const naked = []
+      for (const f of files) {
+        const code = fs.readFileSync(SRC + '/' + f, 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*$/gm, '')
+        for (const m of code.matchAll(/\.then\(/g)) {
+          const after = code.slice(m.index, m.index + 400)
+          if (!/\.catch\(/.test(after)) naked.push(f + ':' + code.slice(0, m.index).split('\n').length)
+        }
+      }
+      naked.length ? NG('这些 .then 后面 400 字符内没有 .catch（会挂住请求）：' + naked.join(', '))
+        : OK('每个 .then 都有 .catch')
+    }
     // ⚠️ 跨站写保护。这个接口里是**全部对话原文**，还能一键清空。
     //    DSH 只绑 127.0.0.1、跨站读也拿不到响应 —— 但**跨站写**能打进来：
     //    页面用 mode:"no-cors" + 字符串 body（→ text/plain → 不触发预检），
