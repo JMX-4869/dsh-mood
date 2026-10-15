@@ -1,10 +1,10 @@
 {
   "ok": true,
-  "count": 96,
-  "at": 1792056508730,
+  "count": 3,
+  "at": 1700000000000,
   "ageMin": 177,
   "fresh": true,
-  "file": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-news.json",
+  "file": "D:\\path\\to\\data\\dsh-mood-news.json",
   "presets": [
     {
       "label": "V2EX",
@@ -129,70 +129,70 @@
       "id": "v2ex",
       "label": "V2EX",
       "ok": true,
-      "count": 10,
+      "count": 3,
       "error": ""
     },
     {
       "id": "src-o88ohk",
       "label": "bilibili",
       "ok": true,
-      "count": 10,
+      "count": 3,
       "error": ""
     },
     {
       "id": "hn",
       "label": "Hacker News 首页",
       "ok": true,
-      "count": 10,
+      "count": 3,
       "error": ""
     },
     {
       "id": "sspai",
       "label": "少数派",
       "ok": true,
-      "count": 10,
+      "count": 3,
       "error": ""
     },
     {
       "id": "src-c9bw88",
       "label": "arXiv cs.CL",
       "ok": true,
-      "count": 10,
+      "count": 3,
       "error": ""
     },
     {
       "id": "src-09ptya",
       "label": "量子位",
       "ok": true,
-      "count": 10,
+      "count": 3,
       "error": ""
     },
     {
       "id": "src-y5b9uo",
       "label": "It's Nice That",
       "ok": true,
-      "count": 10,
+      "count": 3,
       "error": ""
     },
     {
       "id": "src-06m511",
       "label": "arXiv cs.AI",
       "ok": true,
-      "count": 10,
+      "count": 3,
       "error": ""
     },
     {
       "id": "ithome",
       "label": "IT之家",
       "ok": true,
-      "count": 10,
+      "count": 3,
       "error": ""
     },
     {
       "id": "src-mzc3ku",
       "label": "Nature",
       "ok": true,
-      "count": 6,
+      "count": 3,
       "error": ""
     }
   ],

@@ -7,7 +7,7 @@
     "sessions": 3,
     "oldest": 1791987664514,
     "newest": 1792067106123,
-    "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-memory.jsonl",
+    "path": "D:\\path\\to\\data\\dsh-mood-memory.jsonl",
     "maxBytes": 52428800,
     "usedRatio": 0.009549331665039063,
     "unlimited": false,

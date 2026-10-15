@@ -1771,7 +1771,7 @@ window.__ModuleLoader__.load({
 
       const go = async (key) => {
         const t = String(dir || '').trim()
-        if (!t) { setErr('先填一个目录，比如 D:\\xinqing\\XinQingRiJi'); return }
+        if (!t) { setErr('先填一个目录，比如 D:\\path\\to\\diary'); return }
         const lab = ((st && st.files.find((f) => f.key === key)) || {}).label || key
         if (!window.confirm('把「' + lab + '」搬到\n' + t + '\n\n原位置的文件会在校验通过后删掉。继续？')) return
         setBusy(true); setErr(''); setDone(null)
@@ -1810,7 +1810,7 @@ window.__ModuleLoader__.load({
                 h('div', { className: 'srcrow' },
                   h('input', {
                     className: 'srcin',
-                    placeholder: '新目录，绝对路径，例如 D:\\xinqing\\XinQingRiJi',
+                    placeholder: '新目录，绝对路径，例如 D:\\path\\to\\diary',
                     value: dir,
                     onChange: (e) => setDir(e.target.value),
                     onKeyDown: (e) => { if (e.key === 'Enter') go(f.key) },

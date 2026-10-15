@@ -73,7 +73,7 @@ function callApi(method, url, body, noHeader) {
   try { return JSON.parse(out.body) } catch { return null }
 }
 
-const FILE = 'D:/xinqing/ZhuDongKaiKou/dsh-mood-proactive.json'
+const FILE = 'D:/path/to/data/dsh-mood-proactive.json'
 const tick = (ms = 80) => new Promise((r) => setTimeout(r, ms))
 
 const setPending = () => {

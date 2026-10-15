@@ -1,12 +1,12 @@
 {
   "ok": true,
   "stats": {
-    "count": 926,
-    "bytes": 500660,
-    "sessions": 3,
-    "oldest": 1791987664514,
-    "newest": 1792067106123,
-    "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-memory.jsonl",
+    "count": 42,
+    "bytes": 12345,
+    "sessions": 2,
+    "oldest": 1700000000000,
+    "newest": 1700003600000,
+    "path": "D:\\path\\to\\data\\dsh-mood-memory.jsonl",
     "maxBytes": 52428800,
     "usedRatio": 0.009549331665039063,
     "unlimited": false,

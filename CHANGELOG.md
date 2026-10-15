@@ -43,6 +43,44 @@
 
 ---
 
+## 0.9.2 — 2026-10-16
+
+**清掉泄露到公开仓库里的私人数据。** 主人提的：「私人数据可不能上传」。
+
+### 泄露了什么
+
+`fixtures/*.json` 是我「拿真实响应存下来当测试快照」的 —— **对测试是好事，对一个开源仓库是坏事**，
+这两件事我当初没分开想。库里实际躺着：
+
+```
+fixtures/diary.json     **真实日记全文**（带真实日期）
+fixtures/storage.json   真实路径：D:\xinqing\ZhuDongKaiKou、C:\Users\asus\.dsh
+fixtures/memory.json    **真实用量**：926 条 / 500660 字节 / 3 个会话
+fixtures/news.json      真实来源列表
+fixtures/state.json     真实心情状态
+README.md               拿真实目录名当示例配置
+test-events.mjs         写死的真实路径
+test-frames.mjs         注释里带 C:\Users\asus\Downloads\…（用户名）
+client.js               两处示例路径用了真实目录名
+```
+
+### 改了什么
+
+· `fixtures/*.json` 全部脱敏：日记换成编的、路径换 `D:\path\to\data`、用量数字换假的量级
+· README / client.js / test-events / test-frames 里的真实路径与用户名一并换掉
+· **测试一条没动**：它测的是**结构**，不是那串具体字符 —— 958 条断言照旧全绿
+
+### ⚠️ 还没做的：git 历史
+
+**上面这些在 git 历史里也有**（不是最近才进的）。`git filter-repo` 重写 + force push 能清掉，
+但**「删掉」不等于「没泄露过」** —— 仓库公开过一段时间，可能已被抓走。这一步要单独决定。
+
+### ⚠️ 我自己报错一条
+
+我一度把 `diary.js` 里的「今天好奇心有点重。」当成「主人的日记全文」报了出来 ——
+**那是我写日记用的句子模板**，不是他的内容。真日记在 `fixtures/diary.json` 里，已替换。
+---
+
 ## 0.9.1 — 2026-10-16
 
 **修一句"说错原因"的话 —— 它让我误判工具状态。**

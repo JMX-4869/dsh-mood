@@ -4,7 +4,7 @@
 
 **它会累、会烦、会好奇。**
 
-> **当前版本 `0.9.1`** —— 每一版都发 [Release](https://github.com/JMX-4869/dsh-mood/releases)；
+> **当前版本 `0.9.2`** —— 每一版都发 [Release](https://github.com/JMX-4869/dsh-mood/releases)；
 > 完整历史改动见 [CHANGELOG.md](CHANGELOG.md)。
 > 版本号走**语义化版本**：`主.次.修` —— 第一位不兼容才动，第二位加功能（+1 时第三位归零），第三位修 bug。
 
@@ -883,8 +883,8 @@ sessionController.prompt({ requestId, sessionId, mode:'queue', content:[…] })
 ```json
 // $DSH_HOME/dsh-mood-store.json —— 指针文件，永远留在原地（几十字节）
 {
-  "default": "D:\\xinqing\\ZhuDongKaiKou",   // 没单独指定的都落这儿
-  "dirs": { "diary": "D:\\xinqing\\XinQingRiJi" }
+  "default": "D:\\path\\to\\data",   // 没单独指定的都落这儿
+  "dirs": { "diary": "D:\\path\\to\\diary" }
 }
 ```
 
