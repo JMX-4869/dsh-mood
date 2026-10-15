@@ -1,5 +1,6 @@
 import { dataFile, dataDir } from './store.js'
 import * as F from './frames.js'
+import * as ASR from './asr.js'
 /**
  * dsh-mood / news.js —— 「更新时事」
  *
@@ -705,10 +706,39 @@ export async function fetchVideoFrames(url, opts = {}) {
     })
     const ex = F.extractFrames(videoPath, plan, batch, ffmpeg)
     if (!ex.ok) return { ok: false, title, durationSec, error: ex.error }
+
+    // ── 音频层（可选）──
+    //
+    // ⚠️ **必须在视频被删掉之前做。** 视频在 finally 里当场删（磁盘要求），
+    //    而音频要从它身上抽 —— 顺序错了就抽不到，而且不会报错，只会"没有音频"。
+    //
+    // 为什么要这一层：`frames` 拿到的只是**画面**。说话的内容、以及"怎么说的"，
+    // 全在音频里。我在这上面栽过 ——
+    //   一支 26 秒的短片我只看了画面，读成"她表情从平静到爆发"；
+    //   拿到台词才知道最后一句是「那你不准辞职」，**结论整个反过来**。
+    let asr = null
+    if (opts.audio) {
+      const wav = join(tmp, 'a.wav')
+      const ea = ASR.extractAudio(videoPath, ffmpeg, wav)
+      if (!ea.ok) {
+        asr = { ok: false, why: ea.why }
+      } else {
+        const tr = await ASR.transcribeAndProsody(wav, {
+          model: opts.asrModel,
+          language: opts.asrLang,
+        })
+        asr = tr.ok
+          ? { ok: true, data: tr.data, text: ASR.formatASR(tr.data) }
+          : { ok: false, why: tr.why, install: tr.install }
+      }
+      try { if (existsSync(wav)) rmSync(wav, { force: true }) } catch { /* 不管 */ }
+    }
+
     return {
       ok: true,
       title,
       durationSec,
+      asr,
       fps: opts.fps || 30,
       everySec: plan.everySec,
       dir: batch,

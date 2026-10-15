@@ -11,7 +11,7 @@
 
 | 层 | 文件 | 大小 | DSH 依赖 | 怎么办 |
 |---|---|---|---|---|
-| **逻辑** | `store.js` `diary.js` `news.js` `proactive.js` `memory.js` `frames.js` `taste.js` | 209 KB | **0 处** | **原样搬，一行不改** |
+| **逻辑** | `store.js` `diary.js` `news.js` `proactive.js` `memory.js` `frames.js` `asr.js` `taste.js` | 224 KB | **0 处** | **原样搬，一行不改** |
 | 逻辑（边缘） | `sessions.js` | 7 KB | 2 处 | 改两行 |
 | **接线** | `index.js` | 99 KB | 25 处 | 照着重写 |
 | **界面** | `client.js` | 71 KB | 44 处 | 重写 |
@@ -28,7 +28,7 @@
 
 ## 二、已验证：那 5 个模块真的能脱离 DSH 跑
 
-把 `store.js` / `diary.js` / `news.js` / `proactive.js` / `memory.js` / `frames.js`（**209 KB**）拷到一个**空目录**
+把 `store.js` / `diary.js` / `news.js` / `proactive.js` / `memory.js` / `frames.js` / `asr.js`（**224 KB**）拷到一个**空目录**
 （没有 `dsh-mood`、没有 `@deepseek-ai`、没有 `package.json`），然后：
 
 ```
