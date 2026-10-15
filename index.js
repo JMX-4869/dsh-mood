@@ -2361,6 +2361,12 @@ export function apply(root, rawConfig) {
             perSecond: { type: 'number', description: 'frames：每秒抽几张，默认 1（最多 8）' },
             everySec: { type: 'number', description: 'frames：每隔几秒取一组；不传按时长自动算' },
             maxMinutes: { type: 'number', description: 'frames：视频超过这么多分钟就拒，默认 15' },
+            quality: {
+              type: 'number',
+              description: 'frames：清晰度上限，480（默认）/ 720 / 1080。' +
+                '⚠️ 默认 480p **不是原片** —— 只看整体调子、构图、配色时够用；' +
+                '要判细节（笔触、描边、小字、纹理）就调高，否则会把"看不清"读成"它没细节"。',
+            },
           },
           output: {
             schema: { type: 'json' },
@@ -2428,6 +2434,8 @@ export function apply(root, rawConfig) {
                   perSecond: Number(args && args.perSecond) || 1,
                   everySec: Number(args && args.everySec) || undefined,
                   maxDurationSec: Number(args && args.maxMinutes) ? Number(args.maxMinutes) * 60 : undefined,
+                  // 清晰度。默认 480（便宜）；判细节的时候要 720/1080。
+                  maxRes: Number(args && args.quality) || 480,
                 })
                 if (!r.ok) {
                   return {

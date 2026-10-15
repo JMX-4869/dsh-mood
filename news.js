@@ -609,6 +609,9 @@ export async function fetchVideoFrames(url, opts = {}) {
   }
 
   const maxDuration = Math.max(10, Number(opts.maxDurationSec) || 900)
+  // 清晰度上限。默认 480（便宜）。判细节的时候可以要 720 / 1080。
+  // ⚠️ 别给 4K —— 4K 一个 3 分钟片子就是几百 MB，而我们要的只是"看得清描边和字"。
+  const maxRes = [480, 720, 1080].includes(Number(opts.maxRes)) ? Number(opts.maxRes) : 480
   const base = framesBaseDir()
   const stamp = Date.now()
   const batch = F.batchDir(base, stamp)
@@ -637,8 +640,15 @@ export async function fetchVideoFrames(url, opts = {}) {
     const r = spawnSync(bin, [
       '--no-playlist', '--no-warnings', '--ignore-errors',
       '--match-filter', 'duration < ' + maxDuration + ' & duration > 0',
-      '-S', 'res:480,ext:mp4:m4a',        // 能压到 480p 就压，压不了用原始
-      '--max-filesize', '80M',
+      // ⚠️ **清晰度是可调的，默认还是 480p。**
+      //
+      //    原来这里写死 `res:480` —— 而我一直不知道，于是把它当"原片"在判细节。
+      //    480p 有它的道理（省流量、省时间、`--max-filesize 80M` 也卡着），
+      //    所以默认不动；但**要判细节的时候得能往上要一档**。
+      //    （不能只把分辨率"报出来"就完事 —— 报出来只是让我知道看不见，
+      //     不解决"我需要看见"。）
+      '-S', 'res:' + maxRes + ',ext:mp4:m4a',
+      '--max-filesize', maxRes >= 1080 ? '200M' : '80M',
       '-o', join(tmp, 'v.%(ext)s'),
       '--print', 'after_move:%(filepath)s\t%(title)s\t%(duration)s',
       url,
