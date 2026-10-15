@@ -150,7 +150,12 @@ if (!hasShape) {
     ok(name + ' 字段和快照一致', true)
   }
   // 快照里有、新抓的没有 → 接口被删了
+  //
+  // ⚠️ 跳过 `_gate` —— 它**不是接口**，是我自己塞进 _shape.json 的元信息
+  //    （记快照抓取时日记门禁开没开）。第一版忘了跳，
+  //    于是每次报一句「_gate 还在（快照里有，这次没抓到）」的假红。
   for (const name of Object.keys(oldShape)) {
+    if (name === '_gate') continue
     if (!shape[name]) ok(name + ' 还在（快照里有，这次没抓到）', false, '')
   }
 }

@@ -120,6 +120,63 @@ const t = suite('视频抽帧')
 }
 
 // ══════════════════════════════════════════════════════
+//  自适应抽帧（按画面切换取，而不是按秒均分）
+// ══════════════════════════════════════════════════════
+{
+  const sc = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95]
+  const p = F.planFrames(100, { scenes: sc, maxFrames: 24, fps: 30 })
+  t.eq(p.mode, 'scene', '给了场景表 → 走自适应')
+  t.eq(p.sceneCount, 10, '记下了检测到几处切换')
+  t.ok(p.picks.length >= 10, '至少每个切换点一张（' + p.picks.length + '）')
+  t.eq(p.picks[0].at, 0, '**第一张永远是开头那一帧**')
+  let inc = true
+  for (let i = 1; i < p.picks.length; i++) if (p.picks[i].index <= p.picks[i - 1].index) inc = false
+  t.ok(inc, '帧号严格递增（时间线不能乱）')
+
+  // 变化少的视频不能硬凑到上限 —— 这正是"整体性"那一条
+  //
+  // ⚠️ 注意：**不是"取得很少"**。自适应里有一层**稀疏的均分兜底**（见 planByScenes 那段注释：
+  //    ffmpeg 的 scene 只看亮度，红切绿那种亮度不变的切换它给 0.0，整段会瞎）。
+  //    所以"变化少"的正确含义是"**不硬凑到上限**"，不是"只有两三张"。
+  const few = F.planFrames(100, { scenes: [40, 70], maxFrames: 24, fps: 30 })
+  t.eq(few.mode, 'scene', '只有两处切换也走自适应')
+  t.ok(few.picks.length < 24, '**变化少 → 不硬凑到上限**（取了 ' + few.picks.length + ' / 上限 24）')
+  t.ok(few.picks.length < p.picks.length,
+    '**变化少的比变化多的取得少**（' + few.picks.length + ' < ' + p.picks.length + '）—— 这是"整体性"那条')
+  t.ok(few.picks.every((x) => x.at >= 0 && x.at < 100), '兜底那几张也没跑到片子外面')
+
+  // 切换点比上限多 → 沿时间线均匀挑，保住覆盖
+  const manySc = []
+  for (let i = 1; i < 200; i++) manySc.push(i * 0.5)
+  const cap = F.planFrames(100, { scenes: manySc, maxFrames: 8, fps: 30 })
+  t.eq(cap.mode, 'scene', '切换点超多也是自适应')
+  t.eq(cap.picks.length, 8, '超上限就收到 8 张')
+  t.ok(cap.picks[cap.picks.length - 1].at > 50, '**沿时间线挑**，不是只挑前几个（最后一张在 ' + cap.picks[cap.picks.length - 1].at + ' 秒）')
+
+  // 一闪而过的段要并掉
+  const flash = F.planFrames(100, { scenes: [10, 10.1, 10.2, 30], maxFrames: 24, fps: 30 })
+  const near10 = flash.picks.filter((x) => x.at > 9 && x.at < 12).length
+  t.ok(near10 <= 1, '**重叠/闪过的切换点并成一张**（10 秒附近只留了 ' + near10 + ' 张）')
+
+  // 不传场景表 → 老行为原样保住
+  const even = F.planFrames(600, { maxFrames: 12, fps: 30 })
+  t.eq(even.mode, 'even', '没场景表 → 退回均分（老行为不变）')
+
+  // 只检出一处切换 → 不够用，退回均分（不然只有 2 张，等于没抽）
+  const one = F.planFrames(100, { scenes: [50], maxFrames: 12, fps: 30 })
+  t.eq(one.mode, 'even', '**只检出一处切换 → 退回均分**（少于两处不算数）')
+
+  // 显式 everySec 优先 —— 人说了算
+  const explicit = F.planFrames(100, { scenes: sc, maxFrames: 24, everySec: 25, fps: 30 })
+  t.eq(explicit.mode, 'even', '显式给了 everySec → 听人的，不走自适应')
+
+  // 场景表里有越界的值 → 滤掉，别崩
+  t.noThrow(() => F.planFrames(100, { scenes: [-5, 200, NaN, 30, 60], maxFrames: 12 }), '越界/NaN 的场景表不崩')
+  const dirty = F.planFrames(100, { scenes: [30, 60], maxFrames: 12, fps: 30 })
+  t.ok(dirty.picks.every((x) => x.at >= 0 && x.at < 100), '越界的场景点被滤掉（没有跑到片子外面）')
+}
+
+// ══════════════════════════════════════════════════════
 //  ffmpeg 表达式
 // ══════════════════════════════════════════════════════
 {

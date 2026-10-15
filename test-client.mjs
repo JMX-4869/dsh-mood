@@ -153,8 +153,17 @@ async function renderPanel(render, waitMs = 100) {
   dom.window.document.body.appendChild(host)
   const errs = [], warns = []
   const oldErr = console.error, oldWarn = console.warn
-  console.error = (...a) => { errs.push(String(a[0])) }
-  console.warn = (...a) => { warns.push(String(a[0])) }
+  // ⚠️ 别只 `String(a[0])` —— React 的警告是 `console.error('...%s...', 值)` 这种格式，
+  //    丢掉后面的参数就等于**把唯一有用的信息扔了**：
+  //    实测报出来只有「Encountered two children with the same key, %s」，
+  //    `%s` 原样留着 —— 根本不知道是哪个 key 撞了，只能回去瞎猜。
+  //    （和今晚那几个"信号说了不算数"同一族：**仪器把该说的咽了**。）
+  const fmt = (a) => a.map((x) => {
+    if (typeof x === 'string') return x
+    try { return JSON.stringify(x) } catch { return String(x) }
+  }).join(' ')
+  console.error = (...a) => { errs.push(fmt(a)) }
+  console.warn = (...a) => { warns.push(fmt(a)) }
   let root = null, threw = null
   try {
     await act(async () => { root = ReactDOMClient.createRoot(host); root.render(render()) })
@@ -182,7 +191,9 @@ for (const m of ['ok', 'stale', 'broken']) {
       ok(label + ' 报错时显示出来了（不是白屏）', !r.threw && text.length > 4, r.threw || JSON.stringify(text.slice(0, 60)))
     } else {
       ok(label + ' 渲染无异常（' + r.html.length + ' 字符 / ' + text.length + ' 字）', clean,
-        r.threw ? ('抛出：' + r.threw) : (r.errs.length ? ('React 警告：' + r.errs.slice(0, 2).join(' | ').slice(0, 140)) : 'DOM 太短'))
+        // ⚠️ 截断别设太短：React 的 key 警告**值在最后面**，140 字符正好把它切掉，
+        //    于是每次只看到一条没有值的警告 —— 又一次"仪器把该说的咽了"。
+        r.threw ? ('抛出：' + r.threw) : (r.errs.length ? ('React 警告：' + r.errs.slice(0, 2).join(' | ').slice(0, 400)) : 'DOM 太短'))
       ok(label + ' 有可见文字', text.length > 10, JSON.stringify(text.slice(0, 60)))
     }
   }

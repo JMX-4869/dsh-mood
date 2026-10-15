@@ -669,12 +669,26 @@ export async function fetchVideoFrames(url, opts = {}) {
       opts = { ...opts, fps: info.fps }
     }
 
+    // ── 场景检测（自适应抽帧的依据）──
+    //
+    // ⚠️ 这一步**是可以失败/为空的**，而且失败不该让整件事挂掉：
+    //    · 单镜头 / 静止画面的视频检不出切换 —— 那是**正常**的，退回均匀抽帧
+    //    · 视频太长会超时 —— 也退回均匀
+    //    所以它只影响"取哪几帧"，不影响"能不能抽"。
+    let sceneInfo = { times: [], error: '', note: '' }
+    try {
+      sceneInfo = F.detectScenes(videoPath, ffmpeg, { timeoutMs: 120000 })
+    } catch (e) {
+      sceneInfo = { times: [], error: String((e && e.message) || e), note: '' }
+    }
+
     // ── 计划 + 抽帧 ──
     const plan = F.planFrames(durationSec, {
       maxFrames: opts.maxFrames || 12,
       perSecond: opts.perSecond || 1,
       everySec: opts.everySec,
       fps: opts.fps || 30,
+      scenes: sceneInfo.times,        // 有场景表就走自适应；没有就退回均分
     })
     const ex = F.extractFrames(videoPath, plan, batch, ffmpeg)
     if (!ex.ok) return { ok: false, title, durationSec, error: ex.error }
@@ -686,7 +700,12 @@ export async function fetchVideoFrames(url, opts = {}) {
       everySec: plan.everySec,
       dir: batch,
       files: ex.files,
-      note: '',
+      // 抽帧是"怎么取的" —— 让调用方（和模型）知道这是自适应还是均分，
+      // 以及有没有退回。不说的话，"怎么只有 5 张"就没法解释。
+      mode: plan.mode,
+      sceneCount: plan.sceneCount || 0,
+      sceneError: sceneInfo.error || '',
+      note: [plan.note, sceneInfo.note].filter(Boolean).join(' '),
     }
   } catch (e) {
     return { ok: false, title, error: '抽帧出错：' + ((e && e.message) || e) }

@@ -103,8 +103,22 @@ export function planFrames(durationSec, opts = {}) {
   const perSecond = Math.max(1, Math.min(8, Number(opts.perSecond) || 1))
   const fps = Number(opts.fps) || 30
 
-  if (duration <= 0) return { fps, perSecond, everySec: 1, picks: [], note: '拿不到时长' }
+  if (duration <= 0) return { fps, perSecond, everySec: 1, picks: [], mode: 'none', note: '拿不到时长' }
 
+  // ── 自适应那条路（默认，只要给了场景表）──
+  //
+  // ⚠️ 为什么要有它：**固定间隔会错过结构。**
+  //    实测：一支 217 秒的 MV，按每 9 秒均分抽 24 帧 ——
+  //    每一帧单独看都很好，但**全是同一类东西**（暗色聊天窗 / 一个大衬线词）。
+  //    真正的信息在"什么时候换的、换了几次"上，而均分恰好把它抹平了。
+  const scenes = Array.isArray(opts.scenes)
+    ? opts.scenes.map(Number).filter((t) => Number.isFinite(t) && t >= 0 && t < duration).sort((a, b) => a - b)
+    : []
+  if (scenes.length >= 2 && !opts.forceEven && !Number.isFinite(Number(opts.everySec))) {
+    return planByScenes(duration, scenes, { fps, maxFrames, perSecond })
+  }
+
+  // ── 均匀（老行为，留着当后备）──
   // 每秒抽 perSecond 张 → 每 everySec 秒取一组
   let everySec = Number(opts.everySec)
   if (!Number.isFinite(everySec) || everySec <= 0) {
@@ -126,7 +140,86 @@ export function planFrames(durationSec, opts = {}) {
       })
     }
   }
-  return { fps, perSecond, everySec, picks, note: '' }
+  return {
+    fps, perSecond, everySec, picks, mode: 'even',
+    note: scenes.length ? '（场景表不够用，退回均分）' : '',
+  }
+}
+
+/**
+ * 按场景切换点排计划（自适应那条路）。
+ *
+ * 对应主人说的两件事：
+ *  · **画面整体性** —— 变化少的视频取出来的帧**本身就少**，不硬凑到 maxFrames
+ *  · **信息获取度**     —— 在真正变的地方取；一闪而过的段并掉；超上限时沿时间线均匀挑
+ *
+ * @param scenes 升序的切换时刻（秒）。**不含 0** —— 开头单独补。
+ */
+function planByScenes(duration, scenes, { fps, maxFrames, perSecond }) {
+  // ① 切换点之后"落稳"一点再取。
+  //    ⚠️ 别取切换那一帧本身 —— 那一帧常常正是转场 / 黑场 / 叠化中间态。
+  const SETTLE = 0.35
+  // ② 短于这个的段并掉：一闪而过的东西多半不含信息，却会白占一格
+  const MIN_SCENE = 0.45
+
+  const marks = [0, ...scenes.map((t) => Math.min(duration - 0.05, t + SETTLE))]
+    .filter((t) => t >= 0 && t < duration)
+    .sort((a, b) => a - b)
+
+  // 一个点属于哪一段 = 它到下一个点的距离。太短的段不要。
+  const kept = []
+  for (let i = 0; i < marks.length; i++) {
+    const next = i + 1 < marks.length ? marks[i + 1] : duration
+    // 开头那一帧永远留 —— "开场是什么"是必看信息，哪怕它很短
+    if (i === 0 || (next - marks[i]) >= MIN_SCENE) kept.push(marks[i])
+  }
+
+  // ★★ 一层**稀疏的均分兜底** —— 这不是"退回均分"，是**并集**。
+  //
+  //    ⚠️ 为什么必须加：**ffmpeg 的 `scene` 度量只看亮度，对"色相剧变、亮度不变"的切换完全瞎。**
+  //       实测（造了个红→绿→蓝的三段视频来试）：
+  //         红 (253,0,0) YAVG=81 ／ 绿 (0,127,0) YAVG=81 ／ 蓝 (0,0,254) YAVG=41
+  //       红→绿那一下 **scene_score = 0.000000**（阈值降到 0.05 也照样 0），
+  //       绿→蓝才有 0.4。
+  //       也就是说：**只靠它，会整段整段地漏。**
+  //       而"平涂色块之间的切"恰恰是我最常看的那类内容（设计稿、海报轮播、MV 的标题卡）。
+  //
+  //    所以场景检测负责"在变的地方加密"，均分负责"别整段看不见"，两个取并集。
+  const backbone = Math.max(2, Math.ceil(maxFrames / 3))
+  for (let i = 0; i < backbone; i++) {
+    kept.push((i * duration) / backbone)
+  }
+  kept.sort((a, b) => a - b)
+
+  // ③ 超上限时**沿时间线均匀地挑**，保住整条时间线的覆盖。
+  //    不是挑"变化最大"的那些 —— 那会只看见几个最响的瞬间，看不见片子是怎么走的。
+  let use = kept
+  if (kept.length > maxFrames) {
+    use = []
+    for (let i = 0; i < maxFrames; i++) {
+      use.push(kept[Math.round((i * (kept.length - 1)) / Math.max(1, maxFrames - 1))])
+    }
+    use = [...new Set(use)].sort((a, b) => a - b)
+  }
+
+  const picks = []
+  for (const at of use) {
+    if (picks.length >= maxFrames) break
+    // 挨得太近（<0.4 秒）的合成一张 —— 同一秒里取两张没有额外信息
+    const prev = picks[picks.length - 1]
+    if (prev && at - prev.at < 0.4) continue
+    picks.push({
+      sec: Math.floor(at),
+      offset: 0,
+      index: Math.max(0, Math.round(at * fps)),   // 这里直接按秒算，不走 absoluteFrameIndex
+      at: Math.round(at * 10) / 10,
+    })
+  }
+
+  const note = kept.length > maxFrames
+    ? `（检测到 ${scenes.length} 处画面切换，沿时间线挑了 ${picks.length} 张）`
+    : `（按 ${scenes.length} 处画面切换取，取了 ${picks.length} 张）`
+  return { fps, perSecond, everySec: 0, picks, mode: 'scene', sceneCount: scenes.length, note }
 }
 
 /** 给 ffmpeg 拼 `select` 表达式 */
@@ -184,6 +277,54 @@ export function probe(videoPath, ffprobePath) {
     if (m && Number(m[2])) fps = Number(m[1]) / Number(m[2])
     return { durationSec: dur, fps: fps || 30, width: st.width || 0, height: st.height || 0 }
   } catch { return null }
+}
+
+/**
+ * 用 ffmpeg 自己找出**画面什么时候变了**（场景切换时刻表）。
+ *
+ * 原理：`select='gt(scene,阈值)'` 是 ffmpeg 内置的场景变化度量（0~1，越大变得越猛），
+ * 后面挂 `showinfo`，它会把每个被选中的帧的 `pts_time` 打到 stderr 上。
+ *
+ * ────────────────────────────────────────────────────────────────
+ *  两个坑，都写在代码里，别"优化"掉
+ * ────────────────────────────────────────────────────────────────
+ * ① **别加 `-skip_frame nokey`。** 看着很划算（只看关键帧，快得多），
+ *    但 `scene` 度量的就是**相邻两帧**的差 —— 只看关键帧的话，
+ *    相邻两帧隔了十几秒，分数必然虚高，**等于每个关键帧都算切换点**，整个表就废了。
+ * ② 所以走**降采样后全解码**：`scale=160:-2` 把比较那一步压到很小。
+ *    代价是仍要解一遍全片 —— 所以**给超时**，超了就返回空表，让上层退回均匀抽帧。
+ *
+ * @returns {{ times:number[], error:string, note:string }}
+ */
+export function detectScenes(videoPath, ffmpegPath, opts = {}) {
+  const exe = ffmpegPath || findMediaTool('ffmpeg')
+  if (!exe) return { times: [], error: '没找到 ffmpeg', note: '' }
+  const th = Number.isFinite(Number(opts.threshold)) ? Number(opts.threshold) : 0.32
+  const timeoutMs = Number(opts.timeoutMs) || 120000
+  try {
+    const r = spawnSync(exe, [
+      '-hide_banner', '-nostats',
+      '-i', videoPath,
+      '-vf', `scale=160:-2,select='gt(scene,${th})',showinfo`,
+      '-an', '-f', 'null', '-',
+    ], { timeout: timeoutMs, windowsHide: true, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 })
+    const txt = String((r && r.stderr) || '') + String((r && r.stdout) || '')
+    const times = []
+    for (const m of txt.matchAll(/pts_time:([0-9]+(?:\.[0-9]+)?)/g)) {
+      const t = Number(m[1])
+      if (Number.isFinite(t) && t >= 0) times.push(t)
+    }
+    const uniq = [...new Set(times.map((t) => Math.round(t * 100) / 100))].sort((a, b) => a - b)
+    if (!uniq.length) {
+      // 没检出来**不一定是失败**：静止画面 / 单镜头视频本来就该是空的。
+      // 但如果是超时被杀的，得说清楚 —— 那两种情况的处理方式不一样。
+      const killed = !!(r && (r.error || r.signal))
+      return { times: [], error: killed ? '场景检测超时（视频太长）' : '', note: killed ? '' : '没检出画面切换（可能是单镜头 / 静止画面）' }
+    }
+    return { times: uniq, error: '', note: '' }
+  } catch (e) {
+    return { times: [], error: String((e && e.message) || e), note: '' }
+  }
 }
 
 /**

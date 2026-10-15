@@ -16,7 +16,7 @@
       "configured": null,
       "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood.json",
       "exists": true,
-      "size": 4554
+      "size": 4525
     },
     {
       "name": "dsh-mood-diary.json",
@@ -27,7 +27,18 @@
       "configured": null,
       "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-diary.json",
       "exists": true,
-      "size": 97226
+      "size": 143791
+    },
+    {
+      "name": "dsh-mood-diary.key",
+      "key": "diary",
+      "label": "日记密钥（丢了日记就打不开）",
+      "owner": "mood",
+      "dir": "D:\\xinqing\\ZhuDongKaiKou",
+      "configured": null,
+      "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-diary.key",
+      "exists": true,
+      "size": 44
     },
     {
       "name": "dsh-mood-news.json",
@@ -60,7 +71,7 @@
       "configured": null,
       "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-memory.jsonl",
       "exists": true,
-      "size": 384107
+      "size": 500660
     },
     {
       "name": "dsh-mood-taste.json",
@@ -71,7 +82,7 @@
       "configured": null,
       "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-taste.json",
       "exists": true,
-      "size": 38008
+      "size": 74694
     }
   ],
   "leftovers": []

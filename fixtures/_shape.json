@@ -1,11 +1,15 @@
 {
+  "_gate": true,
   "state": {
     "top": [
       "accessAt",
       "count",
       "current",
       "diaries",
+      "diaryEncrypted",
       "diaryFile",
+      "diaryKeyFile",
+      "diaryUnreadable",
       "generateAt",
       "lockedReason",
       "memory",
@@ -192,6 +196,7 @@
       "perDayBytes",
       "sessions",
       "trimmed",
+      "unlimited",
       "usedRatio"
     ],
     "recent0": [
@@ -232,6 +237,7 @@
       "perDayBytes",
       "sessions",
       "trimmed",
+      "unlimited",
       "usedRatio"
     ],
     "recent0": null,

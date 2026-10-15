@@ -3,189 +3,187 @@
   "current": {
     "id": "focused",
     "label": "专注",
-    "mixLabel": "专注里掺着疲惫",
+    "mixLabel": "专注",
     "primaryLabel": "专注"
   },
-  "mixed": [
-    {
-      "id": "tired",
-      "label": "疲惫"
-    }
-  ],
+  "mixed": [],
   "ranked": [
     {
       "id": "focused",
       "label": "专注",
-      "value": 69.8
+      "value": 100
     },
     {
       "id": "tired",
       "label": "疲惫",
-      "value": 67
-    },
-    {
-      "id": "curious",
-      "label": "好奇",
-      "value": 59.1
+      "value": 84.9
     },
     {
       "id": "anxious",
       "label": "焦虑",
-      "value": 56.2
+      "value": 81.9
     },
     {
-      "id": "annoyed",
-      "label": "烦躁",
-      "value": 46.6
+      "id": "curious",
+      "label": "好奇",
+      "value": 77.9
     },
     {
       "id": "happy",
       "label": "开心",
-      "value": 23.7
-    },
-    {
-      "id": "burnout",
-      "label": "内耗",
-      "value": 22
-    },
-    {
-      "id": "excited",
-      "label": "兴奋",
-      "value": 18.8
-    },
-    {
-      "id": "down",
-      "label": "低落",
-      "value": 18.4
-    },
-    {
-      "id": "proud",
-      "label": "得意",
-      "value": 14
-    },
-    {
-      "id": "hyper",
-      "label": "上头",
-      "value": 12.6
-    },
-    {
-      "id": "numb",
-      "label": "麻木",
-      "value": 12
-    },
-    {
-      "id": "flutter",
-      "label": "心动",
-      "value": 10.2
-    },
-    {
-      "id": "sulk",
-      "label": "生闷气",
-      "value": 9.5
-    },
-    {
-      "id": "hurt",
-      "label": "委屈",
-      "value": 9
-    },
-    {
-      "id": "love",
-      "label": "恋慕",
-      "value": 8.7
-    },
-    {
-      "id": "cracked",
-      "label": "破防",
-      "value": 7.7
-    },
-    {
-      "id": "sympathy",
-      "label": "同情",
-      "value": 7.6
-    },
-    {
-      "id": "coy",
-      "label": "撒娇",
-      "value": 7.5
-    },
-    {
-      "id": "awkward",
-      "label": "尴尬",
-      "value": 6.8
-    },
-    {
-      "id": "disappointed",
-      "label": "失望",
-      "value": 6.4
+      "value": 65.5
     },
     {
       "id": "surprise",
       "label": "惊讶",
-      "value": 5.8
+      "value": 41.7
+    },
+    {
+      "id": "annoyed",
+      "label": "烦躁",
+      "value": 30.3
+    },
+    {
+      "id": "burnout",
+      "label": "内耗",
+      "value": 23.3
+    },
+    {
+      "id": "excited",
+      "label": "兴奋",
+      "value": 19.6
+    },
+    {
+      "id": "proud",
+      "label": "得意",
+      "value": 15.1
+    },
+    {
+      "id": "hyper",
+      "label": "上头",
+      "value": 14.5
+    },
+    {
+      "id": "hurt",
+      "label": "委屈",
+      "value": 10.9
+    },
+    {
+      "id": "sympathy",
+      "label": "同情",
+      "value": 10.7
+    },
+    {
+      "id": "coy",
+      "label": "撒娇",
+      "value": 10.7
+    },
+    {
+      "id": "numb",
+      "label": "麻木",
+      "value": 9.6
+    },
+    {
+      "id": "cracked",
+      "label": "破防",
+      "value": 9.5
+    },
+    {
+      "id": "sulk",
+      "label": "生闷气",
+      "value": 8.7
+    },
+    {
+      "id": "disappointed",
+      "label": "失望",
+      "value": 8.5
+    },
+    {
+      "id": "flutter",
+      "label": "心动",
+      "value": 8.1
     },
     {
       "id": "checkedout",
       "label": "摆烂",
-      "value": 5.6
+      "value": 7.6
     },
     {
       "id": "guilt",
       "label": "内疚",
-      "value": 5.4
+      "value": 7.6
     },
     {
-      "id": "shame",
-      "label": "羞耻",
-      "value": 5.3
-    },
-    {
-      "id": "nostalgia",
-      "label": "怀旧",
-      "value": 5.1
-    },
-    {
-      "id": "jealous",
-      "label": "吃醋",
-      "value": 4
-    },
-    {
-      "id": "fear",
-      "label": "恐惧",
-      "value": 3.9
-    },
-    {
-      "id": "conflict",
-      "label": "矛盾",
-      "value": 3.9
+      "id": "love",
+      "label": "恋慕",
+      "value": 6.2
     },
     {
       "id": "gloomy",
       "label": "消沉",
-      "value": 3.2
+      "value": 5.9
     },
     {
-      "id": "disgust",
-      "label": "厌恶",
-      "value": 3.1
+      "id": "nostalgia",
+      "label": "怀旧",
+      "value": 5.8
+    },
+    {
+      "id": "shame",
+      "label": "羞耻",
+      "value": 5.2
+    },
+    {
+      "id": "jealous",
+      "label": "吃醋",
+      "value": 4.8
+    },
+    {
+      "id": "conflict",
+      "label": "矛盾",
+      "value": 4.8
+    },
+    {
+      "id": "awkward",
+      "label": "尴尬",
+      "value": 4.1
+    },
+    {
+      "id": "fear",
+      "label": "恐惧",
+      "value": 2.6
     },
     {
       "id": "lonely",
       "label": "孤单",
-      "value": 2.1
+      "value": 1.6
+    },
+    {
+      "id": "disgust",
+      "label": "厌恶",
+      "value": 1.1
     },
     {
       "id": "calm",
       "label": "平静",
       "value": 0
+    },
+    {
+      "id": "down",
+      "label": "低落",
+      "value": 0
     }
   ],
-  "sinceSwitchMin": 1058,
-  "nextPeriodicMin": 14,
+  "sinceSwitchMin": 1168,
+  "nextPeriodicMin": 221,
   "diaryFile": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-diary.json",
+  "diaryUnreadable": false,
+  "diaryEncrypted": true,
+  "diaryKeyFile": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-diary.key",
   "generateAt": "23:59",
   "unlocked": true,
   "lockedReason": "",
-  "accessAt": 1791907268608,
+  "accessAt": 1792067106135,
   "count": 2,
   "moodLabels": {
     "calm": "平静",
@@ -264,16 +262,16 @@
     ]
   },
   "memory": {
-    "count": 729,
-    "bytes": 384107,
+    "count": 926,
+    "bytes": 500660,
     "sessions": 3,
     "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-memory.jsonl",
     "oldest": 1791987664514,
-    "newest": 1792060422676,
+    "newest": 1792067106123,
     "maxBytes": 52428800,
-    "usedRatio": 0.00732625961303711,
-    "perDayBytes": 456125.38700469094,
-    "daysLeft": 114.10172396184724,
+    "usedRatio": 0.009549331665039063,
+    "perDayBytes": 544513.442571386,
+    "daysLeft": 95.36613045727002,
     "trimmed": 0,
     "onlyUser": false
   },

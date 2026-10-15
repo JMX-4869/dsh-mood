@@ -976,6 +976,32 @@ for (const [n, f] of [
 ]) {
   if (!fs.existsSync(f)) { WN(n + ' 状态文件还没生成: ' + f); continue }
   try {
+    // ⚠️ **日记现在不是明文 JSON 了**（0.7.17 起 AES-256-GCM 加密，见 diary.js）。
+    //    这里原来一律 `JSON.parse(readFileSync(...,'utf8'))` —— 密文一进来
+    //    必然抛 "Unexpected token 'D'"，报成"状态文件损坏"。
+    //    **那不是损坏，那是它本来就该长这样。** 一个测着"已经不存在的东西"的断言，
+    //    比没有断言更坏：它会把正常状态报成故障，训练我忽略它。
+    //
+    //    正确判据：拿 diary.js 自己的识别函数判 —— 密文就解密（解不开才算坏），
+    //    明文就照旧 JSON.parse（老库还没迁移的那种）。
+    if (n === '日记') {
+      const D = await import(HERE + 'diary.js')
+      const buf = fs.readFileSync(f)
+      if (D.isEncryptedDiary(buf)) {
+        const txt = D.decryptDiary(buf)
+        if (txt === null) NG('日记**解不开** —— 密钥变了还是文件被改过？（已拒绝写盘，别动它）')
+        else {
+          const d = JSON.parse(txt)
+          OK('日记已加密，解得开  (' + Math.round(fs.statSync(f).size / 1024) + ' KB)')
+          OK('日记篇数: ' + (d.entries || []).length + '，门禁: ' + (d.access?.allowed ? '开' : '锁'))
+        }
+      } else {
+        WN('日记还是**明文**（还没迁移过）—— 下一次保存会自动加密')
+        const d = JSON.parse(buf.toString('utf8'))
+        OK('日记篇数: ' + (d.entries || []).length + '，门禁: ' + (d.access?.allowed ? '开' : '锁'))
+      }
+      continue
+    }
     const s = JSON.parse(fs.readFileSync(f, 'utf8'))
     OK(n + ' 状态可解析  (' + Math.round(fs.statSync(f).size / 1024) + ' KB)')
     if (n === '心情') {
@@ -983,9 +1009,6 @@ for (const [n, f] of [
       else OK('无残留的 distress 标记')
       const cur = M.MOODS[s.current]?.label
       cur ? OK('当前心情字段合法: ' + cur) : NG('current 非法: ' + s.current)
-    }
-    if (n === '日记') {
-      OK('日记篇数: ' + (s.entries || []).length + '，门禁: ' + (s.access?.allowed ? '开' : '锁'))
     }
   } catch (e) { NG(n + ' 状态文件损坏: ' + e.message) }
 }

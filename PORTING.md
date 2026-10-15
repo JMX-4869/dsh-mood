@@ -83,6 +83,7 @@ isInjectedText(text)            这条是不是被注入的框（不是人说的
 ```
 FRAME_TABLE / nearestFps(fps) / frameOffsets(fps, perSecond)
 absoluteFrameIndex(sec, offset, fps) / planFrames(durationSec, opts) / selectExpr(indices)
+detectScenes(videoPath, ffmpegPath, {threshold,timeoutMs})  ← ffmpeg 原生场景检测，给 planFrames 当依据
 mediaToolCandidates(name) / findMediaTool(name) / probe(videoPath, ffprobePath)
 extractFrames(videoPath, plan, outDir, ffmpegPath)   ← 用 ffmpeg 的 select 精确抓帧
 cleanFrames(dir) / cleanExcept(baseDir, keepName) / sweepOldFrames(baseDir, maxAgeMs)
@@ -287,3 +288,30 @@ MIT。**搬吧，改吧，不用问。**
 - 内部用 `Infinity`（比较天然成立），**对外一律折算成 `-1`**：
   `JSON.stringify(Infinity)` 是 `null`，开关会在传输途中丢掉。
 - `0` / 空值 / 垃圾值**不算无上限** —— 那是"没填"，该走默认值，不然"没填"等于关掉了保护。
+
+---
+
+## ⚠️ 抽帧：为什么不能只靠 ffmpeg 的场景检测
+
+`planFrames` 默认走**自适应**：给了 `scenes` 就按画面什么时候变了取（`mode:'scene'`），
+没给 / 给了 `everySec` 就按秒均分（`mode:'even'`）。
+
+**但必须有兜底，因为 `gt(scene,·)` 只看亮度。** 实测（造了个红→绿→蓝的三段视频）：
+
+```
+红 (253,0,0)  YAVG=81
+绿 (0,127,0)  YAVG=81   ← 跟红一样
+蓝 (0,0,254)  YAVG=41
+
+红→绿 的 scene_score = 0.000000（阈值降到 0.05 也照样 0）
+绿→蓝 的 scene_score = 0.400000
+```
+
+所以**只靠它，平涂色块之间的切会整段整段地漏** —— 而那恰恰是设计稿/MV 标题卡最常见的切法。
+解法是**并集**：场景检测负责在变的地方加密，再加一层稀疏的均分兜底负责别整段看不见。
+（不是场景检测失败才退回均分 —— 是同时在用。）
+
+⚠️ 还有两个坑，别优化掉：
+· **别加 `-skip_frame nokey`** —— 只看关键帧的话相邻两帧隔十几秒，scene 分数必然虚高，
+  等于每个关键帧都算切换点，整个表就废了。代价（全解码）用 `scale=160:-2` 和超时来扛。
+· 切换点之后要**落稳 0.35 秒再取** —— 别取切换那一帧本身，那常常是转场/黑场/叠化中间态。

@@ -1779,17 +1779,17 @@ window.__ModuleLoader__.load({
       const fmt = (v) => (!v ? '0 B' : v < 1024 ? v + ' B' : v < 1048576 ? (v / 1024).toFixed(1) + ' KB' : (v / 1048576).toFixed(1) + ' MB')
 
       return h('div', { className: 'storebar' },
-        ...list.map((f) => h('div', { className: 'storerow', key: f.key },
+        ...list.map((f) => h('div', { className: 'storerow', key: f.name },
           h('div', { className: 'storeline' },
             h('span', { className: 'storeown' }, '心情插件'),
             h('span', { className: 'storelab' }, f.label),
             h('span', { className: 'storepath' }, f.dir + (f.exists ? '（' + fmt(f.size) + '）' : '（还没生成）')),
             h('span', { className: 'storebadge' + (f.configured ? ' on' : '') },
               f.configured ? '单独位置' : '跟默认'),
-            h('button', { className: 'storetoggle', onClick: () => { setOpenKey(openKey === f.key ? '' : f.key); setErr(''); setDone(null) } },
-              openKey === f.key ? '收起' : '换位置'),
+            h('button', { className: 'storetoggle', onClick: () => { setOpenKey(openKey === f.name ? '' : f.name); setErr(''); setDone(null) } },
+              openKey === f.name ? '收起' : '换位置'),
           ),
-          openKey === f.key
+          openKey === f.name
             ? h('div', { className: 'storebody' },
                 h('div', { className: 'srcrow' },
                   h('input', {
