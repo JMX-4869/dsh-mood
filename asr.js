@@ -92,13 +92,32 @@ if sr != SR:
 out['duration'] = len(a) / SR
 
 # ── 转写 ──
+# ⚠️ vad_filter 默认**关**。
+#    它按"这里像不像人在说话"来切 —— 对**说话**有用（切掉静音、少些幻觉），
+#    但对**唱歌**是灾难：伴奏会让它把大段判成"不是语音"直接丢掉。
+#    实测那首 242 秒的歌：开着它只转出 49.4 秒（20%），关掉转到 231 秒。
+#    **而且它丢东西的时候不出声** —— 输出照样是一串干净的段落。
+vad_on = (len(sys.argv) > 4 and sys.argv[4] == 'vad')
 try:
     from faster_whisper import WhisperModel
     m = WhisperModel(model_name, device='cpu', compute_type='int8')
-    segs, info = m.transcribe(a, language=lan, beam_size=5, vad_filter=True)
+    segs, info = m.transcribe(a, language=lan, beam_size=5, vad_filter=vad_on)
     out['language'] = info.language
+    out['vad'] = vad_on
     out['segments'] = [{'t0': round(s.start, 2), 't1': round(s.end, 2), 'text': s.text.strip()}
                        for s in segs if s.text.strip()]
+    # ── 覆盖率：**必须报** ──
+    #    "12 段"看起来就是"全转完了"，而它可能只覆盖 20%。
+    #    **"我读了 20%"和"我读完了"，在输出里长得一模一样。**
+    dur = len(a) / SR
+    cov = sum(s['t1'] - s['t0'] for s in out['segments'])
+    last = out['segments'][-1]['t1'] if out['segments'] else 0
+    out['coverage'] = {
+        'sec': round(cov, 1),
+        'total': round(dur, 1),
+        'ratio': round(cov / dur, 3) if dur else 0,
+        'tail_gap': round(dur - last, 1),   # 最后一句之后还剩多少秒没转
+    }
 except Exception as e:
     out['notes'].append('转写失败：%s: %s' % (type(e).__name__, e))
 
@@ -253,9 +272,12 @@ export function transcribeAndProsody(wavPath, opts = {}) {
     }
     const model = opts.model || 'small'
     const lang = opts.language || 'zh'
+    // ⚠️ VAD 默认**关**。开着它对"纯说话"有用（切静音、少幻觉），
+    //    但对唱歌/音乐是灾难 —— 实测那首 242 秒的歌：开着只覆盖 49 秒，关掉覆盖到 231 秒。
+    const vadArg = opts.vad ? 'vad' : 'off'
     let r
     try {
-      r = spawnSync(py, [script, wavPath, model, lang], {
+      r = spawnSync(py, [script, wavPath, model, lang, vadArg], {
         timeout: (opts.timeoutMs || 1800000),
         windowsHide: true, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
         env: { ...process.env, PYTHONIOENCODING: 'utf-8', HF_ENDPOINT: process.env.HF_ENDPOINT || 'https://hf-mirror.com' },
@@ -285,7 +307,23 @@ export function formatASR(data, opts = {}) {
   if (!data.segments || !data.segments.length) {
     L.push('**转写**：没有识别到语音（可能是纯音乐/无对白，或者这段真的没人说话）')
   } else {
-    L.push('**转写**（' + data.segments.length + ' 段 · 识别语言 ' + (data.language || '?') + '）：')
+    // ── 覆盖率摆在段数旁边 ──
+    //    "12 段"单独看就是"全转完了"的意思，而它可能只覆盖 20%。
+    const c = data.coverage
+    L.push('**转写**（' + data.segments.length + ' 段 · 识别语言 ' + (data.language || '?')
+      + (c ? ' · **覆盖 ' + c.sec + ' / ' + c.total + ' 秒（' + Math.round(c.ratio * 100) + '%）**' : '')
+      + '）：')
+    if (c && c.tail_gap > 30) {
+      // 尾部大段空白 —— 比"覆盖率低"更直接的信号。
+      // 覆盖率低可能只是静音多；而**最后一句之后空出好几分钟**是明确的缺失。
+      L.push('  ⚠️ **最后一句停在 ' + (c.total - c.tail_gap) + ' 秒，后面还有 ' + c.tail_gap
+        + ' 秒没有任何转写。**')
+      L.push('     唱歌 + 伴奏会让语音活动检测（VAD）把大段判成"不是语音"直接丢掉 ——')
+      L.push('     **它丢东西的时候不出声**，输出照样是一串干净的段落。')
+      L.push('     **别把这份当成全部内容。**（要试：把 `vad` 打开或关掉再跑一次，对比覆盖率。）')
+    } else if (c && c.ratio < 0.5) {
+      L.push('  ⚠️ 覆盖率不到一半 —— 后面可能还有没转出来的内容，别当成"这就是全部"。')
+    }
     for (const s of data.segments) {
       L.push('  [' + s.t0.toFixed(1).padStart(7) + ' → ' + s.t1.toFixed(1).padStart(6) + ']  ' + s.text)
     }

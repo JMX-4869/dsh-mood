@@ -93,6 +93,48 @@ t.ok(withWarn.includes('⚠️'), 'notes 带 ⚠️ 前缀出来')
 t.ok(withWarn.includes('6.6%'), 'notes 的内容原样出来（不概括、不吞）')
 t.eq(formatASR({ segments: [], prosody: {}, notes: [] }).includes('⚠️ 基频'), false, '没有 notes 时不硬造警告')
 
+// ── 6.5 覆盖率：**"12 段"看起来就是"全转完了"，而它可能只覆盖 20%** ──
+//
+// 这是 0.11.1 修的 bug。现场：
+//   一首 242 秒的歌，转写吐出 12 段干净的句子 —— 而它们只到 49.4 秒。
+//   **后面 193 秒一个字都没有，而输出里看不出来。**
+// 根因：whisper 的 vad_filter 按"像不像人在说话"切，而唱歌带伴奏 → 大批被判成非语音丢掉。
+const cov = formatASR({
+  segments: [{ t0: 0, t1: 49.4, text: 'Hello world' }],
+  language: 'zh', vad: false,
+  coverage: { sec: 49.4, total: 242.2, ratio: 0.204, tail_gap: 192.8 },
+})
+t.ok(cov.includes('覆盖 49.4 / 242.2 秒'), '报出了覆盖率（分子分母和秒数）')
+t.ok(cov.includes('20%'), '报出了百分比')
+t.ok(cov.includes('后面还有 192.8 秒没有任何转写'), '**尾部大段空白要单独点名** —— 它比"覆盖率低"更直接')
+t.ok(cov.includes('VAD'), '说清了根因（VAD 把大段判成"不是语音"）')
+t.ok(cov.includes('丢东西的时候不出声'), '点明了最坑的地方：**丢东西的时候它不出声**')
+t.ok(cov.includes('别把这份当成全部内容'), '给了结论性提醒')
+
+// 尾部空白小的时候**不许**硬造警告 —— 那是正常的收尾
+const covOk = formatASR({
+  segments: [{ t0: 0, t1: 233, text: '輪到你了' }],
+  language: 'zh', vad: false,
+  coverage: { sec: 212, total: 242.2, ratio: 0.875, tail_gap: 9.2 },
+})
+t.ok(!covOk.includes('没有任何转写'), '尾部只空 9 秒时**不报警**（9 秒是正常收尾，不是缺失）')
+t.ok(!covOk.includes('覆盖率不到一半'), '覆盖率 88% 时不报"不到一半"')
+
+// 没有 coverage 字段时也不能崩（老数据/别处调用的兼容）
+t.noThrow(() => formatASR({ segments: [{ t0: 0, t1: 1, text: 'x' }], prosody: {} }),
+  '没有 coverage 字段 → 不崩')
+
+// ── 6.6 内联脚本里那个开关必须是**活的**（别被写死回去）──
+t.ok(__test.PY_SCRIPT.includes("sys.argv[4] == 'vad'"),
+  'VAD 是参数控制的（读 argv[4]）—— 不是写死的')
+t.ok(!/vad_filter=True/.test(__test.PY_SCRIPT),
+  '**没有任何地方写死 vad_filter=True** —— 那正是 0.11.1 修掉的 bug')
+t.ok(__test.PY_SCRIPT.includes('vad_filter=vad_on'), '传给 transcribe 的是那个变量')
+t.ok(__test.PY_SCRIPT.includes("out['coverage']"),
+  '覆盖率在 Python 那边就算好（不在 JS 里编）')
+t.ok(__test.PY_SCRIPT.includes('tail_gap'),
+  '算了尾部空白 —— 尾部大段空白是比覆盖率更直接的缺失信号')
+
 // ── 7. 内联 Python 脚本里的两个设计决定（写成断言，防止被"优化"掉）──
 t.ok(!__test.PY_SCRIPT.includes('decode_audio'),
   '不调 faster-whisper 的 decode_audio —— 它 1.2.1 调的 av.open(metadata_errors=) 跟当前 PyAV 不兼容')
