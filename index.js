@@ -2548,10 +2548,17 @@ export function apply(root, rawConfig) {
                   : updateItem(tk, id, { kind: args.kind, note: args.note, said: args.said, tags: parseTags(args.tags) })
                 if (!r.ok) return { ok: false, message: r.error }
                 save()
-                // 改过原则就自动算成他的 —— 说清楚，免得他以为还是我那条
+                // ⚠️ 这里原来写的是「改过之后这条算「主人亲口」的」—— **不准确，而且危险**。
+                //
+                //    editPrinciple 只把 `from` 设成 'user'（意思是"不再是种子/默认值了"），
+                //    **`by` 一个字都没动** —— 我改自己的原则，主意仍然是我的。
+                //    那句提示会让我（或主人）以为"这条是主人说的"，
+                //    正好踩中这个库最防的一件事：**把我的判断冒充成他的**。所以改准。
                 return {
                   ok: true,
-                  message: '改好了 [${id}]'.replace('${id}', id) + (isP ? '（改过之后这条算「主人亲口」的）' : ''),
+                  message: '改好了 [' + id + ']' + (isP
+                    ? '（改过了。⚠️ **by 没动** —— 它仍然记在原来那一档；「改过」只表示它不再是种子）'
+                    : ''),
                 }
               }
 
