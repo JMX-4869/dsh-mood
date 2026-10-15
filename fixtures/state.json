@@ -3,14 +3,10 @@
   "current": {
     "id": "focused",
     "label": "专注",
-    "mixLabel": "专注混着好奇、疲惫",
+    "mixLabel": "专注里掺着疲惫",
     "primaryLabel": "专注"
   },
   "mixed": [
-    {
-      "id": "curious",
-      "label": "好奇"
-    },
     {
       "id": "tired",
       "label": "疲惫"
@@ -20,27 +16,32 @@
     {
       "id": "focused",
       "label": "专注",
-      "value": 51.2
-    },
-    {
-      "id": "curious",
-      "label": "好奇",
-      "value": 45.8
+      "value": 69.8
     },
     {
       "id": "tired",
       "label": "疲惫",
-      "value": 45
+      "value": 67
+    },
+    {
+      "id": "curious",
+      "label": "好奇",
+      "value": 59.1
+    },
+    {
+      "id": "anxious",
+      "label": "焦虑",
+      "value": 56.2
     },
     {
       "id": "annoyed",
       "label": "烦躁",
-      "value": 37.4
+      "value": 46.6
     },
     {
       "id": "happy",
       "label": "开心",
-      "value": 24.6
+      "value": 23.7
     },
     {
       "id": "burnout",
@@ -48,19 +49,14 @@
       "value": 22
     },
     {
-      "id": "down",
-      "label": "低落",
-      "value": 19.1
-    },
-    {
       "id": "excited",
       "label": "兴奋",
       "value": 18.8
     },
     {
-      "id": "anxious",
-      "label": "焦虑",
-      "value": 14.6
+      "id": "down",
+      "label": "低落",
+      "value": 18.4
     },
     {
       "id": "proud",
@@ -123,11 +119,6 @@
       "value": 6.4
     },
     {
-      "id": "calm",
-      "label": "平静",
-      "value": 5.8
-    },
-    {
       "id": "surprise",
       "label": "惊讶",
       "value": 5.8
@@ -181,10 +172,15 @@
       "id": "lonely",
       "label": "孤单",
       "value": 2.1
+    },
+    {
+      "id": "calm",
+      "label": "平静",
+      "value": 0
     }
   ],
-  "sinceSwitchMin": 955,
-  "nextPeriodicMin": 116,
+  "sinceSwitchMin": 1058,
+  "nextPeriodicMin": 14,
   "diaryFile": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-diary.json",
   "generateAt": "23:59",
   "unlocked": true,
@@ -268,16 +264,16 @@
     ]
   },
   "memory": {
-    "count": 567,
-    "bytes": 283555,
+    "count": 729,
+    "bytes": 384107,
     "sessions": 3,
     "path": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-memory.jsonl",
     "oldest": 1791987664514,
-    "newest": 1792054269057,
+    "newest": 1792060422676,
     "maxBytes": 52428800,
-    "usedRatio": 0.005408382415771485,
-    "perDayBytes": 367830.0442658994,
-    "daysLeft": 141.76450731225452,
+    "usedRatio": 0.00732625961303711,
+    "perDayBytes": 456125.38700469094,
+    "daysLeft": 114.10172396184724,
     "trimmed": 0,
     "onlyUser": false
   },

@@ -1,8 +1,8 @@
 {
   "ok": true,
-  "count": 50,
-  "at": 1792054020932,
-  "ageMin": 5,
+  "count": 96,
+  "at": 1792056508730,
+  "ageMin": 66,
   "fresh": true,
   "file": "D:\\xinqing\\ZhuDongKaiKou\\dsh-mood-news.json",
   "presets": [
@@ -25,6 +25,31 @@
       "label": "Hacker News 首页",
       "url": "https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=12",
       "kind": "json"
+    },
+    {
+      "label": "arXiv cs.AI",
+      "url": "https://rss.arxiv.org/rss/cs.AI",
+      "kind": "rss"
+    },
+    {
+      "label": "arXiv cs.CL",
+      "url": "https://rss.arxiv.org/rss/cs.CL",
+      "kind": "rss"
+    },
+    {
+      "label": "Nature",
+      "url": "https://www.nature.com/nature.rss",
+      "kind": "rss"
+    },
+    {
+      "label": "It's Nice That",
+      "url": "https://www.itsnicethat.com/",
+      "kind": "auto"
+    },
+    {
+      "label": "量子位",
+      "url": "https://www.qbitai.com/",
+      "kind": "auto"
     }
   ],
   "sources": [
@@ -57,23 +82,44 @@
       "limit": 10
     },
     {
-      "id": "src-vr94l3",
-      "label": "品味训练法（Dragoon0x/taste-sk",
-      "url": "https://skillsmp.com/creators/dragoon0x/taste-skills/skills-perception-consumption-discipline",
-      "kind": "auto",
-      "limit": 10
-    },
-    {
-      "id": "src-71cn0i",
-      "label": "VAST 审美敏感性测试（MLLM 评测）",
-      "url": "https://aclanthology.org/2025.paclic-1.37/",
-      "kind": "auto",
-      "limit": 10
-    },
-    {
       "id": "src-o88ohk",
       "label": "bilibili",
       "url": "https://www.bilibili.com/",
+      "kind": "auto",
+      "limit": 10
+    },
+    {
+      "id": "src-06m511",
+      "label": "arXiv cs.AI",
+      "url": "https://rss.arxiv.org/rss/cs.AI",
+      "kind": "rss",
+      "limit": 10
+    },
+    {
+      "id": "src-c9bw88",
+      "label": "arXiv cs.CL",
+      "url": "https://rss.arxiv.org/rss/cs.CL",
+      "kind": "rss",
+      "limit": 10
+    },
+    {
+      "id": "src-mzc3ku",
+      "label": "Nature",
+      "url": "https://www.nature.com/nature.rss",
+      "kind": "rss",
+      "limit": 10
+    },
+    {
+      "id": "src-y5b9uo",
+      "label": "It's Nice That",
+      "url": "https://www.itsnicethat.com/",
+      "kind": "auto",
+      "limit": 10
+    },
+    {
+      "id": "src-09ptya",
+      "label": "量子位",
+      "url": "https://www.qbitai.com/",
       "kind": "auto",
       "limit": 10
     }
@@ -87,13 +133,6 @@
       "error": ""
     },
     {
-      "id": "hn",
-      "label": "Hacker News 首页",
-      "ok": true,
-      "count": 10,
-      "error": ""
-    },
-    {
       "id": "src-o88ohk",
       "label": "bilibili",
       "ok": true,
@@ -101,15 +140,43 @@
       "error": ""
     },
     {
-      "id": "src-71cn0i",
-      "label": "VAST 审美敏感性测试（MLLM 评测）",
-      "ok": false,
-      "count": 0,
-      "error": "没解析出条目（可能需要换一种 feed / API 地址）"
+      "id": "hn",
+      "label": "Hacker News 首页",
+      "ok": true,
+      "count": 10,
+      "error": ""
     },
     {
       "id": "sspai",
       "label": "少数派",
+      "ok": true,
+      "count": 10,
+      "error": ""
+    },
+    {
+      "id": "src-c9bw88",
+      "label": "arXiv cs.CL",
+      "ok": true,
+      "count": 10,
+      "error": ""
+    },
+    {
+      "id": "src-09ptya",
+      "label": "量子位",
+      "ok": true,
+      "count": 10,
+      "error": ""
+    },
+    {
+      "id": "src-y5b9uo",
+      "label": "It's Nice That",
+      "ok": true,
+      "count": 10,
+      "error": ""
+    },
+    {
+      "id": "src-06m511",
+      "label": "arXiv cs.AI",
       "ok": true,
       "count": 10,
       "error": ""
@@ -122,99 +189,167 @@
       "error": ""
     },
     {
-      "id": "src-vr94l3",
-      "label": "品味训练法（Dragoon0x/taste-sk",
-      "ok": false,
-      "count": 0,
-      "error": "没解析出条目（可能需要换一种 feed / API 地址）"
+      "id": "src-mzc3ku",
+      "label": "Nature",
+      "ok": true,
+      "count": 6,
+      "error": ""
     }
   ],
   "items": [
     {
       "source": "v2ex",
       "sourceLabel": "V2EX",
-      "title": "[职场话题] 996.icu 正式更名 996.club",
-      "url": "https://www.v2ex.com/t/1249088#reply0",
+      "title": "[程序员] deepseek 发钱了",
+      "url": "https://www.v2ex.com/t/1249099#reply4",
       "media": "article",
-      "excerpt": "欢迎大家来这爆料职场规则 比如，996 白名单 黑名单公司 比如，入职的好公司，垃圾公司 关于 · 帮助文档 · 自助推广系统 · 博客 · API · FAQ · Privacy · Solana · 5596 人在线 最高记录 6679 · Select Language World is powered by solitude VERSION: 3.9.8.5 · 26ms · UTC 08:47 · PVG 16:47 · LAX 01:47 · JFK 04:47 ♥ Do have faith in what you're doing.",
-      "comments": [],
-      "note": ""
-    },
-    {
-      "source": "v2ex",
-      "sourceLabel": "V2EX",
-      "title": "[旅行] [10 月] 错峰前往旅行之一",
-      "url": "https://www.v2ex.com/t/1249087#reply0",
-      "media": "article",
-      "excerpt": "› Time.is 全球时区转换 › American National Parks 国庆没有去人挤人，反而国庆后才决定出行 第一站去清远，原本计划普通吃喝个两天一夜 从深圳出发去清远，一路高速畅通，耗时 2 小时到达清城区，随便选了个连州菜馆吃，味道也意外好吃 第二天临时决定不去清远长隆动物园，于是转头去了就近的黄腾峡漂流+山水丽人演出 门票高德买的 270 双人票，景点外围卖水勺摊贩卖 280 ，如果刷不到好价格可以现场来找他们买(估计本地人)，如果害怕被骗，可以蹲个大学生来，组团帮忙买，黄腾峡景点门口距离职校就几百米，年轻人挺乐意来玩，他们也有渠道买 旅游嘛，就是不赶、人不多的时候才感触多，金秋时刻也不热，体感舒服，下一站决定去广西，不知道大伙有啥推荐好去处。 演出图片(说实话，山水丽人的瑶寨演出比大部分沉浸式表演好看的多，主要女的身材好很加分)： 关于 · 帮助文档 · 自助推广系统 · 博客 · API · FAQ · Privacy · Solana · 5596 人在线 最高记录 6679 · Select Language World is powered by solitude VERSION: 3.9.8.5 · 26ms · UTC 08:47 · PVG 16:47 · LAX 01:47 · JFK 04:47 ♥ Do have faith in wha",
-      "comments": [],
-      "note": ""
-    },
-    {
-      "source": "v2ex",
-      "sourceLabel": "V2EX",
-      "title": "[分享发现] 做了个追剧 App， Flutter 三端（iOS / Android / Web）同一套代码",
-      "url": "https://www.v2ex.com/t/1249086#reply0",
-      "media": "article",
-      "excerpt": "TV Time 七月关停之后决定自己做一个。技术栈和几个踩坑： Flutter 三端同构，Web 端要绕开 dart:io （磁盘缓存改内存） 后端 NestJS + Postgres + Redis ，元数据代理 TMDB + TVMaze 并做服务端缓存 开播推送走 FCM ，按 TVMaze 的 airstamp 减提前量定时；整季一次放出会合并成一条通知 27 种语言的 ARB 由脚本生成，区域变体只覆盖真正分叉的词条 导入器支持 TV Time / Trakt / IMDb / Letterboxd / Showly / Refract 免费无广告不订阅，也不播正片（纯追剧记录工具）。 https://tv-tracker.uk/go?c=v2ex 欢迎挑刺，尤其是导入器——真实导出文件的格式比文档里写的乱得多。 flutter 追剧 App 关于 · 帮助文档 · 自助推广系统 · 博客 · API · FAQ · Privacy · Solana · 5596 人在线 最高记录 6679 · Select Language World is powered by solitude VERSION: 3.9.8.5 · 20ms · UTC 08:47 · PVG 16:47 · LAX 01:47 · JFK 04:47 ♥ Do have faith in what",
-      "comments": [],
-      "note": ""
-    },
-    {
-      "source": "v2ex",
-      "sourceLabel": "V2EX",
-      "title": "[程序员] 有用过 pi 的吗",
-      "url": "https://www.v2ex.com/t/1249083#reply8",
-      "media": "article",
-      "excerpt": "• 请不要在回答技术问题时复制粘贴 AI 生成的内容 有用过 pi 的吗？大家一般搭配哪些扩展，推荐一下 8 条回复 • 2026-10-15 16:39:53 +08:00 用的 omp ，不需要自己装扩展，目前主力，挺好用的 我是搭配 OpenRouter 的免费模型搞搞小活 我就装了一个 pi-lens,感觉这个有点蠢啊，我在个人目录打开后给我启动一大堆服务 pi 搭配 deepseek flash ， 我大部分开发都是这个组合, deepseek 还可以买到 2-3 折的 偶尔一些问题比较傻，找 gpt 解决 直接裸泳就好了，插件都是多余，很爽 现在我都看不懂贴子了，还以为问有没有人用过树莓派 subagent 可以装一下 关于 · 帮助文档 · 自助推广系统 · 博客 · API · FAQ · Privacy · Solana · 5637 人在线 最高记录 6679 · Select Language World is powered by solitude VERSION: 3.9.8.5 · 42ms · UTC 08:42 · PVG 16:42 · LAX 01:42 · JFK 04:42 ♥ Do have faith in what you're doing.",
+      "excerpt": "• 请不要在回答技术问题时复制粘贴 AI 生成的内容 北京时间 2026 年 10 月 15 日 8:11 至 13:04 期间，我们的服务系统出现故障，导致该时段内 API 服务无法正常使用。对于此次故障给您带来的不便与困扰，我们深表歉意。我们已第一时间启动针对服务稳定性的全面排查和彻底整改，全面梳理并剥离单点依赖，坚决杜绝同类问题再次发生。 作为补偿，我们将按您账号 7 日内（ 10.8-10.14 ）的消耗金额以赠金形式全额返还，赠金自动到账，API 计费扣款先从赠金账户扣除。此次故障对您造成了影响，我们再次致歉，感谢您一直以来的信任与支持。 3 条回复 • 2026-10-15 17:26:00 +08:00 跟 codex 的 reset 差不多啊 https://liang.itsuyo.top/ 关于 · 帮助文档 · 自助推广系统 · 博客 · API · FAQ · Privacy · Solana · 5347 人在线 最高记录 6679 · Select Language World is powered by solitude VERSION: 3.9.8.5 · 26ms · UTC 09:27 · PVG 17:27 · LAX 02:27 · JFK 05:27 ♥ Do have faith in what you're doing.",
       "comments": [
-        "用的 omp ，不需要自己装扩展，目前主力，挺好用的 2 Nasdaq 14 分钟前",
-        "我是搭配 OpenRouter 的免费模型搞搞小活 3 gimp 13 分钟前",
-        "omp +1 4 tysx OP 12 分钟前",
-        "我就装了一个 pi-lens,感觉这个有点蠢啊，我在个人目录打开后给我启动一大堆服务 5 humbass 11 分钟前",
-        "pi 搭配 deepseek flash ， 我大部分开发都是这个组合, deepseek 还可以买到 2-3 折的 偶尔一些问题比较傻，找 gpt 解决 6 mgsv2047 10 分钟前"
+        "送了 13.14😂 2 voiyy 1 分钟前",
+        "跟 codex 的 reset 差不多啊 3 lpy137510 1 分钟前",
+        "梁祖 https://liang.itsuyo.top/ <div id=\"DigitalOcea"
       ],
       "note": ""
     },
     {
       "source": "v2ex",
       "sourceLabel": "V2EX",
-      "title": "[推广] 做了一个 AI 视频特效网站 SceneWish，欢迎体验",
-      "url": "https://www.v2ex.com/t/1249082#reply0",
+      "title": "[OpenAI] 网页和桌面客户端失败，手机和 iPad 客户端正常",
+      "url": "https://www.v2ex.com/t/1249098#reply2",
       "media": "article",
-      "excerpt": "如果想在 V2EX 获得更好的推广效果，欢迎了解 PRO 会员机制： https://www.v2ex.com/pro/about 如果你经常使用铜币置顶主题，持有 V2EX Solana Token 会在每日签到时获得额外铜币： https://www.v2ex.com/solana 最近做了一个 AI 视频创作网站： SceneWish 主要想解决一个问题： 刷到有趣的 AI 特效视频，自己也想做一个，但不知道用什么模型、怎么写 Prompt 。 所以做了 SceneWish ，核心思路是： 热门 AI 视频玩法 ：持续收集最新、有趣的 AI 视频特效。 一键复刻 ：选择喜欢的特效，上传自己的照片，就能生成同款视频。 多模型支持 ：集成 Kling 、Veo 、Seedance 等主流视频模型。 持续更新 ：后续会不断上线新的 AI 视频玩法和模板。 目前还是早期版本，功能和模板都在持续完善中。 网站地址： https://scenewish.com/ 关于 · 帮助文档 · 自助推广系统 · 博客 · API · FAQ · Privacy · Solana · 5626 人在线 最高记录 6679 · Select Language World is powered by solitude VERSION: 3.9.8.5 · 22ms · UTC 08:42 · PVG ",
+      "excerpt": "V2EX › OpenAI 今天上午就这样，网页和桌面客户端的 chat 模式一直跳 model not found ，但是 work 模式又是正常的。手机和 ipad 客户端，无论 chat 还是 work 模式都正常。使用的节点通过 ip 网站检测，可以打开 chatgpt ，理论上节点没问题。我就纳闷了，如果真有问题，那不应该整体一起啊，怎么还 chat 不行，work 可以，移动客户端又两个都行。 2 条回复 • 2026-10-15 17:25:20 +08:00 AI 大人不是全能全知的神吗？问 AI 呀 issacleelxf OP @ nomansky 问了，屁用没有，总感觉怪怪的 关于 · 帮助文档 · 自助推广系统 · 博客 · API · FAQ · Privacy · Solana · 5359 人在线 最高记录 6679 · Select Language World is powered by solitude VERSION: 3.9.8.5 · 29ms · UTC 09:25 · PVG 17:25 · LAX 02:25 · JFK 05:25 ♥ Do have faith in what you're doing.",
+      "comments": [
+        "AI 大人不是全能全知的神吗？问 AI 呀 2 issacleelxf OP 刚刚",
+        "@ nomansky 问了，屁用没有，总感觉怪怪的"
+      ],
+      "note": ""
+    },
+    {
+      "source": "v2ex",
+      "sourceLabel": "V2EX",
+      "title": "[程序员] 我开了一家 996 公司，但公司禁止 996",
+      "url": "https://www.v2ex.com/t/1249097#reply1",
+      "media": "article",
+      "excerpt": "• 请不要在回答技术问题时复制粘贴 AI 生成的内容 目前公司刚成立，没有老板，员工也没几个，办公室也比较空。 前端 / 后端 / 运维 / 产品 / 设计 只要上过班，都算有相关工作经验。 1 条回复 • 2026-10-15 17:12:16 +08:00 还是人类麻烦。都开了用 AI agents 关于 · 帮助文档 · 自助推广系统 · 博客 · API · FAQ · Privacy · Solana · 5340 人在线 最高记录 6679 · Select Language World is powered by solitude VERSION: 3.9.8.5 · 73ms · UTC 09:26 · PVG 17:26 · LAX 02:26 · JFK 05:26 ♥ Do have faith in what you're doing.",
+      "comments": [
+        "还是人类麻烦。都开了用 AI agents .wwads-cn { border-radius: 3px !important; } .wwads-text { color: var(--link-color) !import"
+      ],
+      "note": ""
+    },
+    {
+      "source": "v2ex",
+      "sourceLabel": "V2EX",
+      "title": "[分享创造] BudHold — macOS 防休眠与合盖远程保活工具",
+      "url": "https://www.v2ex.com/t/1249096#reply4",
+      "media": "article",
+      "excerpt": "BudHold 是一款基于 Swift + IOKit + SwiftUI 编写的原生 macOS 电源保活与远程值守工具。 它能够实时检测当前 macOS 系统版本与硬件信息，阻止电脑进入睡眠——即使 MacBook 合上盖子（无外接显示器）或显示器被关闭，系统、网络与桌面图形帧缓冲也保持 100% 活跃，让 RustDesk 、VNC 、屏幕共享或 SSH 可随时远程连接且不会遇到黑屏或断联。 此外，BudHold 内置了 按需启用（非必须项） 的 RustDesk 状态监控与进程守护模块，不强制依赖 RustDesk ，兼顾通用防休眠与远程控制场景。 ps：Gemini 本来推荐 Amphetamine ，测试了下完全不管用，于是用 Gemini 4 撸了一个，虽然界面布局一般，但功能测试了没问题。 https://github.com/budwk/budhold 4 条回复 • 2026-10-15 17:18:19 +08:00 这两天刚好也用了 Amphetamine ，发现这个软件有个毛病，每次合盖，再打开，设置就会失效，需要重建会话 自从有了 AI ，我电脑各种 App 都要打架了 @ Dogergo 是的，就是 Amphetamine 长期没更新了，不管用才自撸的 关于 · 帮助文档 · 自助推广系统 · 博客 · API · FAQ · Privacy · So",
+      "comments": [
+        "这两天刚好也用了 Amphetamine ，发现这个软件有个毛病，每次合盖，再打开，设置就会失效，需要重建会话 2 nomansky 6 分钟前",
+        "自从有了 AI ，我电脑各种 App 都要打架了 3 fish2050 OP 6 分钟前",
+        "4 fish2050 OP 5 分钟前",
+        "@ Dogergo 是的，就是 Amphetamine 长期没更新了，不管用才自撸的 .wwads-cn { border-radius: 3px !important"
+      ],
+      "note": ""
+    },
+    {
+      "source": "v2ex",
+      "sourceLabel": "V2EX",
+      "title": "[酷工作] 招聘｜ AI / Agent、Go / Java 、前端与安全等 46 个技术岗位",
+      "url": "https://www.v2ex.com/t/1249095#reply0",
+      "media": "article",
+      "excerpt": "• 外包信息请发到 /go/outsourcing 节点。 • 不要把相同的信息发到不同的节点 本次开放技术相关岗位，覆盖 AI 应用、算法、前后端、客户端、安全及技术平台方向，欢迎按方向投递。 🤖 AI 应用 / Agent （ 9 ） - LLM 应用研发工程师 - AI 应用开发（模型 / Agent / AIGC ） - AI 应用 Golang 后端工程师 - Prompt 优化工程师 - AI 模型训练师 / AIGC 模型工程师 🎬 AI 内容 / 视频工程（ 5 ） - AI 视频工作流专家 - 高级 AI 内容工程师 - AI 内容工程师（ AI 视频生产） - AI 视频内容工程师（ AI 短剧 / AIGC ） - AIGC 内容编辑师（ ComfyUI 工程师） - AI Algorithm Engineer - 广告算法工程师 / 高级广告算法工程师 - 高级 Java 工程师（推荐系统方向） ⚙️ 后端 / 服务端（ 10 ） - 高级后端工程师（ Java / Go 双栈） - 后端工程师（ Golang · 高级） - 高级服务器开发工程师 - Golang 开发工程师 - Golang 语言开发工程师 - Golang 、PHP 开发工程师 - 项目开发工程师 — 视频站方向（ Golang ） 🖥 前端 / 客户端（ 9 ） - 前端负责人",
       "comments": [],
       "note": ""
     },
     {
       "source": "v2ex",
       "sourceLabel": "V2EX",
-      "title": "[Apple] [免费赠] NasV 播放器界面重做，一年 Pro 码随便领",
-      "url": "https://www.v2ex.com/t/1249081#reply0"
+      "title": "[AI Agent 智能体] 大家目前用的什么 code plan 聊聊你们的方案😄",
+      "url": "https://www.v2ex.com/t/1249094#reply3"
     },
     {
       "source": "v2ex",
       "sourceLabel": "V2EX",
-      "title": "[生活] 谈了三个月的女朋友才发现她和前任有较大经济纠纷",
-      "url": "https://www.v2ex.com/t/1249080#reply58"
+      "title": "[分享创造] 车还没买，出场方式先安排上了： Unforgettable Car AI「召唤座驾」小网站",
+      "url": "https://www.v2ex.com/t/1249093#reply1"
     },
     {
       "source": "v2ex",
       "sourceLabel": "V2EX",
-      "title": "[问与答] 集思广益，有什么开发相关的课题可以快速消耗 Token",
-      "url": "https://www.v2ex.com/t/1249079#reply9"
+      "title": "[推广] 🎁送点适合做 YouTube、X 、Facebook 的家宽资源 IP",
+      "url": "https://www.v2ex.com/t/1249092#reply0"
     },
     {
       "source": "v2ex",
       "sourceLabel": "V2EX",
-      "title": "[OpenAI] 又重置了！",
-      "url": "https://www.v2ex.com/t/1249078#reply4"
+      "title": "[Apple] Apple Music 国区又要涨价了",
+      "url": "https://www.v2ex.com/t/1249091#reply4"
     },
     {
       "source": "v2ex",
       "sourceLabel": "V2EX",
-      "title": "[生活] 一直好奇，为啥有的人一整天都不怎么喝水？",
-      "url": "https://www.v2ex.com/t/1249077#reply13"
+      "title": "[Apple] 关于自然滚动：我们两个都被苹果调教了，但竟然是相反方向",
+      "url": "https://www.v2ex.com/t/1249090#reply3"
+    },
+    {
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "“什么情况？杀不死？”“月君，笔记的储备还充足吗？”",
+      "url": "https://www.bilibili.com/video/BV1Sepk6bEZC"
+    },
+    {
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "12个脑洞大开的做饭方式！",
+      "url": "https://www.bilibili.com/video/BV1Jjpg6QEkh"
+    },
+    {
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "用十三年去拍一部纪录片，然后明白死亡只是一个炎热的夏天午后 【探照灯计划】",
+      "url": "https://www.bilibili.com/video/BV1jkp36XEtz"
+    },
+    {
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "拔弹夹来了！",
+      "url": "https://www.bilibili.com/video/BV1yFWA6VENt"
+    },
+    {
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "李秀满新团A2O LITE很好但…",
+      "url": "https://www.bilibili.com/video/BV1L8p26UEm8"
+    },
+    {
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "「根本没有这种邦布!?」大合集(终)",
+      "url": "https://www.bilibili.com/video/BV1krpB6MEDS"
+    },
+    {
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "他们居然不让我吸数据",
+      "url": "https://www.bilibili.com/video/BV1WGp26cEUW"
+    },
+    {
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "【终末地】祀·首发攻略！人权降临？冰队王朝？技能武器+装备配队+操作思路+基质升级差距+抽取建议！祀全方位强度养成攻略！明日方舟终末地",
+      "url": "https://www.bilibili.com/video/BV1zhJC6zESP"
+    },
+    {
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "乌铜走银",
+      "url": "https://www.bilibili.com/video/BV1Bjp966EA8"
+    },
+    {
+      "source": "src-o88ohk",
+      "sourceLabel": "bilibili",
+      "title": "【异环】明音凛全攻略！ 搞乐队的数值都这么高？我要弹春日影！ 配队养成＋保姆级操作讲解+进阶合轴教学",
+      "url": "https://www.bilibili.com/video/BV1BeJC6qEAr"
     },
     {
       "source": "hn",
@@ -277,64 +412,10 @@
       "url": "https://go.dev/blog/http-connection-reuse"
     },
     {
-      "source": "src-o88ohk",
-      "sourceLabel": "bilibili",
-      "title": "【抢先版】人贩子本想拐走五岁萌娃，结果一个没跑掉，还让这孩子白赚了20万！！！",
-      "url": "https://www.bilibili.com/video/BV1fQpb6zEqV"
-    },
-    {
-      "source": "src-o88ohk",
-      "sourceLabel": "bilibili",
-      "title": "小贺今天请老人吃《冰糖肘子》看看老人们，有多么的开心",
-      "url": "https://www.bilibili.com/video/BV1ruWA6TEKg"
-    },
-    {
-      "source": "src-o88ohk",
-      "sourceLabel": "bilibili",
-      "title": "在格聂荒原徒步两天，遭遇冰雹停电，躲在牧屋里露营，vup带你徒步格聂V线！",
-      "url": "https://www.bilibili.com/video/BV1Qtp66REKC"
-    },
-    {
-      "source": "src-o88ohk",
-      "sourceLabel": "bilibili",
-      "title": "狠狠期待！狠狠期待！狠狠期待！",
-      "url": "https://www.bilibili.com/video/BV1JMWc6FE5i"
-    },
-    {
-      "source": "src-o88ohk",
-      "sourceLabel": "bilibili",
-      "title": "地原胚质：伊米尔的脑髓化作苍天云海。",
-      "url": "https://www.bilibili.com/video/BV1CrpQ61EBJ"
-    },
-    {
-      "source": "src-o88ohk",
-      "sourceLabel": "bilibili",
-      "title": "中俄免签后，这座边境小城挤满了俄罗斯人？",
-      "url": "https://www.bilibili.com/video/BV1g9pX64EgU"
-    },
-    {
-      "source": "src-o88ohk",
-      "sourceLabel": "bilibili",
-      "title": "向上自成高枝，向下常怀温良。一生匠人-刘欢。",
-      "url": "https://www.bilibili.com/video/BV1qLpb6NEvu"
-    },
-    {
-      "source": "src-o88ohk",
-      "sourceLabel": "bilibili",
-      "title": "人人都要学！Agent 视觉创作全流程～【小白教程】",
-      "url": "https://www.bilibili.com/video/BV1Nyp96pEGD"
-    },
-    {
-      "source": "src-o88ohk",
-      "sourceLabel": "bilibili",
-      "title": "终末地第一画家采风日记",
-      "url": "https://www.bilibili.com/video/BV1u9pr6oEHN"
-    },
-    {
-      "source": "src-o88ohk",
-      "sourceLabel": "bilibili",
-      "title": "吃了不烧心的潮汕美食！把鸡当牛肉涮着吃，从排队开始就傻眼了",
-      "url": "https://www.bilibili.com/video/BV1tQWw6UEvf"
+      "source": "sspai",
+      "sourceLabel": "少数派",
+      "title": "顺应变化，重申标准：《少数派创作手册》修订说明",
+      "url": "https://sspai.com/post/116181"
     },
     {
       "source": "sspai",
@@ -389,12 +470,6 @@
       "sourceLabel": "少数派",
       "title": "派早报：Apple 发布 HomePod mini 2、HomeView 等新品",
       "url": "https://sspai.com/post/116138"
-    },
-    {
-      "source": "sspai",
-      "sourceLabel": "少数派",
-      "title": "社区速递 161 | 小米手表 S5、EVA 联名香水与换机热议",
-      "url": "https://sspai.com/post/116068"
     }
   ]
 }

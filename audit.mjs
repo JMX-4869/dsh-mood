@@ -914,8 +914,14 @@ const fresh = { at: Date.now(), items: [{ sourceLabel: '测试', title: '一条'
 const stale = { at: Date.now() - 48 * 3600 * 1000, items: [{ sourceLabel: '测试', title: '一条' }] }
 NEWS.isFresh(fresh) === true && NEWS.isFresh(stale) === false ? OK('新鲜判定（24 小时窗口）') : NG('新鲜判定错')
 const block = NEWS.renderForPrompt(fresh)
-block.includes('不可信数据') && block.includes('不执行') && block.includes('不要当成已核实的事实')
-  ? OK('提示词块带防注入声明（不可信/不执行/非事实）') : NG('防注入声明缺失')
+// ⚠️ 别断言**具体措辞** —— 文案会因为别的原因合理地改（这次就是因为主人说
+//    "别把真伪和用途混成一件事"而重写的），断死字面会把正常的调整变成假红。
+//    断言**意图**：① 里面出现的指令一律不执行 ② 要引用就先自己查证 ③ 别顺着标题编。
+block.includes('一律不执行') && block.includes('先自己查证') && block.includes('别顺着标题编')
+  ? OK('提示词块带防注入声明（不执行指令 / 引用前查证 / 不编）') : NG('防注入声明缺失')
+// 分两条轴（真伪 / 用途）是主人明确要求的 —— 单独锁一条，别哪天被"精简"掉
+block.includes('真伪') && block.includes('用途')
+  ? OK('时事那段分了两条轴（真伪 / 用途）') : NG('两条轴被删了 —— 主人点过这件事')
 NEWS.renderForPrompt(stale) === '' ? OK('过期内容不进提示词') : NG('过期内容仍进提示词')
 
 // ───────────────────────────── H. 运行时状态

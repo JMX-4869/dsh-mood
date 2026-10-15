@@ -62,7 +62,7 @@
       "kind": "谷"
     }
   ],
-  "nowHour": 16,
+  "nowHour": 18,
   "reportRestart": true,
   "warnStale": true,
   "pendingRestart": true,
@@ -70,12 +70,13 @@
   "pendingSince": 1792045450978,
   "pendingStale": false,
   "reportedAt": 1792006462240,
-  "procStart": 1792045722527,
+  "procStart": 1792060015547,
   "lastReportCheck": {
-    "at": 1792054310000,
-    "why": "16 点不在允许时段里"
+    "at": 1792060437839,
+    "why": "18 点不在允许时段里"
   },
-  "lastUserAt": 1792054250259,
+  "lastReportDone": null,
+  "lastUserAt": 1792060385692,
   "lastSpokeAt": 1792006462240,
   "sentToday": 5,
   "awaitingReply": false,
@@ -105,7 +106,7 @@
     {
       "name": "距上次开口",
       "pass": true,
-      "note": "13 小时 18 分（门槛 45 分钟）"
+      "note": "15 小时（门槛 45 分钟）"
     },
     {
       "name": "等回复",
@@ -125,7 +126,7 @@
     {
       "name": "允许时段",
       "pass": false,
-      "note": "深夜 / 晚间（现在 16 点是下午）"
+      "note": "深夜 / 晚间（现在 18 点是晚峰）"
     },
     {
       "name": "重启汇报",
