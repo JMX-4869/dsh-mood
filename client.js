@@ -111,8 +111,10 @@ window.__ModuleLoader__.load({
       //    那两个是给"路径 / 关键词"这种短东西用的（srcin 是 flex:1;min-width:220px），
       //    套到「一条完整的原则」上会把正文压成一条看不全的小框 —— 而看不全就没法改。
       //    实测就是这样，所以这里单开一套。
-      '.dshmood .tghd{font-size:12px;color:var(--dsw-alias-label-secondary);margin:16px 0 2px;font-weight:600}',
-      '.dshmood .tcard{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:9px 11px;margin:7px 0}',
+      // 组标题**长得和 memlisthd 一样**（灰底条）—— 不然一眼就看出是外来的
+      '.dshmood .tghd{font-size:12px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-bottom:none;border-radius:10px 10px 0 0;padding:8px 12px;margin:14px 0 0}',
+      '.dshmood .tcard{border:1px solid var(--dsw-alias-border-l1);border-top:none;border-radius:0;padding:9px 12px;margin:0}',
+      '.dshmood .tcard:last-child{border-radius:0 0 10px 10px;margin-bottom:10px}',
       '.dshmood .tcard textarea,.dshmood .tcard input{width:100%;box-sizing:border-box;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:6px 9px;font-size:12.5px;line-height:1.6;font-family:inherit;outline:none;resize:vertical}',
       '.dshmood .tcard textarea{min-height:38px}',
       '.dshmood .tcard textarea:focus,.dshmood .tcard input:focus{border-color:var(--dsw-alias-brand-primary)}',
@@ -1092,8 +1094,8 @@ window.__ModuleLoader__.load({
       //    分组之后它只出现在组标题里一次。
       const GROUP = [
         { key: 'owner', label: '你亲口定的', hint: '最重的一档 —— 跟着走' },
-        { key: 'other', label: '外部判断（你认可的）', hint: '参考价值有，但别照抄 —— 照抄别人的结论一样长不出自己的判断' },
-        { key: 'me', label: '我自己的倾向', hint: '起点，不是结论。改过一条它就变成「你亲口」的' },
+        { key: 'other', label: '外部判断（你认可的）', hint: '参考价值有，但别照抄' },
+        { key: 'me', label: '我自己的倾向', hint: '起点，不是结论 —— 改过一条它就变成「你亲口」的' },
       ]
 
       // 一张卡：正文占满整行（**能看全才谈得上改**），下面才是说明和按钮
@@ -1160,8 +1162,18 @@ window.__ModuleLoader__.load({
         ),
       )
 
-      return h('div', { className: 'pane' },
-        h('div', { className: 'hintline' },
+      // ⚠️ **必须包 dshmood。**
+      //    别的面板（记忆 / 时事 / 主动开口）最外层都是这个类 ——
+      //    插件的整套 CSS 全都挂在 `.dshmood` 下面。
+      //    我原来写的是 `pane` —— **这个类根本不存在** ——
+      //    于是那一整张样式表一条都没作用到这个面板上，渲染出来是 DSH 的默认样子。
+      //    主人一眼就看出来了：完全和别的风格不一样。
+      return h('div', { className: 'dshmood' },
+        h('div', { className: 'page-hd' },
+          h('span', { className: 'page-title' }, '品味'),
+          h('span', { className: 'page-sub' }, '跨会话的审美档案 —— 每轮注入提示词，不是「要用的时候才去查」'),
+        ),
+        h('div', { className: 'hintline', style: { marginTop: '10px' } },
           '这里存的不是「照抄的规则」，是判断的轨迹：我当时读到什么 → 你的反应 → 我学到什么。',
         ),
         h('div', { className: 'hintline' },
