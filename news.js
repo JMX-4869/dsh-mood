@@ -50,7 +50,10 @@ export function newsFile() { return dataFile('dsh-mood-news.json') }
 /** 缓存多久算新鲜（进提示词的窗口） */
 export const NEWS_FRESH_MS = 24 * 3600 * 1000
 /** 进提示词最多带几条 */
-export const NEWS_PROMPT_MAX = 12
+// ⚠️ 从 12 提到 16 —— 见下面 renderForPrompt 里"按来源轮着取"那段：
+//    原来 12 条全被一个源吃掉，主人反馈「感觉抓取的时事有点少」。
+//    改成公平取之后，条目数才是真正的"每个源能露几条"。
+export const NEWS_PROMPT_MAX = 16
 /** 单条标题最长多少字 */
 export const NEWS_TITLE_MAX = 90
 /** 单次请求超时 */
@@ -1126,7 +1129,33 @@ export function renderForPrompt(n, max = NEWS_PROMPT_MAX) {
   lines.push('· 拿不准或看不懂的条目，**直接说不知道**，别顺着标题编。')
   lines.push('· 别主动把话题往时事上引 —— 用户问起或者确实相关时再用。')
   lines.push('')
-  for (const it of n.items.slice(0, max)) {
+  // ── 挑哪些条目进提示词 ──
+  //
+  // ⚠️ 原来是 `n.items.slice(0, max)` —— **按数组顺序取前 N 个**。
+  //    而 items 是按来源摞起来的，所以**第一个源通吃**：实测 7 个来源 30 条，
+  //    注入里只有 13 条，全是 V2EX 的，另外 6 个源一条都没露出来。
+  //    主人一眼就看出来了：「感觉抓取的时事有点少」。
+  //
+  //    改成**按来源轮着取**（每个源先来一条，再回头取第二条…）——
+  //    这样 16 个位置真的会分给 7 个源，而不是被一个源吃干。
+  //    顺序仍然是原顺序（同源内保持），所以"最新在前"的观感没变。
+  const buckets = new Map()
+  for (const it of n.items) {
+    const k = it.sourceId || it.sourceLabel || '?' 
+    if (!buckets.has(k)) buckets.set(k, [])
+    buckets.get(k).push(it)
+  }
+  const picked = []
+  const lists = [...buckets.values()]
+  for (let round = 0; picked.length < max; round++) {
+    let added = 0
+    for (const l of lists) {
+      if (picked.length >= max) break
+      if (l[round]) { picked.push(l[round]); added++ }
+    }
+    if (!added) break   // 全取完了，别死循环
+  }
+  for (const it of picked) {
     const tag = it.media === 'video' ? '[视频]' : ''
     lines.push(`- [${it.sourceLabel}]${tag} ${it.title}`)
     // 正文/字幕也进提示词 —— 但**截得很短**，而且同样属于不可信数据（上面声明照样管着它）

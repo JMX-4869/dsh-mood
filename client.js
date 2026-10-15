@@ -258,6 +258,18 @@ window.__ModuleLoader__.load({
     // 硬盘记忆：一个方块叠一个方块（像磁盘）
     const MEMORY_D = ['M4 5.5h16v4H4z', 'M4 14.5h16v4H4z', 'M7.5 7.5h1M7.5 16.5h1']
     const PERSONA_D = ['M12 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z', 'M4.5 20c0-3.1 3.2-5.3 7.5-5.3s7.5 2.2 7.5 5.3']
+    /**
+     * 品味：一只眼睛。
+     *
+     * 为什么是眼睛而不是调色板/星星：品味在这个项目里的意思是**你怎么看东西**
+     * （注入的那段第一句就是"看东西的时候一直带着它"）。
+     * 调色板说的是"颜色"，比品味窄；星星说的是"好"，比品味糊。
+     * 而且眼睛这个形状在 20px 下认得出来 —— 导航图标首先要"一眼看出是哪格"。
+     */
+    const TASTE_D = [
+      'M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z',
+      'M12 9.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6Z',
+    ]
 
     function StoreIcon(props) {
       const p = props || {}
@@ -1838,6 +1850,7 @@ window.__ModuleLoader__.load({
     const NAV_NEWS = '时事'
     const NAV_PERSONA = '人设'
     const NAV_MEMORY = '硬盘记忆'
+    const NAV_TASTE = '品味'
     const NAV_TALK = '主动开口'
     const NAV_STORE = '存储位置'
 
@@ -1861,6 +1874,7 @@ window.__ModuleLoader__.load({
     function navStyleFor(label) {
       if (label === NAV_LABEL) return navUnlocked ? 'book-open' : 'book-closed'
       if (label === NAV_NEWS) return 'news'
+      if (label === NAV_TASTE) return 'taste'
       if (label === NAV_TALK) return 'talk'
       if (label === NAV_STORE) return 'store'
         if (label === NAV_PERSONA) return 'persona'
@@ -1875,7 +1889,8 @@ window.__ModuleLoader__.load({
      */
     function paintAs(svg, style) {
       try {
-        const paths = style === 'book-open' ? BOOK_OPEN_D
+        const paths = style === 'taste' ? TASTE_D
+          : style === 'book-open' ? BOOK_OPEN_D
           : style === 'book-closed' ? BOOK_CLOSED_D
             : style === 'talk' ? TALK_D
               : style === 'store' ? STORE_D
