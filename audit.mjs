@@ -6,9 +6,13 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
 
 const require = createRequire(import.meta.url)
-const SRC = 'D:/chajian/dsh-mood'
+// ⚠️ 源码目录 = **本文件所在目录**，别写死绝对路径。
+//    写死过一次：把整个项目拷到别处跑 audit，它会去审计**原来那份**，
+//    然后给你一个假的绿 —— 比不检查更糟。
+const SRC = path.dirname(fileURLToPath(import.meta.url))
 const DST = (process.env.USERPROFILE || '') + '/.dsh/profiles/desktop/node_modules/dsh-mood'
 const HOME = process.env.DSH_HOME || (process.env.USERPROFILE || '') + '/.dsh'
 
