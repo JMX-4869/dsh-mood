@@ -174,6 +174,24 @@ const t = suite('视频抽帧')
   t.noThrow(() => F.planFrames(100, { scenes: [-5, 200, NaN, 30, 60], maxFrames: 12 }), '越界/NaN 的场景表不崩')
   const dirty = F.planFrames(100, { scenes: [30, 60], maxFrames: 12, fps: 30 })
   t.ok(dirty.picks.every((x) => x.at >= 0 && x.at < 100), '越界的场景点被滤掉（没有跑到片子外面）')
+
+  // ── 下面两条是**拿真片验出来的**（217 秒那支 MV，阈值 0.32 检出 25 处，其中 14 处挤在最后 30 秒）──
+  {
+    const real = [20, 22, 71, 74, 79, 79.2, 90, 94, 115, 118, 130, 168, 170, 171, 172, 174, 174.2, 175, 178, 178.2, 179, 186, 190, 193, 197]
+    const r = F.planFrames(217, { scenes: real, maxFrames: 12, fps: 30 })
+    const ats = r.picks.map((x) => x.at)
+
+    // ① 超上限时要**从时间轴上取点再吸附**，不是"从列表里均匀取"。
+    //    列表本身挤的话，从列表取会让越挤的地方占得越多 —— 实测 12 张里 6 张堆在最后 30 秒。
+    const tail = ats.filter((x) => x > 160).length
+    t.ok(tail <= 4, '**结尾挤的时候不堆在结尾**（最后 30 秒只占 ' + tail + '/12）')
+    t.ok(ats.filter((x) => x < 162).length >= 7, '前 3/4 拿得到足够多的帧')
+
+    // ② 两张不能挨着白占格（合并阈值要跟预算走，不能写死 0.4 秒）
+    const gaps = ats.slice(1).map((x, i) => x - ats[i])
+    t.ok(Math.min(...gaps) >= 8, '**没有两张挨着**（最小间隔 ' + Math.round(Math.min(...gaps)) + 's）')
+    t.ok(Math.max(...gaps) <= 45, '最长空档不超过 45 秒（' + Math.round(Math.max(...gaps)) + 's）')
+  }
 }
 
 // ══════════════════════════════════════════════════════

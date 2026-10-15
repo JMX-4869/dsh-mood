@@ -195,19 +195,40 @@ function planByScenes(duration, scenes, { fps, maxFrames, perSecond }) {
   //    不是挑"变化最大"的那些 —— 那会只看见几个最响的瞬间，看不见片子是怎么走的。
   let use = kept
   if (kept.length > maxFrames) {
+    // ⚠️ **沿"时间"均匀取点，再吸附到最近的那个切换点** ——
+    //    别写成"从 kept 列表里均匀取"。
+    //
+    //    踩过：真片上（217 秒那支 MV）阈值 0.32 检出 25 处，
+    //    其中 **14 处挤在最后 30 秒**（结尾快切）。从**列表**里均匀取的话，
+    //    列表本身就挤，于是 12 张里有 6 张落在最后 —— 越挤的地方被挑中的越多，
+    //    整条时间线的前 3/4 反而看不清。
+    //    改成从**时间轴**上取点再吸附，就同时保住了"覆盖整条线"和"落在变化上"。
     use = []
     for (let i = 0; i < maxFrames; i++) {
-      use.push(kept[Math.round((i * (kept.length - 1)) / Math.max(1, maxFrames - 1))])
+      const target = (i * duration) / Math.max(1, maxFrames)
+      let best = kept[0], bestD = Infinity
+      for (const t of kept) {
+        const d = Math.abs(t - target)
+        if (d < bestD) { bestD = d; best = t }
+      }
+      use.push(best)
     }
     use = [...new Set(use)].sort((a, b) => a - b)
   }
 
   const picks = []
+  // ⚠️ **合并阈值要跟"预算"走，不能写死一个秒数。**
+  //
+  //    原来写的是 0.4 秒。真片上就露馅了：检出的点里 20s 和 22s 挨着，
+  //    吸附之后变成 20.4 和 22.4 —— 两张帧隔 2 秒，**那是同一处变化，白占一格**。
+  //    12 张的预算、217 秒的片子，平均一张该管 18 秒；隔 2 秒取两张显然浪费。
+  //
+  //    用"平均间隔的一半"当门槛：预算越紧、片子越长，就越不允许两张挨着。
+  const minGap = duration / Math.max(1, maxFrames) * 0.5
   for (const at of use) {
     if (picks.length >= maxFrames) break
-    // 挨得太近（<0.4 秒）的合成一张 —— 同一秒里取两张没有额外信息
     const prev = picks[picks.length - 1]
-    if (prev && at - prev.at < 0.4) continue
+    if (prev && at - prev.at < minGap) continue
     picks.push({
       sec: Math.floor(at),
       offset: 0,
