@@ -709,19 +709,36 @@ export function renderForPrompt(t0, opts = {}) {
   //   而原则只是我（一个品味不如顶尖模型的模型）压出来的结论；
   //   例子才是真正带着信息量的东西。谁在前谁在后，是这件事的结构，不是排版。
   if (s.items) {
+    // ⚠️ 标题别写死"主人认可的 / 主人不认可的"。
+    //
+    //    踩过两处：
+    //    ① 我自己做了一张垮掉的海报，按 `kind: bad` 收进来，
+    //       渲染出来就成了「**主人不认可的（反例）**」—— **替主人说了他没说过的话。**
+    //       这正好是这个库最防的一件事（把我的判断冒充成他的口味）。
+    //    ② 改完①之后发现还有一处：`by: 'owner'` 但 **`confirmed: false`** 的条目
+    //       （我打的第一条标就是），照样顶在「主人认可的」下面 —— **他不认，也不算数。**
+    //
+    //    所以"是他这边"要**两样都满足**：他说过/他认可的 **并且** 他确认过。
+    const isHis = (x) => (x.by === 'owner' || x.by === 'other') && x.confirmed === true
     const good = t.items.filter((x) => x.kind === 'good')
     const bad = t.items.filter((x) => x.kind === 'bad')
     L.push('### 例子 —— 最有用的就是这一段')
-    if (good.length) {
-      L.push('**主人认可的（正例）**')
-      // ⚠️ 别用 slice(-maxI)：maxI=0 时 slice(-0) 就是 slice(0)，
-      //    本想「一个都不取」，结果取了**全部**。
-      for (const x of (maxI ? good.slice(-maxI) : [])) L.push('- ' + fmtItem(x))
+    const group = (list, kindLabel) => {
+      const his = list.filter(isHis)
+      const mine = list.filter((x) => !isHis(x))
+      if (his.length) {
+        L.push('**' + (kindLabel === '正例' ? '主人认可的（正例）' : '主人不认可的（反例）') + '**')
+        // ⚠️ 别用 slice(-maxI)：maxI=0 时 slice(-0) 就是 slice(0)，
+        //    本想「一个都不取」，结果取了**全部**。
+        for (const x of (maxI ? his.slice(-maxI) : [])) L.push('- ' + fmtItem(x))
+      }
+      if (mine.length) {
+        L.push('**我判的**（' + kindLabel + ' —— **主人还没确认，不是他的意见**）')
+        for (const x of (maxI ? mine.slice(-maxI) : [])) L.push('- ' + fmtItem(x))
+      }
     }
-    if (bad.length) {
-      L.push('**主人不认可的（反例）**')
-      for (const x of (maxI ? bad.slice(-maxI) : [])) L.push('- ' + fmtItem(x))
-    }
+    if (good.length) group(good, '正例')
+    if (bad.length) group(bad, '反例')
     const drafts = t.items.filter((x) => !x.confirmed)
     if (drafts.length) {
       L.push('')
