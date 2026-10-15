@@ -611,7 +611,10 @@ export async function fetchVideoFrames(url, opts = {}) {
   const maxDuration = Math.max(10, Number(opts.maxDurationSec) || 900)
   // 清晰度上限。默认 480（便宜）。判细节的时候可以要 720 / 1080。
   // ⚠️ 别给 4K —— 4K 一个 3 分钟片子就是几百 MB，而我们要的只是"看得清描边和字"。
-  const maxRes = [480, 720, 1080].includes(Number(opts.maxRes)) ? Number(opts.maxRes) : 480
+  // ⚠️ 2026-10-16：默认从 480 提到 720。
+  //    480p **看不清画面里的字**（代码 / 对话 / UI）—— 而"看不清"我会读成"它没细节/没内容"。
+  //    默认值不该是那个会骗人的档。
+  const maxRes = [480, 720, 1080].includes(Number(opts.maxRes)) ? Number(opts.maxRes) : 720
   const base = framesBaseDir()
   const stamp = Date.now()
   const batch = F.batchDir(base, stamp)
