@@ -381,6 +381,30 @@ export function editPrinciple(t, id, patch = {}) {
 }
 
 /**
+ * 截断，但**记下它截了**。
+ *
+ * ⚠️ 这一段是踩过才加的：原来 myRead / reaction / lesson / said 全是裸的
+ *    `.slice(0, 300)` —— 超了就**悄悄砍掉**，调用方拿到的还是 {ok:true}。
+ *    我写了一条例子的 lesson，被截在「这套正好落在我自己那条「」的半句上，
+ *    而那半句是**永远回不来的**（不像摘要还能重写）。
+ *    和 0.7.10 的摘要 bug 是同一族：**信号说了不算数的话**。
+ *    截断本身可以接受（注入要控体积），**不接受的是不说**。
+ *
+ * @param {any} s 原值
+ * @param {number} n 上限
+ * @param {string} field 字段名（报错里要写清是哪个）
+ * @param {string[]} cut 收集被截的字段，调用方拿去提示
+ */
+function clip(s, n, field, cut) {
+  const t = String(s == null ? '' : s).trim()
+  if (t.length > n) {
+    if (cut) cut.push(field + '（' + t.length + ' → ' + n + ' 字，后面 ' + (t.length - n) + ' 字没了）')
+    return t.slice(0, n)
+  }
+  return t
+}
+
+/**
  * 加一个带正反例的条目。
  *
  * `confirmed` 默认 false —— 打标是**我的判断**，可能读偏。
@@ -389,20 +413,21 @@ export function editPrinciple(t, id, patch = {}) {
 export function addItem(t, { ref, kind, tags, note, confirmed, by, said, myRead, reaction, lesson, domain } = {}) {
   const r = String(ref || '').trim()
   if (!r) return { ok: false, error: '要一个指代（文件名 / 网址 / 简短描述）。' }
+  const cut = []
   const x = {
     id: nextId('i', t.items),
     ref: r.slice(0, 300),
     kind: kind === 'bad' ? 'bad' : 'good',
     tags: {},
-    note: String(note || '').trim().slice(0, 400),
+    note: clip(note, 400, 'note', cut),
     // ★ 主人对这条的**原话**（= 反馈信号，不是法则）
-    said: String(said || '').trim().slice(0, 300),
+    said: clip(said, 300, 'said', cut),
     // ★★ 学习 / 模仿的分界 —— 详见 migrateTaste 上面那段注释。
     //    myRead 尤其重要：**先说我的读法，再看他的反应**。
     //    顺序反了（先听他说、再补一个"我的读法"）就是事后合理化，那是自欺。
-    myRead: String(myRead || '').trim().slice(0, 300),
-    reaction: String(reaction || '').trim().slice(0, 300),
-    lesson: String(lesson || '').trim().slice(0, 300),
+    myRead: clip(myRead, 300, 'myRead', cut),
+    reaction: clip(reaction, 300, 'reaction', cut),
+    lesson: clip(lesson, 300, 'lesson', cut),
     domain: String(domain || '').trim().slice(0, 40),
     // 条目也一样：谁先说它"好/不好"的。默认主人。
     by: by === 'other' || by === 'me' ? by : 'owner',
@@ -422,18 +447,20 @@ export function addItem(t, { ref, kind, tags, note, confirmed, by, said, myRead,
   }
   t.items.push(x)
   t.touchedAt = Date.now()
-  return { ok: true, item: x }
+  // ⚠️ 把"哪几个字段被截了"带回去 —— 别让调用方以为全都写进去了。
+  return { ok: true, item: x, truncated: cut }
 }
 
 export function updateItem(t, id, patch = {}) {
   const x = t.items.find((y) => y.id === id)
   if (!x) return { ok: false, error: '没找到 ' + id }
   if (patch.kind === 'good' || patch.kind === 'bad') x.kind = patch.kind
-  if (typeof patch.note === 'string') x.note = patch.note.trim().slice(0, 400)
-  if (typeof patch.said === 'string') x.said = patch.said.trim().slice(0, 300)
-  if (typeof patch.myRead === 'string') x.myRead = patch.myRead.trim().slice(0, 300)
-  if (typeof patch.reaction === 'string') x.reaction = patch.reaction.trim().slice(0, 300)
-  if (typeof patch.lesson === 'string') x.lesson = patch.lesson.trim().slice(0, 300)
+  const cut = []
+  if (typeof patch.note === 'string') x.note = clip(patch.note, 400, 'note', cut)
+  if (typeof patch.said === 'string') x.said = clip(patch.said, 300, 'said', cut)
+  if (typeof patch.myRead === 'string') x.myRead = clip(patch.myRead, 300, 'myRead', cut)
+  if (typeof patch.reaction === 'string') x.reaction = clip(patch.reaction, 300, 'reaction', cut)
+  if (typeof patch.lesson === 'string') x.lesson = clip(patch.lesson, 300, 'lesson', cut)
   if (typeof patch.domain === 'string') x.domain = patch.domain.trim().slice(0, 40)
   if (patch.confirmed === true || patch.confirmed === false) x.confirmed = patch.confirmed
   if (patch.tags && typeof patch.tags === 'object') {
@@ -445,7 +472,8 @@ export function updateItem(t, id, patch = {}) {
     }
   }
   t.touchedAt = Date.now()
-  return { ok: true, item: x }
+  // ⚠️ 同上：截了就说，别静默。
+  return { ok: true, item: x, truncated: cut }
 }
 
 export function removeItem(t, id) {

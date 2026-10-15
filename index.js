@@ -2499,6 +2499,21 @@ export function apply(root, rawConfig) {
               }
               const save = () => { if (!saveTaste(tk)) throw new Error('写盘失败（看日志）') }
 
+              /**
+               * 有字段被截断时，把那句警告拼进工具消息。
+               *
+               * ⚠️ 这段是踩过才加的：myRead / reaction / lesson / said 原来全是裸的
+               *    `.slice(0, 300)` —— 超了**悄悄砍掉**，工具照样回 {ok:true}。
+               *    我写的一条例子的 lesson 被截在「这套正好落在我自己那条「」的半句上，
+               *    **那半句永远回不来**（不像摘要还能重写）。
+               *
+               *    截断本身可以接受（注入要控体积），**不接受的是不说**。
+               */
+              const cutWarn = (r) => (r && Array.isArray(r.truncated) && r.truncated.length)
+                ? '\n\n⚠️ **有字段被截断了**（不是没写进去，是写不下）：' + r.truncated.join('；') +
+                  '\n   上限是 note 400 字、其余 300 字。要留全得自己缩短 —— 这一段没了就是没了。'
+                : ''
+
               if (action === 'list') {
                 const s = tasteStats(tk)
                 const st = summaryStale(tk)
@@ -2535,7 +2550,8 @@ export function apply(root, rawConfig) {
                   message: `收了 [${r.item.id}]（${r.item.kind === 'good' ? '正例' : '反例'}）：${r.item.ref}\n` +
                     (r.item.said ? `  主人说过：「${r.item.said}」\n` : '') +
                     '\n⚠️ 这条现在标着**待确认** —— 打标是你的判断，可能读偏。' +
-                    '在回复里说出来，让他看一眼再改。',
+                    '在回复里说出来，让他看一眼再改。' +
+                    cutWarn(r),
                 }
               }
 
@@ -2558,7 +2574,7 @@ export function apply(root, rawConfig) {
                   ok: true,
                   message: '改好了 [' + id + ']' + (isP
                     ? '（改过了。⚠️ **by 没动** —— 它仍然记在原来那一档；「改过」只表示它不再是种子）'
-                    : ''),
+                    : '') + cutWarn(r),
                 }
               }
 
