@@ -13,7 +13,9 @@ const require = createRequire(import.meta.url)
 //    写死过一次：把整个项目拷到别处跑 audit，它会去审计**原来那份**，
 //    然后给你一个假的绿 —— 比不检查更糟。
 const SRC = path.dirname(fileURLToPath(import.meta.url))
-const DST = (process.env.USERPROFILE || '') + '/.dsh/profiles/desktop/node_modules/dsh-mood'
+const HERE = new URL('./', import.meta.url).href
+// 默认仍检查已安装的 profile；源码包自检时可把目标切到当前目录，避免把旧安装误当成结果。
+const DST = process.env.DSH_MOOD_PROFILE || ((process.env.USERPROFILE || '') + '/.dsh/profiles/desktop/node_modules/dsh-mood')
 const HOME = process.env.DSH_HOME || (process.env.USERPROFILE || '') + '/.dsh'
 
 let pass = 0, fail = 0, warn = 0
@@ -59,7 +61,7 @@ for (const [n, ok] of checks) ok ? OK(n) : NG(n)
 
 // ───────────────────────────── C. 宿主注册（模拟 apply）
 head('C. 宿主注册（模拟 cordis 注入）')
-const M = await import('file:///D:/chajian/dsh-mood/index.js')
+const M = await import(HERE + 'index.js')
 const reg = { sections: [], tools: [], routes: [], events: 0, timers: 0, coreCalls: 0, apiCalls: 0 }
 const origSetInterval = globalThis.setInterval
 globalThis.setInterval = (fn, ms) => { reg.timers++; return { unref() {} } }
@@ -122,7 +124,7 @@ reg.sections.every((x) => x && x.order >= 800 && x.order < 1000)
 
 // ───────────────────────────── D. 日记
 head('D. 日记')
-const D = await import('file:///D:/chajian/dsh-mood/diary.js')
+const D = await import(HERE + 'diary.js')
 const at = (h, m) => new Date(2026, 9, 13, h, m)
 D.diaryDue(at(23, 58)) === false && D.diaryDue(at(23, 59)) === true
   ? OK('只在 23:59 到点（23:58=false / 23:59=true）') : NG('到点判定错')
@@ -859,7 +861,7 @@ if (cssm) {
 
 // ───────────────────────────── G. 时事
 head('G. 时事')
-const NEWS = await import('file:///D:/chajian/dsh-mood/news.js')
+const NEWS = await import(HERE + 'news.js')
 NEWS.PRESETS.length >= 4 ? OK('推荐候选 ' + NEWS.PRESETS.length + ' 个（**不会自动生效**）') : NG('推荐候选不足')
 // ★ 核心规矩：用户不加网址 → 一个请求都不发
 const emptyRun = await NEWS.refreshNews([])
@@ -920,7 +922,7 @@ NEWS.renderForPrompt(stale) === '' ? OK('过期内容不进提示词') : NG('过
 head('H. 运行时状态')
 // ⚠️ 不能写死 $DSH_HOME —— 数据目录可以被搬到别的盘（见 store.js）。
 //    这里必须问 store.js 要当前目录，否则一迁移就全成了"状态文件还没生成"的假警告。
-const STORE = await import('file:///D:/chajian/dsh-mood/store.js')
+const STORE = await import(HERE + 'store.js')
 const DATA = STORE.dataDir()
 DATA === HOME
   ? OK('数据目录 = 默认位置（' + DATA + '）')

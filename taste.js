@@ -299,12 +299,23 @@ export function saveTaste(t) {
 
 // ---------------------------------------------------------------- 增删改
 
-let _seq = 0
+/**
+ * 生成库内 id。
+ *
+ * 计数器必须跟着这次调用走，不能放在模块级：同一个进程里若同时打开两份库，
+ * 一个库的新增会消耗另一个库的序号；更麻烦的是热重载后计数器归零，排查时
+ * 会看到同一时间戳又出现一批重复形状的 id。库里已有的 id 才是唯一性边界，
+ * 所以从 1 开始在当前数组里找空位，既不改旧数据，也不让实例之间互相影响。
+ */
 function nextId(prefix, list) {
-  _seq += 1
-  let id = prefix + Date.now().toString(36) + _seq.toString(36)
-  const used = new Set((list || []).map((x) => x.id))
-  while (used.has(id)) { _seq += 1; id = prefix + Date.now().toString(36) + _seq.toString(36) }
+  const used = new Set((list || []).map((x) => x && x.id).filter(Boolean))
+  const stamp = Date.now().toString(36)
+  let seq = 1
+  let id = prefix + stamp + seq.toString(36)
+  while (used.has(id)) {
+    seq += 1
+    id = prefix + stamp + seq.toString(36)
+  }
   return id
 }
 

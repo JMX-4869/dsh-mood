@@ -4,7 +4,7 @@
 
 **它会累、会烦、会好奇。**
 
-> **当前版本 `0.7.6`** —— 每一版都发 [Release](https://github.com/JMX-4869/dsh-mood/releases)；
+> **当前版本 `0.7.7`** —— 每一版都发 [Release](https://github.com/JMX-4869/dsh-mood/releases)；
 > 完整历史改动见 [CHANGELOG.md](CHANGELOG.md)。
 > 版本号走**语义化版本**：`主.次.修` —— 第一位不兼容才动，第二位加功能（+1 时第三位归零），第三位修 bug。
 
@@ -989,7 +989,7 @@ mood {"action":"history"}
 ```bash
 node smoke.mjs      # 冒烟：每扇门都推一下（34 项）
 node audit.mjs      # 179 项结构自检，失败 exit 1
-npm test            # 冒烟 + 23 个测试文件 / 872 条断言
+npm test            # 冒烟 + 24 个测试文件 / 875 条断言
 ```
 
 **三样东西分工不同，别只跑一个：**
