@@ -2954,7 +2954,13 @@ export function apply(root, rawConfig) {
                   const done = () => {
                     if (!saveTaste(taste)) return send({ ok: false, error: '写盘失败（看日志）' }, 500)
                     return send({ ok: true, stats: tasteStats(taste), summary: taste.summary,
-                      principles: taste.principles, items: taste.items })
+                      principles: taste.principles, items: taste.items,
+                      // ⚠️ 把"哪几个字段被截了"也转出去。
+                      //    原来只加在**工具消息**里 —— 那是给模型看的；
+                      //    设置页面板走的是这条 HTTP 路由，它看不到，
+                      //    于是"人"在界面上编辑照样会被静默截断。
+                      //    同一个警告要送到两个出口，别只管一边。
+                      truncated: (r && Array.isArray(r.truncated) && r.truncated.length) ? r.truncated : undefined })
                   }
                   let r
                   if (a === 'addPrinciple') {
