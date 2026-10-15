@@ -142,7 +142,15 @@ export function planFrames(durationSec, opts = {}) {
   }
   return {
     fps, perSecond, everySec, picks, mode: 'even',
-    note: scenes.length ? '（场景表不够用，退回均分）' : '',
+    // ⚠️ 2026-10-16：这句原来只会说"场景表不够用"，而那是**四条原因里的一条**。
+    //    实际最常见的是**用户自己给了 everySec / forceEven** —— 那条路上场景表根本没问题。
+    //    说错原因会让我误判工具状态（读成"场景检测坏了"），进而怀疑别的结论。改成说真实那一句。
+    note: '（按秒均分：' + (
+      Number.isFinite(Number(opts.everySec)) ? '你指定了 everySec'
+        : opts.forceEven ? '你指定了 forceEven'
+          : scenes.length ? ('场景表只检出 ' + scenes.length + ' 个切换点，不够用')
+            : '没检出画面切换'
+    ) + '）',
   }
 }
 

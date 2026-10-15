@@ -121,6 +121,21 @@ const t = suite('视频抽帧')
   //    但主人指出：**稀疏抽帧本身就会丢信息**，98 秒按秒抽该给 98 张，被砍到 63 秒就是"尾巴消失"。
   //    现在改成：给多少就抽多少，**由 maxMinutes 和磁盘兜底**，不再在这里腰斩。
   t.eq(F.planFrames(600, { maxFrames: 9999 }).picks.length > 64, true, 'maxFrames 不再有 64 的上限（给多少抽多少）')
+
+  // ⚠️ 2026-10-16 加：走到"按秒均分"这条路有四种原因，note 必须说对是哪一种。
+  //    原来它无论哪种都说"场景表不够用"—— 而最常走这条路的其实是"用户给了 everySec"，
+  //    那时场景表可能是好的。说错原因会让我误判工具状态（读成"场景检测坏了"）。
+  {
+    const n1 = F.planFrames(100, { maxFrames: 50, everySec: 1 }).note || ''
+    const n2 = F.planFrames(100, { maxFrames: 50, forceEven: true, scenes: [1, 2, 3] }).note || ''
+    const n3 = F.planFrames(100, { maxFrames: 50, scenes: [1] }).note || ''
+    const n4 = F.planFrames(100, { maxFrames: 50 }).note || ''
+    t.eq(/everySec/.test(n1), true, 'note 说得出"你指定了 everySec"')
+    t.eq(/forceEven/.test(n2), true, 'note 说得出"你指定了 forceEven"')
+    t.eq(/1 个切换点/.test(n3), true, 'note 说得出场景点具体有几个')
+    t.eq(/没检出画面切换/.test(n4), true, 'note 说得出"没检出画面切换"')
+    t.eq(/场景表不够用/.test(n1 + n2 + n3 + n4), false, '不再用"场景表不够用"这一句盖所有原因')
+  }
 }
 
 // ══════════════════════════════════════════════════════
