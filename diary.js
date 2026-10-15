@@ -15,6 +15,7 @@ import { dataFile } from './store.js'
  *   { version, entries:[{date, text, mood, createdAt, edited}], daily:{ 'YYYY-MM-DD': {...} } }
  */
 import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs'
+import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto'
 import { join, dirname } from 'node:path'
 import os from 'node:os'
 
@@ -24,6 +25,98 @@ export function dshHome() {
 
 // 路径统一走 store.js —— 数据目录可以被搬到别的盘（见 store.js 顶部说明）
 export function diaryFile() { return dataFile('dsh-mood-diary.json') }
+
+// ────────────────────────────────────────────────────────────
+//  日记文件加密（AES-256-GCM）
+// ────────────────────────────────────────────────────────────
+/**
+ * 为什么加密、以及**它到底防什么** —— 这段比代码本身重要，所以写在这。
+ *
+ * **起因**：主人说「UI 里锁着、文件却是明文，那不算锁」。
+ * 他说得对 —— 那个文件 121 KB 明文躺着，记事本一开就能读；
+ * 界面上那个合上的书本图标，保护的只是界面，不是日记。
+ *
+ * **为什么是密钥文件、而不是口令**：
+ *   日记是**插件在 23:59 自动写的，那时候没人在场**。
+ *   写路径必须能在无人参与时拿到密钥 —— 所以口令方案在这条上是死的
+ *   （忘了口令 = 日记再也写不进去，而这一天已经过去了）。
+ *   口令只能做成"另开一层用于导出"，作为**读取**功能还可以，作为**写入前提**不行。
+ *
+ * **它防什么**（这才是重点，别夸大）：
+ *   ✅ 防**顺手看到**：拖进编辑器、grep 全文、文件夹截图、备份/网盘同步带走
+ *   ✅ 防**程序误读**：别的工具把你的数据目录当普通 JSON 扫走
+ *   ❌ **不防**一个能读你整块磁盘的人 —— 密钥就放在隔壁（同一个数据目录）。
+ *      密钥故意跟数据放一起，是为了**迁移**：store.js 支持搬数据目录，
+ *      密钥跟着走才不会出现"换个盘日记就打不开了"。
+ *      真要对人保密，得自己把 `dsh-mood-diary.key` 挪到别处（或被加密的盘）。
+ *
+ * **格式**：`DSHMDIARY1` 魔数(10B) + IV(12B) + authTag(16B) + 密文
+ *   · 魔数让"这份文件加密没加密"一眼可判 —— 迁移旧文件时要靠它
+ *   · GCM 自带完整性校验：被改过一个字节解密就失败，不会悄悄给出垃圾
+ *   · 每次保存换新 IV；GCM 下同密钥复用 IV 是致命的
+ */
+const MAGIC = Buffer.from('DSHMDIARY1', 'utf8')
+const KEY_BYTES = 32
+
+export function diaryKeyFile() { return dataFile('dsh-mood-diary.key') }
+
+/** 读密钥；没有就生成一个（0o600 —— 只有当前用户读得到） */
+export function loadDiaryKey() {
+  const f = diaryKeyFile()
+  try {
+    const b = Buffer.from(readFileSync(f, 'utf8').trim(), 'base64')
+    // 长度不对就当坏了 —— 别拿一把短 key 去解密，那只会得到"解密失败"这种没头绪的错
+    if (b.length === KEY_BYTES) return b
+    throw new Error('key 长度 ' + b.length + ' 不是 ' + KEY_BYTES)
+  } catch (e) {
+    // 不存在 → 生成；存在但坏了 → 也重新生成（但旧日记就解不开了，所以必须出声）
+    if (e && e.code !== 'ENOENT') {
+      try { console.error('[dsh-mood] 日记密钥读不了（' + (e.message || e) + '），重新生成一把') } catch { /* 没办法 */ }
+    }
+    const k = randomBytes(KEY_BYTES)
+    try {
+      mkdirSync(dirname(f), { recursive: true })
+      // ⚠️ mode 要显式给 —— 默认按 umask 掩，同机别的账户可能读得到
+      writeFileSync(f, k.toString('base64'), { encoding: 'utf8', mode: 0o600 })
+    } catch (err) {
+      try { console.error('[dsh-mood] 日记密钥写不了:', (err && err.message) || err) } catch { /* 没办法 */ }
+    }
+    return k
+  }
+}
+
+/** 明文 JSON 字符串 → 加密后的 Buffer */
+export function encryptDiary(json) {
+  const key = loadDiaryKey()
+  const iv = randomBytes(12)
+  const c = createCipheriv('aes-256-gcm', key, iv)
+  const body = Buffer.concat([c.update(Buffer.from(json, 'utf8')), c.final()])
+  return Buffer.concat([MAGIC, iv, c.getAuthTag(), body])
+}
+
+/**
+ * 判断一份字节是不是加密过的。
+ * ⚠️ 靠魔数，**不靠 try/catch JSON.parse** —— 后者会把"文件坏了"和"文件是加密的"
+ *    混成同一件事，而这两种情况的处理正相反（一个该报错，一个该解密）。
+ */
+export function isEncryptedDiary(buf) {
+  return Buffer.isBuffer(buf) && buf.length > MAGIC.length && buf.subarray(0, MAGIC.length).equals(MAGIC)
+}
+
+/** 加密 Buffer → 明文 JSON 字符串。失败返回 null（别抛 —— 调用方要能降级） */
+export function decryptDiary(buf) {
+  try {
+    const iv = buf.subarray(MAGIC.length, MAGIC.length + 12)
+    const tag = buf.subarray(MAGIC.length + 12, MAGIC.length + 28)
+    const body = buf.subarray(MAGIC.length + 28)
+    const d = createDecipheriv('aes-256-gcm', loadDiaryKey(), iv)
+    d.setAuthTag(tag)
+    return Buffer.concat([d.update(body), d.final()]).toString('utf8')
+  } catch (e) {
+    try { console.error('[dsh-mood] 日记解密失败:', (e && e.message) || e) } catch { /* 没办法 */ }
+    return null
+  }
+}
 
 /** 日记生成时刻（本地时间）：23:59 */
 export const DIARY_HOUR = 23
@@ -64,7 +157,23 @@ export function blankDiary() {
 
 export function loadDiary() {
   try {
-    const raw = JSON.parse(readFileSync(diaryFile(), 'utf8'))
+    // ⚠️ 读**字节**，不是读 utf8 字符串 —— 加密过的文件按 utf8 读会得到一堆替换字符，
+    //    再 JSON.parse 必然抛，然后被下面的 catch 吞成一份空日记。
+    //    那样现象就是"日记全没了"，而不是"解密失败"。先判魔数。
+    const buf = readFileSync(diaryFile())
+    let text
+    if (isEncryptedDiary(buf)) {
+      text = decryptDiary(buf)
+      // 解密失败 = 密钥换了 / 文件被改过。**不能当成空日记** ——
+      // 那样下一次保存就会把一份空日记写回去，把真日记覆盖掉（不可逆）。
+      if (text === null) {
+        try { console.error('[dsh-mood] 日记解密失败，这次不读也不写（避免把空日记覆盖回去）') } catch { /* 没办法 */ }
+        return null
+      }
+    } else {
+      text = buf.toString('utf8')
+    }
+    const raw = JSON.parse(text)
     const d = Object.assign(blankDiary(), raw)
     if (!Array.isArray(d.entries)) d.entries = []
     if (!d.daily || typeof d.daily !== 'object') d.daily = {}
@@ -99,10 +208,28 @@ export function canRead(d) {
 export function saveDiary(d) {
   try {
     d.version = 1
-    mkdirSync(dirname(diaryFile()), { recursive: true })
-    const tmp = diaryFile() + '.tmp'
-    writeFileSync(tmp, JSON.stringify(d, null, 2), 'utf8')
-    renameSync(tmp, diaryFile())
+    const p = diaryFile()
+    // ⚠️ **写之前先确认读得动。**
+    //
+    //    盘上那份如果是加密的、而当前密钥解不开（换了密钥、文件被改过），
+    //    这一次写就是把**真日记整个覆盖掉**，而且不可逆。
+    //    loadDiary() 那边只能拦住"读到 null 之后别乱用"，拦不住 5 个保存点里的任何一个 ——
+    //    所以自保放在这里，一处管全部。
+    //    代价是每次保存多解一次密（文件百来 KB、保存一天也就几十次），值。
+    try {
+      const cur = readFileSync(p)
+      if (isEncryptedDiary(cur) && decryptDiary(cur) === null) {
+        try {
+          console.error('[dsh-mood] 盘上的日记解不开（密钥变了？）—— 这次**拒绝覆盖**，一个字都没写')
+        } catch { /* 没办法 */ }
+        return false
+      }
+    } catch { /* 文件不存在 / 读不了 —— 都按"可以写"处理 */ }
+    mkdirSync(dirname(p), { recursive: true })
+    const tmp = p + '.tmp'
+    // ⚠️ mode 0o600 + 加密后写 Buffer（原来写的是明文 utf8 字符串）
+    writeFileSync(tmp, encryptDiary(JSON.stringify(d, null, 2)), { mode: 0o600 })
+    renameSync(tmp, p)
     return true
   } catch (e) {
     // ⚠️ **必须出声。** 原来这里只 `return false`，而调用方（index.js 的 flushAll）

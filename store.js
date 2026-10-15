@@ -31,6 +31,11 @@ export const POINTER_FILE = join(dshHome(), 'dsh-mood-store.json')
 export const DATA_FILES = [
   'dsh-mood.json',
   'dsh-mood-diary.json',
+  // ⚠️ **日记的密钥必须跟着搬。** 日记是加密存的（见 diary.js），
+  //    密钥留在这儿而文件搬去别处 = 换个盘日记就打不开了，而且看着像"日记没了"。
+  //    这个文件第一次保存在 0.7.17 之后才不会漏 —— 之前版本建的目录里没有它，
+  //    所以 listCopyable 那边也允许它不存在。
+  'dsh-mood-diary.key',
   'dsh-mood-news.json',
   'dsh-mood-proactive.json',
   'dsh-mood-memory.jsonl',
@@ -44,6 +49,8 @@ export const DATA_FILES = [
 export const FILE_KEYS = {
   'dsh-mood.json': 'state',
   'dsh-mood-diary.json': 'diary',
+  // 密钥跟正文共用一个键 —— 迁移时两个一起去同一个新目录，这是刻意的
+  'dsh-mood-diary.key': 'diary',
   'dsh-mood-news.json': 'news',
   'dsh-mood-proactive.json': 'proactive',
   // 硬盘记忆是 jsonl（一行一条），不是 json —— 但键名照旧走这套
@@ -59,6 +66,17 @@ export const KEY_LABELS = {
   proactive: '主动开口',
   memory: '硬盘记忆',
   taste: '品味库',
+}
+
+/**
+ * 个别人话要按**文件**说，不是一个键一个词。
+ *
+ * ⚠️ 日记的正文和密钥共用 'diary' 这个键（迁移时必须同进同退），
+ *    但面板上要是两行都写「日记」，人分不清哪个是哪个 ——
+ *    而这两个文件的性质完全不同（一个是内容，一个丢了就再也解不开）。
+ */
+const FILE_LABELS = {
+  'dsh-mood-diary.key': '日记密钥（丢了日记就打不开）',
 }
 
 /** 每个文件"应该由哪个面板管"（界面上分组用） */
@@ -225,7 +243,7 @@ export function storageStatus() {
     try { const st = statSync(p); size = st.size; exists = true } catch { /* 还没生成 */ }
     return {
       name: n, key,
-      label: KEY_LABELS[key] || key,
+      label: FILE_LABELS[n] || KEY_LABELS[key] || key,
       owner: KEY_OWNER[key] || '',
       dir,
       configured,                              // 单独指定的位置（null = 跟着默认走）
@@ -279,7 +297,9 @@ export function migrateStorage(targetDir, keys) {
   }
 
   // 要搬哪几个：不传就是全部；传了就只搬这几个（**一个文件一个位置**）
-  const allKeys = DATA_FILES.map((n) => FILE_KEYS[n])
+  // ⚠️ 去重 —— 一个键可以对应多个文件（日记正文 + 密钥都算 'diary'），
+  //    不去重的话 allKeys 里会有重复，isAll 就永远算不对。
+  const allKeys = [...new Set(DATA_FILES.map((n) => FILE_KEYS[n]))]
   const want = Array.isArray(keys) && keys.length ? keys.filter((k) => allKeys.includes(k)) : allKeys
   if (!want.length) return { ok: false, error: '没指定要搬哪个文件。' }
   const isAll = want.length === allKeys.length
@@ -288,10 +308,16 @@ export function migrateStorage(targetDir, keys) {
   // 老版本是从单一 from 出发，第二个文件的真实位置就会被忽略。
   const todo = []
   for (const k of want) {
-    const n = DATA_FILES.find((f) => FILE_KEYS[f] === k)
     const from = dirForKey(k)
     if (to === from) return { ok: false, error: (KEY_LABELS[k] || k) + ' 已经在这个位置了。' }
-    if (existsSync(join(from, n))) todo.push({ key: k, name: n, from })
+    // ⚠️ **用 filter 不是 find。** 一个键现在可以对应**多个**文件 ——
+    //    日记的正文（.json）和它的密钥（.key）共用 'diary' 这个键，是刻意的：
+    //    两个必须一起去同一个新目录，走散了就再也读不出日记。
+    //    原来写的是 find，只拿到第一个 —— 密钥永远搬不过去，
+    //    而现象是"迁移很成功，然后日记全打不开了"。
+    for (const n of DATA_FILES.filter((f) => FILE_KEYS[f] === k)) {
+      if (existsSync(join(from, n))) todo.push({ key: k, name: n, from })
+    }
   }
   // ★ 一个都搬不到 → 直接不干。
   //

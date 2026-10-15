@@ -243,6 +243,41 @@ const N = M.MOOD_IDS.length
     const hasTool = /name: 'memory',/.test(host)
     hasTool ? OK('memory 工具已注册') : NG('memory 工具没注册')
 
+    // ── 「无上限」那套（-1）必须四层都在 ──
+    //
+    // ⚠️ 这是**故意做成结构检查**的：无上限要穿过四层，每一层都有自己的 `> 0`，
+    //    **每一层都会单独把 -1 吃掉**（输入框 / 路由 / memoryCfg / cap）。
+    //    任何一层漏了，现象都是"设置页显示成功、实际还在丢最旧的" —— 比报错难查得多。
+    //    行为正确性由 test-unlimited.mjs 跑（19 条），这里只负责**发现少了一层**。
+    const layers = [
+      ['cap()（memory.js）', /if \(isUnlimited\(n\)\) return Infinity/.test(memSrc)],
+      ['stats() 报 -1 而不是 Infinity', /unlimited \? UNLIMITED : limit/.test(memSrc)],
+      ['memoryCfg()（index.js）', /isUnlimited\(mb\) \? UNLIMITED/.test(host)],
+      ['上限路由（index.js）', /if \(isUnlimited\(mb\)\) NEXT\.maxMB = UNLIMITED/.test(host)],
+      ['设置页输入框（client.js）', /min: -1, max: 2000/.test(cl2)],
+      ['设置页收负数（client.js）', /if \(\(v < 0 \|\| v > 0\)/.test(cl2)],
+      ['设置页写了 -1 的说明', /-1 = 无上限/.test(cl2)],
+    ]
+    const missing = layers.filter(([, hasIt]) => !hasIt).map(([name]) => name)
+    missing.length === 0
+      ? OK('「-1 = 无上限」四层齐全（' + layers.length + ' 个检查点）')
+      : NG('无上限少了一层：' + missing.join('、') + ' —— 用户会看到"改成功但没生效"')
+
+    // ⚠️ 反过来：别把 Infinity 直接塞进 stats 返回给前端。
+    //    JSON.stringify(Infinity) === 'null' —— 开关会在传输途中丢掉，前端显示回默认值。
+    //
+    // ⚠️ 这里**必须用变量**，不能让正则出现在行首 ——
+    //    行首的 `/` 会被 ASI 当成除号（上面那条注释里写了"栽过三次"，写下之后又栽了一次）。
+    const noInfinity = /maxBytes: unlimited \? UNLIMITED : limit/.test(memSrc)
+    const notRawLimit = !/maxBytes: limit,/.test(memSrc)
+    noInfinity && notRawLimit
+      ? OK('对外不返回 Infinity（JSON 会把它变成 null）')
+      : NG('maxBytes 直接返回了 Infinity —— 过 JSON 会变 null')
+    const strictNeg = /Number\.isFinite\(Number\(v\)\) && Number\(v\) < 0/.test(memSrc)
+    strictNeg
+      ? OK('isUnlimited 只认负数 —— 0 和空值不算无上限')
+      : NG('isUnlimited 的判断松了 —— 0 或空值会被当成无上限')
+
     // 迁移必须同时改配置并让缓存失效
     const moveBoth = /moveTo\(dir, \(d2\) => /.test(host) && /invalidateDataDir\(\)/.test(host)
     moveBoth ? OK('迁移两边一起改（搬文件 + 写配置 + 失效缓存）') : NG('迁移只搬文件，路径不会跟着变')

@@ -195,6 +195,10 @@ window.__ModuleLoader__.load({
       '.dshmood .locked .lock-title{font-size:14px;font-weight:600}',
       '.dshmood .locked .lock-body{font-size:12px;color:var(--dsw-alias-label-secondary);max-width:420px;line-height:1.6}',
       '.dshmood button:disabled{opacity:.45;cursor:not-allowed}',
+      // 日记解不开时的告警条 —— 要显眼（红边），因为这一条会让人误以为"日记丢了"
+      '.dshmood .dwarn{margin:0 0 14px;padding:12px 14px;border:1px solid #c0392b;border-left-width:4px;border-radius:8px;background:rgba(192,57,43,.07);font-size:12px;line-height:1.75}',
+      '.dshmood .dwarn .dwarn-t{font-size:13px;font-weight:700;margin-bottom:4px;color:#c0392b}',
+      '.dshmood .dwarn .dwarn-p{margin-top:4px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--dsw-alias-label-secondary);word-break:break-all}',
     ].join('\n')
 
     const API = '/dsh-mood-api'
@@ -607,6 +611,21 @@ window.__ModuleLoader__.load({
               ? '小鲸同意你看了'
               : '锁着 · 每天 ' + (data.generateAt || '23:59') + ' 自动生成'),
         ),
+        // ⚠️ **日记文件解不开的时候，必须顶在最上面说。**
+        //
+        //    不然这一页显示的是"0 篇"，人会以为日记丢了或者根本没写 ——
+        //    而真相是：**内容一个字没丢，就在盘上，只是密钥对不上**（或者文件被改过）。
+        //    而且写盘已经被拒绝了，不说的话就成了最坏那种"看着在存、其实没存"。
+        data.diaryUnreadable
+          ? h('div', { className: 'dwarn' },
+              h('div', { className: 'dwarn-t' }, '⚠️ 日记文件解不开'),
+              h('div', null, '两种可能：密钥被换过，或者文件被改过。'),
+              h('div', null, h('b', null, '内容一个字没丢'), ' —— 就在盘上，只是开不了。'),
+              h('div', null, '已经', h('b', null, '停止写入了'),
+                '：不然这次保存会把真日记覆盖掉，而且不可逆。'),
+              h('div', { className: 'dwarn-p' }, '密钥：' + (data.diaryKeyFile || '（未知）')),
+              h('div', { className: 'dwarn-p' }, '日记：' + (data.diaryFile || '（未知）')))
+          : null,
         // 当前心情
         h('div', { className: 'hd' },
           h('span', { className: 'mood-name' }, (data.current && data.current.mixLabel) || '—'),
@@ -645,6 +664,14 @@ window.__ModuleLoader__.load({
           }, newestFirst ? '↓ 新 → 旧' : '↑ 旧 → 新'),
           h('span', { className: 'pill' }, '共 ' + (data.count || 0) + ' 篇'),
           h('span', { className: 'pill' }, '每天 ' + (data.generateAt || '23:59') + ' 自动生成'),
+          // 加密状态说出来 —— 不然"锁着"只等于"界面不给看"，文件在盘上还是明文
+          data.diaryEncrypted
+            ? h('span', {
+                className: 'pill',
+                title: 'AES-256-GCM。密钥：' + (data.diaryKeyFile || '') +
+                  '\n⚠️ 防的是「顺手看到」和「备份/同步带走」；不防一个能读你整块磁盘的人（密钥就在隔壁）。',
+              }, '文件加密 ✓')
+            : null,
         ),
 
         // 点开的那一天 —— **面板内联的详情卡片**（不是浮层，见文件顶部说明）。
@@ -915,32 +942,48 @@ window.__ModuleLoader__.load({
         ),
 
         // ── 体积上限 + 增长（用户反馈"占用太快"，所以这一块要显眼）──
+        //
+        // ⚠️ **填 -1 = 无上限。** 这是四层里的最后一层（输入框 → 路由 → memoryCfg → cap），
+        //    每一层都有自己的 `> 0`，漏一层就变成"显示成功、实际还在丢"。
+        //    所以这里三样都改：min、两处判断、以及显示。
         h('div', { className: 'memrow' },
           h('span', { className: 'memlab' }, '上限'),
           h('input', {
-            className: 'srcin memnum', type: 'number', min: 1, max: 2000, value: String((data.stats && Math.round((data.stats.maxBytes || 0) / 1048576)) || 50),
+            className: 'srcin memnum', type: 'number', min: -1, max: 2000,
+            // 无上限（后端报 -1）时输入框就显示 -1，别折算成 50
+            value: String((data.stats && data.stats.maxBytes < 0) ? -1
+              : (Math.round(((data.stats && data.stats.maxBytes) || 0) / 1048576) || 50)),
             disabled: busy,
+            title: '填 -1 = 不限体积（归档会一直长）',
             onKeyDown: (e) => { if (e.key === 'Enter') void post({ action: 'limits', maxMB: Number(e.target.value) }, '上限已改') },
             onChange: (e) => { e.target.dataset.v = e.target.value },
             onBlur: (e) => {
               const v = Number(e.target.value)
-              const cur = Math.round((data.stats.maxBytes || 0) / 1048576)
-              if (Number.isFinite(v) && v > 0 && v !== cur) void post({ action: 'limits', maxMB: v }, '上限已改成 ' + v + ' MB')
+              const cur = (data.stats && data.stats.maxBytes < 0) ? -1
+                : Math.round(((data.stats && data.stats.maxBytes) || 0) / 1048576)
+              // -1（或任何负数）= 无上限；正数照旧。原来只收 `v > 0`，所以填 -1 会被忽略。
+              if ((v < 0 || v > 0) && Number.isFinite(v) && v !== cur) {
+                void post({ action: 'limits', maxMB: v },
+                  v < 0 ? '上限已取消 —— 归档不再自动清理' : '上限已改成 ' + v + ' MB')
+              }
             },
           }),
-          h('span', { className: 'memlab', style: { minWidth: 'auto' } }, 'MB'),
+          h('span', { className: 'memlab', style: { minWidth: 'auto' } }, 'MB（-1 = 无上限）'),
           h('button', { onClick: () => patch2({ action: 'limits', onlyUser: !(data.stats && data.stats.onlyUser) }), disabled: busy },
             (data.stats && data.stats.onlyUser) ? '只存你说的话：开' : '只存你说的话：关'),
         ),
         h('div', { className: 'memstats' },
           h('div', { className: 'memstat' },
-            h('span', { className: 'v' }, (Math.round((data.stats && data.stats.usedRatio || 0) * 1000) / 10) + '%'),
-            h('span', { className: 'k' }, '已用 ' + fmtBytes((data.stats && data.stats.maxBytes) || 0))),
+            h('span', { className: 'v' }, (data.stats && data.stats.maxBytes < 0) ? '—'
+              : (Math.round((data.stats && data.stats.usedRatio || 0) * 1000) / 10) + '%'),
+            h('span', { className: 'k' }, (data.stats && data.stats.maxBytes < 0)
+              ? '无上限（不清理）' : '已用 ' + fmtBytes((data.stats && data.stats.maxBytes) || 0))),
           h('div', { className: 'memstat' },
             h('span', { className: 'v' }, data.stats && data.stats.perDayBytes ? fmtBytes(data.stats.perDayBytes) : '—'),
             h('span', { className: 'k' }, '每天增长（估）')),
           h('div', { className: 'memstat' },
-            h('span', { className: 'v' }, data.stats && data.stats.daysLeft ? Math.round(data.stats.daysLeft) + ' 天' : '—'),
+            h('span', { className: 'v' }, (data.stats && data.stats.maxBytes < 0) ? '∞'
+              : (data.stats && data.stats.daysLeft ? Math.round(data.stats.daysLeft) + ' 天' : '—')),
             h('span', { className: 'k' }, '还能撑')),
           h('div', { className: 'memstat' },
             h('span', { className: 'v' }, String((data.stats && data.stats.trimmed) || 0)),

@@ -22,9 +22,17 @@ import os from 'node:os'
 // 静态 import —— 与 dsh-meme 等可用插件一致。动态 import('@deepseek-ai/dsh-tools')
 // 在宿主里解析不到（该包不在 profile 的 node_modules 里），会导致工具静默注册失败。
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { createMemory, MIN_CHARS as MEM_MIN_CHARS, DEFAULT_LIMIT as MEM_LIMIT } from './memory.js'
+import {
+  createMemory, MIN_CHARS as MEM_MIN_CHARS, DEFAULT_LIMIT as MEM_LIMIT,
+  // 「无上限」那套（-1）。四层都要用同一个判断，见 memory.js 里的注释。
+  UNLIMITED, isUnlimited,
+} from './memory.js'
 import {
   diaryFile, DIARY_HOUR, DIARY_MINUTE,
+  // 日记文件是加密的（见 diary.js 顶部）：
+  //   blankDiary  —— loadDiary() 解密失败会返回 null，这时要有个空壳让界面能渲染
+  //   diaryKeyFile —— 设置页要告诉人密钥在哪（以及它不防什么）
+  blankDiary, diaryKeyFile,
   dateKey, yesterdayKey, diaryDue,
   loadDiary, saveDiary,
   noteMood, noteSwitch, noteActivity,
@@ -416,8 +424,15 @@ export const MEMORY_DEFAULTS = { maxMB: 50, onlyUser: false }
 export function memoryCfg() {
   const m = (liveState && liveState.memory) || {}
   const mb = Number(m.maxMB)
+  // ⚠️ **负数 = 无上限**（-1），和 memory.js 的 UNLIMITED / isUnlimited 是一套。
+  //
+  //    这里原来是 `mb > 0 ? … : MEMORY_DEFAULTS.maxMB` —— -1 会落进"不合法"那一支，
+  //    **静默换成 50 MB**。于是设置页填 -1、文件里也存了 -1，
+  //    但真正跑的时候还是 50 MB 在上限、还在丢最旧的。
+  //    和 cap() 那边是**同一个坑的两半**，只改一处等于没改。
   return {
-    maxMB: Number.isFinite(mb) && mb > 0 ? Math.min(2000, mb) : MEMORY_DEFAULTS.maxMB,
+    maxMB: isUnlimited(mb) ? UNLIMITED
+      : (Number.isFinite(mb) && mb > 0 ? Math.min(2000, mb) : MEMORY_DEFAULTS.maxMB),
     onlyUser: m.onlyUser === true,
   }
 }
@@ -1330,7 +1345,29 @@ export function apply(root, rawConfig) {
   let taste = loadTaste()
 
   // ---------------- 日记：每天一篇，23:59 生成 ----------------
-  let diary = loadDiary()
+  //
+  // ⚠️ 日记文件现在是**加密**的（AES-256-GCM，见 diary.js 顶部那段）。
+  //    于是 loadDiary() 多了一种结果：**null**（盘上那份解不开 —— 密钥换了 / 文件被改过）。
+  //
+  //    **这时候绝对不能当成"空日记"。** 空日记一旦被保存回去，
+  //    真日记就被覆盖了，而且不可逆（密钥都不对了，谁也恢复不出来）。
+  //    所以分成三件事：
+  //      · 读不出来 → 内存里留一份空壳（好让界面还有东西可渲染），但**置 diaryUnreadable**
+  //      · saveDiary() 自己在写之前会再确认一次盘上那份解得开，解不开就拒写
+  //        （那道自保在 diary.js 里，5 个保存点一处管全部）
+  //      · 设置页会把 diaryUnreadable 显示出来，让人知道"不是没写，是读不出来"
+  let diaryUnreadable = false
+  const readDiaryOrBlank = () => {
+    const d = loadDiary()
+    if (d === null) {
+      diaryUnreadable = true
+      try { console.error('[dsh-mood] 日记读不出来（解密失败）—— 界面会提示，写盘会被拒') } catch { /* 没办法 */ }
+      return blankDiary()
+    }
+    diaryUnreadable = false
+    return d
+  }
+  let diary = readDiaryOrBlank()
   const moodLabel = (id) => (MOODS[id] ? MOODS[id].label : id)
 
   /** 生成某天的日记（幂等；模型手写过的不会被覆盖） */
@@ -2248,7 +2285,7 @@ export function apply(root, rawConfig) {
                     '（宿主当时没开机而错过的那天，只能在设置页用「补写」按钮补。）',
                 }
               }
-              diary = loadDiary()
+              diary = readDiaryOrBlank()
               if (action === 'status') {
                 const a = canRead(diary)
                 return {
@@ -2832,7 +2869,12 @@ export function apply(root, rawConfig) {
               })
               return undefined
             }
-            const d = loadDiary()
+            // ⚠️ 这里**不能**用 readDiaryOrBlank() —— 那个会把 diaryUnreadable 覆盖成 false。
+            //    路由只读不写，用 loadDiary() 的原值判断就行。
+            const dRaw = loadDiary()
+            const unreadableNow = dRaw === null
+            if (unreadableNow) diaryUnreadable = true
+            const d = dRaw || blankDiary()
             if (path === '/' || path === '/state') {
               const s = summary()
               // 门禁：没经模型同意，**正文一个字都不下发**（只给条数，好让界面说"有几篇但看不到"）。
@@ -2845,6 +2887,17 @@ export function apply(root, rawConfig) {
                 sinceSwitchMin: s.sinceSwitchMin,
                 nextPeriodicMin: s.nextPeriodicMin,
                 diaryFile: diaryFile(),
+                /**
+                 * 日记文件是不是**读不出来**（加密后解不开：密钥换了 / 文件被改过）。
+                 *
+                 * ⚠️ 这一项必须显出来。没有它的话，界面看到的是"0 篇日记"，
+                 *    人会以为日记丢了或没写 —— 而真相是"在盘上好好的，只是解不开"。
+                 *    而且写盘已经被拒了，不说的话就是"存了但没生效"。
+                 */
+                diaryUnreadable,
+                /** 日记是不是加密存的（设置页显示用） */
+                diaryEncrypted: true,
+                diaryKeyFile: diaryKeyFile(),
                 generateAt: `${String(DIARY_HOUR).padStart(2, '0')}:${String(DIARY_MINUTE).padStart(2, '0')}`,
                 /** 是否允许看 —— 设置页据此切换图标与内容 */
                 unlocked: allowed,
@@ -3055,7 +3108,12 @@ export function apply(root, rawConfig) {
                     const NEXT = { ...cur }
                     if ('maxMB' in body) {
                       const mb = Number(body.maxMB)
-                      if (Number.isFinite(mb) && mb > 0) NEXT.maxMB = Math.min(2000, mb)
+                      // ⚠️ 负数 = 无上限（-1）。这里原来只有 `mb > 0` 那一支，
+                      //    所以 -1 会被**整个忽略** —— 接口照样回 ok、stats 照样返回，
+                      //    用户看到"改好了"，实际什么都没变。
+                      //    这是第三层（共四层），见 memory.js UNLIMITED 上面那段。
+                      if (isUnlimited(mb)) NEXT.maxMB = UNLIMITED
+                      else if (Number.isFinite(mb) && mb > 0) NEXT.maxMB = Math.min(2000, mb)
                     }
                     if ('onlyUser' in body) NEXT.onlyUser = !!body.onlyUser
                     state.memory = NEXT

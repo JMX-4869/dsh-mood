@@ -66,6 +66,30 @@ const CACHE_MAX = 200000
  *  超了就从**最旧的**开始丢（新的更有用），丢到 90% 停手（别每次 flush 都重写）。
  */
 export const DEFAULT_MAX_BYTES = 50 * 1024 * 1024
+
+/**
+ * **无上限**的写法：任何负数（`-1` 是最自然的）都算。
+ *
+ * ────────────────────────────────────────────────────────────────
+ *  为什么单独立一个常量，而不是到处写 `-1`
+ * ────────────────────────────────────────────────────────────────
+ *  "无上限"这个状态要穿过**四层**：设置页的输入框 → HTTP 路由 → memoryCfg() → cap()。
+ *  每一层都有自己的 `> 0` 判断，**每一层都会单独把 -1 吃掉**：
+ *    · client.js 输入框的 min=1 / onBlur 的 `v > 0`
+ *    · 路由 `/memory limits` 的 `mb > 0`
+ *    · memoryCfg() 的 `mb > 0 ? … : 默认`
+ *    · cap() 的 `n > 0 ? n : DEFAULT_MAX_BYTES`
+ *  任何一层漏了，用户看到的就是**"显示成功、实际还在丢"** —— 这比报错难查得多。
+ *  所以这个常量集中写一处，四层都引用它，改的时候一眼能看见该改哪几层。
+ *
+ * ⚠️ **内部**用 `Infinity`（`bytes <= Infinity` 天然成立，所有比较都不用改），
+ *    **对外**（stats / HTTP）一律折算成 `-1` —— 因为 `JSON.stringify(Infinity)`
+ *    得到的是 `null`，开关会在传输途中丢掉。
+ */
+export const UNLIMITED = -1
+/** 传进来的这个值是不是"无上限"？四层都该用这个判断，别各写各的 */
+export const isUnlimited = (v) => Number.isFinite(Number(v)) && Number(v) < 0
+
 /** 超限后丢到剩这么多比例 —— 留余量，避免每写一条就重写一次大文件 */
 const TRIM_TO = 0.9
 
@@ -101,6 +125,12 @@ export function createMemory(opts) {
   const cap = () => {
     const v = typeof maxBytes === 'function' ? maxBytes() : maxBytes
     const n = Number(v)
+    // ⚠️ **负数是"无上限"的开关**（-1 是最自然的写法，见 UNLIMITED）。
+    //
+    //    这里原来是 `n > 0 ? n : DEFAULT_MAX_BYTES` —— 于是 -1 落进"不合法"那一支，
+    //    **悄悄退回默认的 50 MB**。用户以为关掉了上限，其实还在丢最旧的，
+    //    而且接口回 ok、设置页也显示成功。**最坏的那种失败：接受了，没生效，不报错。**
+    if (isUnlimited(n)) return Infinity
     return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_BYTES
   }
   const onlyUserOn = () => {
@@ -291,6 +321,12 @@ export function createMemory(opts) {
     }
     // 按当前速率还能撑多久（满了就开始丢最旧的）
     const leftMs = perDay > 0 && bytes < limit ? ((limit - bytes) / perDay) * 86400000 : 0
+    // ⚠️ **无上限的时候，对外报 -1，不能报 Infinity。**
+    //    `JSON.stringify({ x: Infinity })` 得到的是 `{"x":null}` ——
+    //    Infinity 过不了 HTTP 那道 JSON 序列化，到了设置页会变成 null，
+    //    然后前端拿 `null || 0` 一算又是 0，最后显示成 50 MB。
+    //    **开关打开了，界面显示的还是老样子。** 所以统一用 -1 当"无上限"的对外标记。
+    const unlimited = !Number.isFinite(limit)
     return {
       count: rows.length,
       bytes,
@@ -299,11 +335,12 @@ export function createMemory(opts) {
       newest,
       path: path(),
       // 上限与清理
-      maxBytes: limit,
-      usedRatio: limit > 0 ? bytes / limit : 0,
+      maxBytes: unlimited ? UNLIMITED : limit,   // -1 = 无上限
+      usedRatio: unlimited || !(limit > 0) ? 0 : bytes / limit,
+      unlimited,
       trimmed,                                  // 累计丢了多少条
       perDayBytes: perDay,                      // 估算的每日增长
-      daysLeft: leftMs > 0 ? leftMs / 86400000 : 0,
+      daysLeft: unlimited ? 0 : (leftMs > 0 ? leftMs / 86400000 : 0),
       onlyUser: onlyUserOn(),
     }
   }

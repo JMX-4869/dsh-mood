@@ -70,8 +70,10 @@ diaryFile() / DIARY_HOUR / DIARY_MINUTE
 dateKey(d) / yesterdayKey(now) / diaryDue(now, h, m)
 blankDiary() / loadDiary() / saveDiary(d) / writeDiary(d, key, text, moodLabel)
 setAccess(d, allowed, note) / canRead(d)
-dayBucket(d, key) / words(text) / topWords(bucket, n) / busiestHour(bucket)
-noteMood / noteSwitch / noteActivity / dominantMood(bucket)
+# 日记文件加密（AES-256-GCM）—— 见下
+diaryKeyFile() / loadDiaryKey()
+encryptDiary(json) / decryptDiary(buf) / isEncryptedDiary(buf)
+dayBucket(d, key) / words(text) / topWords(bucket, n) / busiestHour(bucket)noteMood / noteSwitch / noteActivity / dominantMood(bucket)
 applyVoice(text, mood) / composeDiary(...) / ensureDiary(...) / pruneDaily(d, keepDays)
 isInjectedText(text)            这条是不是被注入的框（不是人说的话）
 ```
@@ -156,6 +158,7 @@ createMemory({ file, log, maxBytes, onlyUser }) → {
   clear() / moveTo(newDir, onMoved) / load() / path()
 }
 MIN_CHARS(8) / MAX_CHARS(8000) / DEFAULT_LIMIT(8) / DEFAULT_MAX_BYTES(50 MB)
+UNLIMITED(-1) / isUnlimited(v)      ← 「无上限」那套，见下
 ```
 
 **`maxBytes` 和 `onlyUser` 要传函数**，别传死值 —— 用户在设置页改完必须立刻生效，
@@ -242,3 +245,45 @@ sessionController.prompt({sessionId, mode, content})
 ## 七、许可证
 
 MIT。**搬吧，改吧，不用问。**
+
+---
+
+## ⚠️ 两处「少一层就静默失效」的地方
+
+这两条都是**踩出来的**，而且现象一样：**设置看着成功了，实际没生效**。
+移植的时候照抄结构，别只抄一半。
+
+### 一、日记是加密存的（0.7.17）
+
+`dsh-mood-diary.json` **不是明文 JSON**，是：
+`DSHMDIARY1` 魔数(10B) + IV(12B) + authTag(16B) + 密文（AES-256-GCM）。
+密钥是 `dsh-mood-diary.key`（base64，32 字节，mode 0o600）。
+
+三条必须照做：
+
+1. **读的时候先判魔数，别直接 `JSON.parse`。** 加密文件按 utf8 读会得到替换字符，
+   parse 必然抛，然后被 catch 吞成"一份空日记"—— 现象是"日记全没了"，不是"解密失败"。
+2. **解密失败时返回 null，绝不能当成空日记。** 空日记一旦被保存回去，
+   真日记就被覆盖了，**不可逆**。
+3. **`saveDiary` 在写之前要再确认盘上那份解得开，解不开就拒绝写。**
+   光靠第 2 条拦不住那 5 个保存点里的任何一个；自保放在写函数里，一处管全部。
+
+⚠️ **密钥文件必须跟日记文件一起迁移**（`DATA_FILES` 里要注册它，且
+`migrateStorage` 里要按 **filter** 取文件而不是 **find** —— 一个键现在对应两个文件，
+用 find 只会拿到第一个，密钥永远搬不走，而现象是"迁移很成功，然后日记全打不开了"）。
+
+**为什么是密钥文件不是口令**：日记是**插件在 23:59 自动写的，没人在场**。
+写路径必须能在无人参与时拿到密钥，口令方案在这条上是死的。
+
+**它防什么**（别夸大）：防顺手看到、防备份/同步带走、防别的工具当普通 JSON 扫走。
+**不防**一个能读你整块磁盘的人 —— 密钥就放在隔壁。
+
+### 二、硬盘记忆的「无上限」（0.7.17）
+
+`maxBytes` 传负数（`-1`）= 无上限。这个值要穿过**四层**：
+设置页输入框 → `/memory` 路由 → `memoryCfg()` → `cap()`。
+每层都有自己的 `> 0` 判断，**每层都会单独把 -1 吃掉**。四层都要用 `isUnlimited()`。
+
+- 内部用 `Infinity`（比较天然成立），**对外一律折算成 `-1`**：
+  `JSON.stringify(Infinity)` 是 `null`，开关会在传输途中丢掉。
+- `0` / 空值 / 垃圾值**不算无上限** —— 那是"没填"，该走默认值，不然"没填"等于关掉了保护。
