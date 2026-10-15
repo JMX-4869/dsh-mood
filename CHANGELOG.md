@@ -54,13 +54,13 @@
 
 ```
 fixtures/diary.json     **真实日记全文**（带真实日期）
-fixtures/storage.json   真实路径：D:\xinqing\ZhuDongKaiKou、C:\Users\asus\.dsh
+fixtures/storage.json   真实路径：D:\path	o\data、C:\path	o\home
 fixtures/memory.json    **真实用量**：926 条 / 500660 字节 / 3 个会话
 fixtures/news.json      真实来源列表
 fixtures/state.json     真实心情状态
 README.md               拿真实目录名当示例配置
 test-events.mjs         写死的真实路径
-test-frames.mjs         注释里带 C:\Users\asus\Downloads\…（用户名）
+test-frames.mjs         注释里带 C:\path	o\downloads\…（用户名）
 client.js               两处示例路径用了真实目录名
 ```
 
