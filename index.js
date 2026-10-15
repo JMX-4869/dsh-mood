@@ -1715,9 +1715,29 @@ export function apply(root, rawConfig) {
              * 他既然在这儿敲字，说明他就在看这一条。
              * 绑上之后不再改 —— 免得后来的事件把待办"抢"走。
              */
-            if ((proactive.pendingRestart || proactive.pendingStale) && !proactive.reportSid) {
+            if (proactive.pendingRestart || proactive.pendingStale) {
               const sid0 = sessionIdOf(session || liveSession)
-              if (sid0) proactive.reportSid = sid0
+              /**
+               * ★ **主人在这个对话里开口，就是"他在看哪条"最强的证据 ——
+               *   它必须能覆盖任何猜测。**
+               *
+               * 原来这里是 `&& !proactive.reportSid` —— 已经绑过就不再改。
+               * 于是踩了这个坑：启动时 `bindReportSession` 靠 `list()` 里的时间戳
+               * 猜"最近的那个"，而 DSH 返回的会话项**未必带时间戳** ——
+               * 都不带时排序等于没排，它抓了列表里第一个。
+               * 结果：主人 14:28 重启，`reportSid` 却指着 **11 小时前**那个对话，
+               * 之后他在这里怎么说话都改不了，诊断里一直写着
+               * 「当前活跃的是别的对话，等回到绑定的那条再投」—— 而那条他不会再回去。
+               *
+               * 现在：只要他在这条里说话了，而绑的不是这条 → **就地改绑**。
+               * 顺带立刻试投一次，不用干等 30 秒心跳。
+               */
+              if (sid0 && proactive.reportSid !== sid0) {
+                try { log('dsh-mood 重启汇报改绑到当前对话 ' + sid0.slice(0, 8) + '…') } catch { /* 不管 */ }
+                proactive.reportSid = sid0
+                // 立刻试投 —— 他刚开口，正是投递最好的时机
+                try { void maybeReportRestart() } catch { /* 不管 */ }
+              }
             }
             // 用户终于回话了 —— 关掉"等回复"，下次空闲才可能再开口
             try { markReplied(proactive) } catch { /* 不管 */ }
@@ -1982,7 +2002,26 @@ export function apply(root, rawConfig) {
               : []
         if (!items.length) return false
         const stamp = (x) => Number((x && (x.updatedAt || x.at || x.time || x.lastAt)) || 0)
-        const newest = items.slice().sort((a, b) => stamp(b) - stamp(a))[0]
+        /**
+         * ★ **没有时间戳就别猜。**
+         *
+         * 这一段踩过一个大坑：原来是「按时间戳排序取第一个」——
+         * 可 DSH 返回的会话项**未必带时间戳**。都不带时每个都是 0 分，
+         * 排序等于没排，它就抓了列表里的第一个 —— 而那个很可能是**很久以前**的对话。
+         *
+         * 后果比"不投递"更糟：启动时 `liveSession` 还是 null，
+         * 后面那条「当前活跃的是不是绑定的那条」**没得比**，直接放行 ——
+         * 于是汇报安静地投进一个主人不会看的对话里。他不光收不到，还不知道为什么。
+         *
+         * 所以：**一个带时间戳的都没有 → 不绑**，留给"他开口那一刻"那条路。
+         * 宁可晚几十秒（他一说话就投），也不要投错地方。
+         */
+        const timed = items.filter((x) => stamp(x) > 0)
+        if (!timed.length) {
+          ctx.logger?.info?.('[dsh-mood] 会话列表没有时间戳 —— 不猜，等主人在对话里开口')
+          return false
+        }
+        const newest = timed.slice().sort((a, b) => stamp(b) - stamp(a))[0]
         const sid = sessionIdOf(newest)
         if (!sid) return false
         proactive.reportSid = sid
