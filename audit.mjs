@@ -255,7 +255,13 @@ const N = M.MOOD_IDS.length
       ['memoryCfg()（index.js）', /isUnlimited\(mb\) \? UNLIMITED/.test(host)],
       ['上限路由（index.js）', /if \(isUnlimited\(mb\)\) NEXT\.maxMB = UNLIMITED/.test(host)],
       ['设置页输入框（client.js）', /min: -1, max: 2000/.test(cl2)],
-      ['设置页收负数（client.js）', /if \(\(v < 0 \|\| v > 0\)/.test(cl2)],
+      ['设置页收负数（client.js）',
+        // ⚠️ 断**意图**，别断我恰好写的那串字符。
+        //    我原来写的是 /if \(\(v < 0 \|\| v > 0\)/ —— 后来把判断改成
+        //    `if (Number.isFinite(v) && (v < 0 || v > 0) && v !== cur)`，它就假红了。
+        //    （这已经是今晚第三次「断措辞就脆」：audit 的"不可信数据"、test-taste 的小节名、这里。）
+        //    要守的是"它接受负数"，不是"它长什么样"。
+        /v < 0 \|\| v > 0/.test(cl2)],
       ['设置页写了 -1 的说明', /-1 = 无上限/.test(cl2)],
     ]
     const missing = layers.filter(([, hasIt]) => !hasIt).map(([name]) => name)
@@ -572,6 +578,34 @@ const N = M.MOOD_IDS.length
       }
       naked.length ? NG('这些 .then 后面 400 字符内没有 .catch（会挂住请求）：' + naked.join(', '))
         : OK('每个 .then 都有 .catch')
+    }
+    {
+      // ④ **受控输入必须真的更新状态。**
+      //
+      //    踩过：硬盘记忆那个「上限」输入框写的是 `value: <算出来的字符串>` +
+      //    `onChange: (e) => { e.target.dataset.v = e.target.value }` ——
+      //    只写 dataset、不 setState。看着像"不重渲染就保得住输入"，
+      //    其实 React 对受控输入有**恢复受控状态**的动作：事件之后 DOM 值跟 `value` 对不上，
+      //    它立刻把 DOM 校回去。**结果是敲一个字符就被弹回去，根本打不进字。**
+      //    那个框从第一版起就不能用，只是没人去填它，所以一直没暴露。
+      //
+      //    判据：一个 input 上有 `value:`（受控），那么它附近就得有 `onChange` **并且**那个
+      //    onChange 里要出现 setXxx —— 否则它就是个"显示得出、改不了"的假输入框。
+      const clForInputs = fs.readFileSync(SRC + '/client.js', 'utf8')
+      const clCode = clForInputs.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*$/gm, '')
+      const lines = clCode.split('\n')
+      const broken = []
+      for (let i = 0; i < lines.length; i++) {
+        if (!/h\('input'/.test(lines[i])) continue
+        const seg = lines.slice(i, i + 16).join('\n')
+        if (!/\bvalue:/.test(seg)) continue                 // 非受控（defaultValue / 无 value）不管
+        const oc = seg.match(/onChange:\s*\(?e?\)?\s*=>[\s\S]{0,200}/)
+        if (!oc) { broken.push(i + 1 + '（有 value 却没有 onChange）'); continue }
+        if (!/set[A-Z]/.test(oc[0])) broken.push(i + 1 + '（onChange 里没有 setState）')
+      }
+      broken.length
+        ? NG('这些受控输入框改不动（onChange 没更新 state）：L' + broken.join('、L'))
+        : OK('受控输入框的 onChange 都真的更新了 state（改得动）')
     }
     // ⚠️ 跨站写保护。这个接口里是**全部对话原文**，还能一键清空。
     //    DSH 只绑 127.0.0.1、跨站读也拿不到响应 —— 但**跨站写**能打进来：

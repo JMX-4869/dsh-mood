@@ -843,6 +843,18 @@ window.__ModuleLoader__.load({
       const [q, setQ] = React.useState('')
       const [hits, setHits] = React.useState(null)
       const [busy, setBusy] = React.useState(false)
+      // ⚠️ 上限那个输入框**必须有自己的 state**。
+      //
+      //    原来它是「受控 value + onChange 只写 dataset」——
+      //    看着像"不重渲染就保得住输入"，其实 React 有个**恢复受控状态**的动作：
+      //    事件之后一旦 DOM 值跟 `value` 对不上，它会立刻把 DOM 校回去。
+      //    结果就是**敲一个字符就被弹回去，根本打不进字**。
+      //    （这个框从第一版起就没法用，只是没人去填它所以没被发现。）
+      const [cap, setCap] = React.useState('')
+      // 数据回来（或保存后重新 load）时同步一次 —— 但**打字期间不覆盖**：
+      // 靠"只在 maxBytes 真的变了才同步"来避免刚敲进去就被冲掉。
+      const capFromStats = data && data.stats ? String(data.stats.maxBytes < 0 ? -1 : (Math.round((data.stats.maxBytes || 0) / 1048576) || 50)) : ''
+      React.useEffect(() => { if (capFromStats) setCap(capFromStats) }, [capFromStats])
 
       /** 改归档设置（走同一个 /memory POST） */
       const patch2 = async (body) => {
@@ -950,19 +962,23 @@ window.__ModuleLoader__.load({
           h('span', { className: 'memlab' }, '上限'),
           h('input', {
             className: 'srcin memnum', type: 'number', min: -1, max: 2000,
-            // 无上限（后端报 -1）时输入框就显示 -1，别折算成 50
-            value: String((data.stats && data.stats.maxBytes < 0) ? -1
-              : (Math.round(((data.stats && data.stats.maxBytes) || 0) / 1048576) || 50)),
+            // ⚠️ 必须是 `cap`（有 state 的），不能再算一次 —— 也不能只写 dataset。
+            //    见上面 cap / capFromStats 那段注释：受控输入不更新 state 就敲不进字。
+            value: cap,
             disabled: busy,
             title: '填 -1 = 不限体积（归档会一直长）',
-            onKeyDown: (e) => { if (e.key === 'Enter') void post({ action: 'limits', maxMB: Number(e.target.value) }, '上限已改') },
-            onChange: (e) => { e.target.dataset.v = e.target.value },
-            onBlur: (e) => {
-              const v = Number(e.target.value)
+            onKeyDown: (e) => {
+              if (e.key !== 'Enter') return
+              const v = Number(cap)
+              void post({ action: 'limits', maxMB: v }, v < 0 ? '上限已取消 —— 归档不再自动清理' : '上限已改成 ' + v + ' MB')
+            },
+            onChange: (e) => setCap(e.target.value),
+            onBlur: () => {
+              const v = Number(cap)
               const cur = (data.stats && data.stats.maxBytes < 0) ? -1
                 : Math.round(((data.stats && data.stats.maxBytes) || 0) / 1048576)
               // -1（或任何负数）= 无上限；正数照旧。原来只收 `v > 0`，所以填 -1 会被忽略。
-              if ((v < 0 || v > 0) && Number.isFinite(v) && v !== cur) {
+              if (Number.isFinite(v) && (v < 0 || v > 0) && v !== cur) {
                 void post({ action: 'limits', maxMB: v },
                   v < 0 ? '上限已取消 —— 归档不再自动清理' : '上限已改成 ' + v + ' MB')
               }
