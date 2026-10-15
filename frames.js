@@ -99,7 +99,7 @@ export function absoluteFrameIndex(sec, offset, fps) {
  */
 export function planFrames(durationSec, opts = {}) {
   const duration = Math.max(0, Number(durationSec) || 0)
-  const maxFrames = Math.max(1, Math.min(64, Number(opts.maxFrames) || 16))
+  const maxFrames = Math.max(1, Math.floor(Number(opts.maxFrames) || 16))
   const perSecond = Math.max(1, Math.min(8, Number(opts.perSecond) || 1))
   const fps = Number(opts.fps) || 30
 

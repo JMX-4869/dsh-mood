@@ -116,7 +116,11 @@ const t = suite('视频抽帧')
   t.ok(F.planFrames(0).note, '而且给了个说法（拿不到时长）')
   t.noThrow(() => F.planFrames(NaN), 'NaN 时长不崩')
   t.noThrow(() => F.planFrames(600, { maxFrames: -5 }), '负数 maxFrames 不崩')
-  t.eq(F.planFrames(600, { maxFrames: 9999 }).picks.length <= 64, true, 'maxFrames 有上限（不会一次要几千张）')
+  // ⚠️ 2026-10-16 改：**上限 64 取消了**。
+  //    原来这条断言写的是"maxFrames 有上限（不会一次要几千张）"——那是我自己加的保险，
+  //    但主人指出：**稀疏抽帧本身就会丢信息**，98 秒按秒抽该给 98 张，被砍到 63 秒就是"尾巴消失"。
+  //    现在改成：给多少就抽多少，**由 maxMinutes 和磁盘兜底**，不再在这里腰斩。
+  t.eq(F.planFrames(600, { maxFrames: 9999 }).picks.length > 64, true, 'maxFrames 不再有 64 的上限（给多少抽多少）')
 }
 
 // ══════════════════════════════════════════════════════

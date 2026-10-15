@@ -2350,7 +2350,7 @@ export function apply(root, rawConfig) {
             '  变化少的地方不重复取 —— 所以"取几张"是按内容定的，不是按秒数均分。\n' +
             '  ⚠️ 但它对"亮度不变的色相切换"（红切绿那种平涂色块）是瞎的，\n' +
             '  所以会自动叠一层稀疏的均分兜底，别担心整段漏掉。\n' +
-            '  可选 count（抽几张，默认 12，上限 64）/ perSecond / everySec（**给了它就回到按秒均分**）/\n' +
+            '  可选 count（抽几张，默认 12，**没有上限**）/ 真要看全片就按秒给，别怕多/ perSecond / everySec（**给了它就回到按秒均分**）/\n' +
             '  maxMinutes（超过就拒，默认 15 分钟）。抽出来的图**下一批或两小时后自动删**。\n' +
             '**你可以自己加源** —— 用户聊到值得跟进的东西、或明确要你盯着某个站，就加。\n' +
             '**但必须说一声**：加完在回复里讲清楚"我加了 X 这个来源"，别偷偷往里面塞。\n' +
@@ -2364,7 +2364,7 @@ export function apply(root, rawConfig) {
             url: { type: 'string', description: 'add / frames 时必填：RSS、网页或视频页的网址' },
             label: { type: 'string', description: 'add 时的显示名，可空（会自动取名）' },
             id: { type: 'string', description: 'remove 时必填：来源 id，先用 list 看' },
-            count: { type: 'number', description: 'frames：抽几张，默认 12（最多 64）' },
+            count: { type: 'number', description: 'frames：抽几张，默认 12（**没有上限**，受 maxMinutes 与磁盘约束）' },
             perSecond: { type: 'number', description: 'frames：每秒抽几张，默认 1（最多 8）' },
             everySec: { type: 'number', description: 'frames：每隔几秒取一组；不传按时长自动算' },
             maxMinutes: { type: 'number', description: 'frames：视频超过这么多分钟就拒，默认 15' },
