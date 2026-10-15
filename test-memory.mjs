@@ -1,7 +1,9 @@
 import fs from 'node:fs'
 import { createMemory, MIN_CHARS, MAX_CHARS } from 'file:///D:/chajian/dsh-mood/memory.js'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
-const TMP = 'D:/DSHzuoye/_memtest'
+const TMP = join(tmpdir(), '_dshmood_memtest')
 fs.rmSync(TMP, { recursive: true, force: true })
 fs.mkdirSync(TMP, { recursive: true })
 

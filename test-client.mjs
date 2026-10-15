@@ -22,11 +22,37 @@
  *  拿编的桩去测，测的是我脑子里的接口，不是真的那个 —— 白测。
  */
 
+// ⚠️ 这份测试要 jsdom + react（插件本身不依赖它们，只用来在 Node 里渲染设置页）。
+//
+//    原来这里写死了 `工作区里一份手工装的 node_modules` —— 那是我本机手工装的一份。
+//    也就是说：**这个文件在别人机器上一直是坏的**，只是我看不见（我这儿有）。
+//    现在按顺序找，找不到就**大声跳过**，不再靠一个属于我的目录。
 import fs from 'node:fs'
 import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const FX = 'D:/chajian/dsh-mood/fixtures'
-const RT = 'D:/DSHzuoye/_rendertest/node_modules'
+const HERE = dirname(fileURLToPath(import.meta.url))
+const FX = join(HERE, 'fixtures')
+
+const _cand = [
+  process.env.DSHMOOD_NODE_MODULES,          // 显式给
+  join(HERE, 'node_modules'),                // 插件自己的
+  join(tmpdir(), '_dshmood_rendertest', 'node_modules'),
+].filter(Boolean)
+const RT = _cand.find((p) => { try { return fs.existsSync(join(p, 'jsdom')) } catch { return false } })
+
+if (!RT) {
+  console.log('')
+  console.log('  ⏭️  跳过：没找到 jsdom —— **这份测试这次没跑，不是通过了。**')
+  console.log('      它用来在 Node 里渲染设置页（真快照 → 真渲一遍 → 比对）。')
+  console.log('      装法（二选一）：')
+  console.log('        mkdir -p node_modules && npm i --no-save jsdom react react-dom')
+  console.log('        DSHMOOD_NODE_MODULES=/某个/有jsdom的/node_modules node test-client.mjs')
+  process.exit(0)
+}
+
 const req = createRequire(RT + '/')
 const { JSDOM } = req('jsdom')
 const React = req('react')

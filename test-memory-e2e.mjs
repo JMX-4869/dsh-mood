@@ -20,8 +20,10 @@
  */
 
 import fs from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
-const TMP = 'D:/DSHzuoye/_e2ehome'
+const TMP = join(tmpdir(), '_dshmood_e2ehome')
 fs.rmSync(TMP, { recursive: true, force: true })
 fs.mkdirSync(TMP, { recursive: true })
 process.env.DSH_HOME = TMP

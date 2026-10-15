@@ -9,8 +9,9 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import { tmpdir } from 'node:os'
 
-const TMP = 'D:/DSHzuoye/_diarytest'
+const TMP = path.join(tmpdir(), '_dshmood_diarytest')
 fs.rmSync(TMP, { recursive: true, force: true })
 fs.mkdirSync(TMP, { recursive: true })
 process.env.DSH_HOME = TMP

@@ -5,8 +5,10 @@
  */
 import fs from 'node:fs'
 import { createMemory, isUnlimited, UNLIMITED, DEFAULT_MAX_BYTES, MIN_CHARS } from './memory.js'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
-const F = 'D:/DSHzuoye/_memtest.jsonl'
+const F = join(tmpdir(), '_dshmood_memtest.jsonl')
 const MB = 1024 * 1024
 const out = []
 const ok = (n, c, e = '') => out.push('  ' + (c ? '✅' : '❌') + ' ' + n + (e ? '  → ' + e : ''))

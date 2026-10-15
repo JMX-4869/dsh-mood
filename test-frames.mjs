@@ -282,11 +282,23 @@ const t = suite('视频抽帧')
 //  真实视频：整条链
 // ══════════════════════════════════════════════════════
 {
-  const VID = 'D:/DSHzuoye/dsh-mood-promo/dsh-mood-介绍片_动效版.mp4'
+  // ⚠️ 原来这里写死了我本机那个介绍片的路径 —— 别人跑必然找不到。
+  //    改成从环境变量给：没有就**跳过这一条**，而不是失败。
+  const VID = process.env.DSHMOOD_TEST_VIDEO || ''
   const ffmpeg = F.findMediaTool('ffmpeg')
   const ffprobe = F.findMediaTool('ffprobe')
   t.ok(!!ffmpeg, '找得到 ffmpeg（' + String(ffmpeg || '').split(/[\\/]/).pop() + '）')
 
+  if (!process.env.DSHMOOD_TEST_VIDEO) {
+    // ⚠️ **跳过必须出声。**
+    //    第一版改完是这样：95 条变成 86 条，而汇总照样只说「通过 86 失败 0」——
+    //    **9 条断言静悄悄地没有了**，读的人会以为这块全验过了。
+    //    这跟我库里那条是同一个病：吞掉的地方，症状会伪装成"数据本来就是这样"。
+    console.log('  ⏭️  跳过 9 条：没有设 DSHMOOD_TEST_VIDEO')
+    console.log('      那些断言需要一个真视频文件（probe 出的时长/帧率/分辨率、按秒抽帧…）。')
+    console.log('      设法： DSHMOOD_TEST_VIDEO=D:\\某个视频.mp4 node test-frames.mjs')
+    console.log('      **这不是"验过了"，是"这次没验"。**')
+  }
   if (fs.existsSync(VID) && ffmpeg && ffprobe) {
     const info = F.probe(VID, ffprobe)
     t.ok(info && info.durationSec > 0, 'probe 拿得到时长（' + (info && Math.round(info.durationSec)) + ' 秒）')

@@ -13,8 +13,10 @@
  */
 
 import fs from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
-const TMP = 'D:/DSHzuoye/_toolhome'
+const TMP = join(tmpdir(), '_dshmood_toolhome')
 fs.rmSync(TMP, { recursive: true, force: true })
 fs.mkdirSync(TMP, { recursive: true })
 process.env.DSH_HOME = TMP
