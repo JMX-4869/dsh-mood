@@ -4,8 +4,14 @@
  * ⚠️ 原来这个文件**只打印**得分，没有任何断言 —— 连那个"零误报"的结论
  *    也只是 `console.log` 一句，红了也没人知道。
  */
-import * as M from 'file:///D:/chajian/dsh-mood/index.js'
+import * as M from './index.js'
 import { suite, acc, top } from './testkit.mjs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+// ⚠️ 这个目录**不能写死** —— 那既是本机路径，也让别人 clone 下来跑不了。
+//    从文件自己的位置往上推：文件在哪，插件根就在哪。
+const ROOT = dirname(fileURLToPath(import.meta.url))
 
 const t = suite('当代说法')
 const J = M.judgeMessage

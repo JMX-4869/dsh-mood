@@ -14,12 +14,18 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { dirname } from 'node:path'
+
+// ⚠️ 这个目录**不能写死** —— 那既是本机路径，也让别人 clone 下来跑不了。
+//    从文件自己的位置往上推：文件在哪，插件根就在哪。
+const ROOT = dirname(fileURLToPath(import.meta.url))
 
 const H = path.join(os.tmpdir(), 'dsh-mood-taste-test-' + Date.now())
 fs.mkdirSync(H, { recursive: true })
 process.env.DSH_HOME = H
 
-const T = await import('file:///D:/chajian/dsh-mood/taste.js')
+const T = await import(new URL('taste.js', import.meta.url).href)
 const { suite } = await import('./testkit.mjs')
 
 const t = suite('品味库')

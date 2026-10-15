@@ -8,8 +8,14 @@
  *    所以 **`Object.keys()` 看不到它们，但属性读得到** ——
  *    探针写错就会得出"一个特殊键都没有"的错误结论（我踩过）。
  */
-import * as M from 'file:///D:/chajian/dsh-mood/index.js'
+import * as M from './index.js'
 import { suite, acc, top } from './testkit.mjs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+// ⚠️ 这个目录**不能写死** —— 那既是本机路径，也让别人 clone 下来跑不了。
+//    从文件自己的位置往上推：文件在哪，插件根就在哪。
+const ROOT = dirname(fileURLToPath(import.meta.url))
 
 const t = suite('痛苦信号与区分度')
 const L = (id) => (M.MOODS[id] ? M.MOODS[id].label : id)

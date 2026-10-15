@@ -17,6 +17,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { suite } from './testkit.mjs'
+import { fileURLToPath } from 'node:url'
+import { dirname } from 'node:path'
+
+// ⚠️ 这个目录**不能写死** —— 那既是本机路径，也让别人 clone 下来跑不了。
+//    从文件自己的位置往上推：文件在哪，插件根就在哪。
+const ROOT = dirname(fileURLToPath(import.meta.url))
 
 const t = suite('写盘失败要出声')
 
@@ -24,9 +30,9 @@ const TMP = path.join(os.tmpdir(), 'dsh-mood-savefail-' + Date.now())
 fs.mkdirSync(TMP, { recursive: true })
 process.env.DSH_HOME = TMP
 
-const D = await import('file:///D:/chajian/dsh-mood/diary.js?t=' + Date.now())
-const N = await import('file:///D:/chajian/dsh-mood/news.js?t=' + Date.now())
-const P = await import('file:///D:/chajian/dsh-mood/proactive.js?t=' + Date.now())
+const D = await import(new URL('diary.js?t=', import.meta.url).href + Date.now())
+const N = await import(new URL('news.js?t=', import.meta.url).href + Date.now())
+const P = await import(new URL('proactive.js?t=', import.meta.url).href + Date.now())
 
 /** 抓住 console.error 的输出 */
 function capture(fn) {

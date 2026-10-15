@@ -15,8 +15,14 @@
  */
 
 import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 
-const SRC = 'D:/chajian/dsh-mood'
+// ⚠️ 这个目录**不能写死** —— 那既是本机路径，也让别人 clone 下来跑不了。
+//    从文件自己的位置往上推：文件在哪，插件根就在哪。
+const ROOT = dirname(fileURLToPath(import.meta.url))
+
+const SRC = ROOT
 const doc = fs.readFileSync(SRC + '/PORTING.md', 'utf8')
 const MODS = ['store.js', 'diary.js', 'news.js', 'proactive.js', 'memory.js', 'frames.js', 'taste.js', 'sessions.js']
 // 声称"零 DSH 依赖"的那些 —— 除了 sessions.js（它有 2 处，得改两行）。

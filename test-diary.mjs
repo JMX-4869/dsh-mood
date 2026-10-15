@@ -8,9 +8,15 @@
  *    · 素材清理不能把还没用上的删掉
  *    全靠人眼看输出守着，不合适。
  */
-import * as D from 'file:///D:/chajian/dsh-mood/diary.js'
-import { MOODS } from 'file:///D:/chajian/dsh-mood/index.js'
+import * as D from './diary.js'
+import { MOODS } from './index.js'
 import { suite } from './testkit.mjs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+// ⚠️ 这个目录**不能写死** —— 那既是本机路径，也让别人 clone 下来跑不了。
+//    从文件自己的位置往上推：文件在哪，插件根就在哪。
+const ROOT = dirname(fileURLToPath(import.meta.url))
 
 const t = suite('日记')
 const lbl = (id) => (MOODS[id] ? MOODS[id].label : id)

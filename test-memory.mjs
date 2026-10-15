@@ -1,7 +1,12 @@
 import fs from 'node:fs'
-import { createMemory, MIN_CHARS, MAX_CHARS } from 'file:///D:/chajian/dsh-mood/memory.js'
+import { createMemory, MIN_CHARS, MAX_CHARS } from './memory.js'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// ⚠️ 这个目录**不能写死** —— 那既是本机路径，也让别人 clone 下来跑不了。
+//    从文件自己的位置往上推：文件在哪，插件根就在哪。
+const ROOT = dirname(fileURLToPath(import.meta.url))
 
 const TMP = join(tmpdir(), '_dshmood_memtest')
 fs.rmSync(TMP, { recursive: true, force: true })

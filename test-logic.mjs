@@ -5,8 +5,14 @@
  *    也就是说：改了判定逻辑它红不了。现在断言的是**不变量**，
  *    不是某次具体转移（具体转移到哪是涌现出来的，锁死它反而脆）。
  */
-import * as M from 'file:///D:/chajian/dsh-mood/index.js'
+import * as M from './index.js'
 import { suite } from './testkit.mjs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+// ⚠️ 这个目录**不能写死** —— 那既是本机路径，也让别人 clone 下来跑不了。
+//    从文件自己的位置往上推：文件在哪，插件根就在哪。
+const ROOT = dirname(fileURLToPath(import.meta.url))
 
 const t = suite('心情判定与转移')
 const { blankState, tryTransition, CFG } = M._internal

@@ -7,6 +7,7 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
+import { dirname } from 'node:path'
 
 const require = createRequire(import.meta.url)
 // ⚠️ 源码目录 = **本文件所在目录**，别写死绝对路径。

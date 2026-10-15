@@ -1,4 +1,10 @@
-const P = await import('file:///D:/chajian/dsh-mood/proactive.js?t=' + Date.now())
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+// ⚠️ 这个目录**不能写死** —— 那既是本机路径，也让别人 clone 下来跑不了。
+//    从文件自己的位置往上推：文件在哪，插件根就在哪。
+const ROOT = dirname(fileURLToPath(import.meta.url))
+const P = await import(new URL('proactive.js?t=', import.meta.url).href + Date.now())
 let pass = 0, fail = 0
 const ok = (n, c, x = '') => { if (c) { pass++; console.log('  ✅ ' + n) } else { fail++; console.log('  ❌ ' + n + (x ? '  → ' + x : '')) } }
 

@@ -15,6 +15,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { dirname } from 'node:path'
 
 const H = path.join(os.tmpdir(), 'dsh-mood-smoke-' + Date.now())
 fs.mkdirSync(H, { recursive: true })

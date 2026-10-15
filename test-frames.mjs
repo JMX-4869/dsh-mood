@@ -8,8 +8,14 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { suite } from './testkit.mjs'
+import { fileURLToPath } from 'node:url'
+import { dirname } from 'node:path'
 
-const F = await import('file:///D:/chajian/dsh-mood/frames.js?t=' + Date.now())
+// ⚠️ 这个目录**不能写死** —— 那既是本机路径，也让别人 clone 下来跑不了。
+//    从文件自己的位置往上推：文件在哪，插件根就在哪。
+const ROOT = dirname(fileURLToPath(import.meta.url))
+
+const F = await import(new URL('frames.js?t=', import.meta.url).href + Date.now())
 const t = suite('视频抽帧')
 
 // ══════════════════════════════════════════════════════

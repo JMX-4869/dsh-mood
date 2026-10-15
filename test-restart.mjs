@@ -16,8 +16,14 @@
  *  这两条各自单独测 —— 别只测一条就当两件都好了。
  */
 import { suite } from './testkit.mjs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 
-const P = await import('file:///D:/chajian/dsh-mood/proactive.js?t=' + Date.now())
+// ⚠️ 这个目录**不能写死** —— 那既是本机路径，也让别人 clone 下来跑不了。
+//    从文件自己的位置往上推：文件在哪，插件根就在哪。
+const ROOT = dirname(fileURLToPath(import.meta.url))
+
+const P = await import(new URL('proactive.js?t=', import.meta.url).href + Date.now())
 const t = suite('重启汇报：何时发、发给谁')
 
 const HOUR = 3600000
@@ -127,7 +133,7 @@ const NOW = new Date('2026-10-14T15:00:00').getTime()
 // ══════════════════════════════════════════════════════════
 {
   const fs = await import('node:fs')
-  const host = fs.readFileSync('D:/chajian/dsh-mood/index.js', 'utf8')
+  const host = fs.readFileSync(join(ROOT, 'index.js'), 'utf8')
   // 投递用绑定值，不用"最近有动静的那个"
   const fn = host.slice(host.indexOf('async function maybeReportRestart'), host.indexOf('async function maybeReportRestart') + 3000)
   t.has(fn, "const sid = proactive.reportSid", '投递用的是绑定的对话（不是 liveSession）')
@@ -141,7 +147,7 @@ const NOW = new Date('2026-10-14T15:00:00').getTime()
 // ══════════════════════════════════════════════════════════
 {
   const fs = await import('node:fs')
-  const host = fs.readFileSync('D:/chajian/dsh-mood/index.js', 'utf8')
+  const host = fs.readFileSync(join(ROOT, 'index.js'), 'utf8')
   // ⚠️ 锚**那行代码本身**，别锚注释里的词 —— 上面那段解释性注释里也有 reportSid，
   //    锚在注释上会把窗口开进注释里，断言就"看不见"真正的代码了。
   const i = host.indexOf('const sid0 = sessionIdOf(session || liveSession)')
@@ -176,7 +182,7 @@ const NOW = new Date('2026-10-14T15:00:00').getTime()
 // 本来就会等当前回合结束，不打断任何人。
 {
   const fs = await import('node:fs')
-  const host = fs.readFileSync('D:/chajian/dsh-mood/index.js', 'utf8')
+  const host = fs.readFileSync(join(ROOT, 'index.js'), 'utf8')
   const i = host.indexOf('async function maybeReportRestart')
   const fn = host.slice(i, i + 4000)
   // ⚠️ **先剥注释再查** —— 我在那段里写了「这里原来有一道 if (turnBusy)」来解释，
@@ -211,7 +217,7 @@ const NOW = new Date('2026-10-14T15:00:00').getTime()
 // 改成启动时问 `sessionController.list()`，挑**最近更新的那个会话**。
 {
   const fs = await import('node:fs')
-  const host = fs.readFileSync('D:/chajian/dsh-mood/index.js', 'utf8')
+  const host = fs.readFileSync(join(ROOT, 'index.js'), 'utf8')
   const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*$/gm, '')
   const body = strip(host)
 
@@ -239,7 +245,7 @@ const NOW = new Date('2026-10-14T15:00:00').getTime()
 // 调试时就是卡在这一条：list() 调了、绑上了，诊断却仍写「还没见过任何会话事件」。
 {
   const fs = await import('node:fs')
-  const host = fs.readFileSync('D:/chajian/dsh-mood/index.js', 'utf8')
+  const host = fs.readFileSync(join(ROOT, 'index.js'), 'utf8')
   const i = host.indexOf('async function maybeReportRestart')
   const fn = host.slice(i, i + 4000)
   const body = fn.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*$/gm, '')
@@ -259,7 +265,7 @@ const NOW = new Date('2026-10-14T15:00:00').getTime()
 // 而且它是往对话里**排队投一条消息** —— 不弹通知、不会吵醒谁。
 {
   const fs = await import('node:fs')
-  const host = fs.readFileSync('D:/chajian/dsh-mood/index.js', 'utf8')
+  const host = fs.readFileSync(join(ROOT, 'index.js'), 'utf8')
   const i = host.indexOf('async function maybeReportRestart')
   const fn = host.slice(i, i + 4000)
   const body = fn.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*$/gm, '')

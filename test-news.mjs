@@ -17,12 +17,18 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { dirname } from 'node:path'
+
+// ⚠️ 这个目录**不能写死** —— 那既是本机路径，也让别人 clone 下来跑不了。
+//    从文件自己的位置往上推：文件在哪，插件根就在哪。
+const ROOT = dirname(fileURLToPath(import.meta.url))
 
 const TMP_HOME = path.join(os.tmpdir(), 'dsh-mood-testnews-' + Date.now())
 fs.mkdirSync(TMP_HOME, { recursive: true })
 process.env.DSH_HOME = TMP_HOME
 
-const N = await import('file:///D:/chajian/dsh-mood/news.js')
+const N = await import(new URL('news.js', import.meta.url).href)
 const { suite } = await import('./testkit.mjs')
 
 const t = suite('时事解析')
@@ -193,7 +199,7 @@ const t = suite('时事解析')
   t.noThrow(() => N.renderForPrompt(undefined), 'undefined 不崩')
 
   // 拿真快照喂一遍（fixtures/news.json 是从跑着的插件上抓的）
-  const snap = JSON.parse((await import('node:fs')).readFileSync('D:/chajian/dsh-mood/fixtures/news.json', 'utf8'))
+  const snap = JSON.parse((await import('node:fs')).readFileSync(path.join(ROOT, 'fixtures/news.json'), 'utf8'))
   const out = N.renderForPrompt(snap, 12)
   t.ok(typeof out === 'string', '真快照也能渲染')
   t.ok(out.length <= N.NEWS_PROMPT_MAX * (N.NEWS_TITLE_MAX + 40), '渲染结果有上限（' + out.length + ' 字符）')

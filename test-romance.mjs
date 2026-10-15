@@ -4,8 +4,14 @@
  * ⚠️ 原来这个文件**只打印** —— 也就是说"技术对话不会误触发亲密类"
  *    这个结论从来没被断言过，全靠人眼看。
  */
-import * as M from 'file:///D:/chajian/dsh-mood/index.js'
+import * as M from './index.js'
 import { suite, acc, top } from './testkit.mjs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+// ⚠️ 这个目录**不能写死** —— 那既是本机路径，也让别人 clone 下来跑不了。
+//    从文件自己的位置往上推：文件在哪，插件根就在哪。
+const ROOT = dirname(fileURLToPath(import.meta.url))
 
 const t = suite('亲密类与现实守则')
 const J = M.judgeMessage
@@ -75,7 +81,7 @@ t.has(M.ROMANTIC_MOODS, 'jealous', '有吃醋')
 {
   t.eq(M.REALITY_NUDGE_INTERVAL_MS / 3600000, 6, '现实提醒间隔 6 小时')
   t.gt(M.REALITY_NUDGE_INTERVAL_MS, 0, '间隔是个正数')
-  const src = (await import('node:fs')).readFileSync('D:/chajian/dsh-mood/index.js', 'utf8')
+  const src = (await import('node:fs')).readFileSync(join(ROOT, 'index.js'), 'utf8')
   t.has(src, 'REALITY_NUDGE_INTERVAL_MS', '间隔真的被用到了（不是只定义）')
 }
 

@@ -10,6 +10,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { tmpdir } from 'node:os'
+import { dirname } from 'node:path'
 
 const TMP = path.join(tmpdir(), '_dshmood_diarytest')
 fs.rmSync(TMP, { recursive: true, force: true })

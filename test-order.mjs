@@ -5,8 +5,14 @@
  *    排序错了（宿主给新→旧，客户端 asc 时要翻）表现是"日记顺序乱"，
  *    属于那种**没人会去看一眼**的问题。
  */
-import * as D from 'file:///D:/chajian/dsh-mood/diary.js'
+import * as D from './diary.js'
 import { suite } from './testkit.mjs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+// ⚠️ 这个目录**不能写死** —— 那既是本机路径，也让别人 clone 下来跑不了。
+//    从文件自己的位置往上推：文件在哪，插件根就在哪。
+const ROOT = dirname(fileURLToPath(import.meta.url))
 
 const t = suite('日记排序')
 

@@ -25,9 +25,15 @@
 
 import fs from 'node:fs'
 import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+// ⚠️ 这个目录**不能写死** —— 那既是本机路径，也让别人 clone 下来跑不了。
+//    从文件自己的位置往上推：文件在哪，插件根就在哪。
+const ROOT = dirname(fileURLToPath(import.meta.url))
 
 const API = 'http://127.0.0.1:19387/dsh-mood-api'
-const FX = 'D:/chajian/dsh-mood/fixtures'
+const FX = join(ROOT, 'fixtures')
 const UPDATE = process.argv.includes('--update') || process.argv.includes('--capture')
 
 let pass = 0, fail = 0

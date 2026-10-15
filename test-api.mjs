@@ -19,7 +19,12 @@
 
 import fs from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// ⚠️ 这个目录**不能写死** —— 那既是本机路径，也让别人 clone 下来跑不了。
+//    从文件自己的位置往上推：文件在哪，插件根就在哪。
+const ROOT = dirname(fileURLToPath(import.meta.url))
 
 const TMP = join(tmpdir(), '_dshmood_apihome')
 fs.rmSync(TMP, { recursive: true, force: true })
@@ -29,7 +34,7 @@ process.env.DSH_HOME = TMP
 let pass = 0, fail = 0
 const ok = (n, c, x = '') => { if (c) { pass++; console.log('  ✅ ' + n) } else { fail++; console.log('  ❌ ' + n + (x ? '  → ' + x : '')) } }
 
-const M = await import('file:///D:/chajian/dsh-mood/index.js?t=' + Date.now())
+const M = await import(new URL('index.js?t=', import.meta.url).href + Date.now())
 
 // ── 假 ctx：把路由收下来 ──
 const got = { routes: [], tools: [] }

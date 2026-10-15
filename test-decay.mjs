@@ -5,13 +5,19 @@
  *    真逻辑改错了它不会红。现在直接测 `_internal.decayValues`（真实现）。
  */
 import fs from 'node:fs'
-import * as M from 'file:///D:/chajian/dsh-mood/index.js'
+import * as M from './index.js'
 import { suite } from './testkit.mjs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+// ⚠️ 这个目录**不能写死** —— 那既是本机路径，也让别人 clone 下来跑不了。
+//    从文件自己的位置往上推：文件在哪，插件根就在哪。
+const ROOT = dirname(fileURLToPath(import.meta.url))
 
 const t = suite('周期回落')
 const { CFG, MOODS, MOOD_IDS, blankState, decayValues } = M._internal
 const L = (id) => MOODS[id].label
-const SRC = fs.readFileSync('D:/chajian/dsh-mood/index.js', 'utf8')
+const SRC = fs.readFileSync(join(ROOT, 'index.js'), 'utf8')
 
 // ── 参数 ──
 t.eq(CFG.decayRatio, 0.25, '回落比例是 25%')

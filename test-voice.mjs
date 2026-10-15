@@ -5,9 +5,15 @@
  *    没断言。也就是说 applyVoice 哪天坏成"所有心情一个腔调"，
  *    这个测试照样绿。
  */
-import * as D from 'file:///D:/chajian/dsh-mood/diary.js'
-import * as M from 'file:///D:/chajian/dsh-mood/index.js'
+import * as D from './diary.js'
+import * as M from './index.js'
 import { suite } from './testkit.mjs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+// ⚠️ 这个目录**不能写死** —— 那既是本机路径，也让别人 clone 下来跑不了。
+//    从文件自己的位置往上推：文件在哪，插件根就在哪。
+const ROOT = dirname(fileURLToPath(import.meta.url))
 
 const t = suite('日记文风')
 const lbl = (id) => (M.MOODS[id] ? M.MOODS[id].label : id)
