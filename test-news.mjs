@@ -89,6 +89,38 @@ const t = suite('时事解析')
   const rel = N.parseRss('<rss><channel><item><title>相对链接的条目</title><link>/a/1</link></item></channel></rss>')
   t.eq(rel.length, 1, '相对链接的条目还是收')
   t.eq(rel[0].url, '', '但 url 留空（不当成可用链接）')
+
+  // ── CDATA（Nature 那种 RSS 1.0 写法）──
+  //
+  // ⚠️ 这一段是**栽过才加的**。原来 clean() 只有一行去标签正则，对
+  //    `<title><![CDATA[xxx]]></title>` 会把 `<![CDATA[xxx]]>` **整块**当标签吃掉
+  //    （它不含 `>`，正好一路匹配到 `]]>`），返回空串 —— 于是 parseRss 里
+  //    `if (!title) continue` 把这个条目**整个跳过**，Nature 在它身上返回 **0 条**。
+  //    然后 fetchOne 掉到 HTML 兜底，从原始 XML 里刮出标题，留下一串 `]]>` 尾巴。
+  //
+  //    现象看着是"这个源能抓、只是标题带怪东西"，根因却是**正规路径整个失效了**。
+  //    所以这里的断言不只测"尾巴干不干净"，更要测**条目数**。
+  {
+    const cdata = '<?xml version="1.0"?><rdf:RDF><item rdf:about="https://n.com/1">' +
+      '<title><![CDATA[ArXiv versus AI slop]]></title>' +
+      '<link>https://n.com/1</link></item>' +
+      '<item rdf:about="https://n.com/2"><title><![CDATA[带 <p> 标签的标题]]></title>' +
+      '<link>https://n.com/2</link></item></rdf:RDF>'
+    const ci = N.parseRss(cdata)
+    t.eq(ci.length, 2, 'CDATA 的条目不能被整个跳过（Nature 那次就是 0 条）')
+    t.eq(ci[0].title, 'ArXiv versus AI slop', 'CDATA 里的标题要完整取出来')
+    // 期望值**带一个空格**：`<p>` 被移除后它两边的空格还在，\s+ 再收成一个。
+    // （这不是毛病 —— 标题里出现 <p> 本来就罕见，硬把空格也吃掉反而会
+    //   把 "A</b><b>B" 这种正常分词粘起来。）
+    t.eq(ci[1].title, '带 标签的标题', 'CDATA 里含标签时也先剥 CDATA 再去标签')
+    t.ok(!/\]\]>/.test(ci.map((x) => x.title).join('')), '标题里不许留 ]]> 尾巴')
+
+    t.eq(N.clean('<![CDATA[标题]]>'), '标题', 'clean 剥 CDATA')
+    t.eq(N.clean('<title><![CDATA[标题]]></title>'), '标题', 'clean 同时剥标签和 CDATA')
+    t.eq(N.clean('<![CDATA[<p>带标签</p>]]>'), '带标签', 'CDATA 里套标签也对')
+    t.eq(N.clean('标题]]>'), '标题', '落单的 ]]> 也清掉（HTML 兜底那条路会留）')
+    t.eq(N.clean('普通标题'), '普通标题', '没有 CDATA 的普通标题不受影响')
+  }
 }
 
 // ── 通用 JSON ──

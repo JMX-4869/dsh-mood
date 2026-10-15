@@ -478,6 +478,19 @@ export async function fetchVideoTranscript(url, maxChars = DETAIL_CHARS) {
 /** 去掉 HTML 标签与多余空白 */
 export function clean(s) {
   return String(s == null ? '' : s)
+    // ⚠️ **CDATA 必须在去标签之前剥**，顺序反了会静默吞掉整条标题。
+    //
+    //    原来只有下面那行 `/<[^>]*>/g`。对 `<title><![CDATA[xxx]]></title>`：
+    //    正则把 `<![CDATA[xxx]]>` **整块**当成一个标签吃掉（它不含 `>`，正好一路匹配到 `]]>`），
+    //    于是 clean 返回空串，parseRss 里 `if (!title) continue` 把这个条目**整个跳过**。
+    //    Nature 就是这种 RSS 1.0 + CDATA 的写法 —— 结果是 parseRss 在它身上**返回 0 条**，
+    //    fetchOne 于是掉到 HTML 兜底，从原始 XML 里刮出标题，留下一串 `]]>` 尾巴。
+    //    现象是"这个源能抓、但标题后面带怪东西"，根因却是"正规路径整个失效了"。
+    //
+    //    剥的时候**保留里面的内容**（$1），再去标签 —— 这样 `<![CDATA[<p>正文</p>]]>` 也走对。
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    // 落单的 `]]>`：上面那步没配成对时留下的（HTML 兜底从原始 XML 里刮出来的那种）
+    .replace(/\]\]>/g, '')
     .replace(/<[^>]*>/g, '')
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
@@ -907,10 +920,28 @@ export const PRESETS = [
   { label: 'IT之家', url: 'https://www.ithome.com/rss/', kind: 'rss' },
   { label: '少数派', url: 'https://sspai.com/feed', kind: 'rss' },
   { label: 'Hacker News 首页', url: 'https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=12', kind: 'json' },
+  // ── 学术 ──
+  { label: 'arXiv cs.AI', url: 'https://rss.arxiv.org/rss/cs.AI', kind: 'rss' },
+  { label: 'arXiv cs.CL', url: 'https://rss.arxiv.org/rss/cs.CL', kind: 'rss' },
+  { label: 'Nature', url: 'https://www.nature.com/nature.rss', kind: 'rss' },
+  // ── 设计 / 审美 ──
+  { label: "It's Nice That", url: 'https://www.itsnicethat.com/', kind: 'auto' },
+  { label: '量子位', url: 'https://www.qbitai.com/', kind: 'auto' },
 ]
 // 注：试过但**实测不可用**的源，别再当预设放回来 ——
 //   solidot / 36kr / theverge  结构解析不出条目
 //   zhihu                      热榜 API 需要 cookie，直连 401
+//   Designboom                 **条目没有标题**（抓到一串 wp-content 图片链）
+//   Creative Bloq / Smashing / Awwwards / 机器之心 / ACL Anthology / skillsmp   0 条
+//   Codrops                    403
+//
+// ⚠️ 加源的规矩（主人给的）：**加主站，让它自己去抓子页；别加某一篇文章。**
+//    实测这条对**设计类 / 资讯类**站成立 —— It's Nice That、量子位、bilibili
+//    都是只填主站就抓得到 8 条。
+//
+//    **但学术 / 期刊站是例外**：arXiv 主站和列表页都抓不出条目（列表是 JS 渲的），
+//    Nature 主站也是 0 条 —— 只能用它自己的 RSS 路径（rss.arxiv.org/rss/cs.AI、
+//    nature.com/nature.rss）。所以这两类源长得不一样，不是写错了。
 
 /**
  * 抓一个源。rss / json / html 列表页 / yt-dlp 频道页 都会试 ——
