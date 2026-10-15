@@ -142,13 +142,25 @@ const NOW = new Date('2026-10-14T15:00:00').getTime()
 {
   const fs = await import('node:fs')
   const host = fs.readFileSync('D:/chajian/dsh-mood/index.js', 'utf8')
-  const i = host.indexOf("if ((proactive.pendingRestart || proactive.pendingStale) && !proactive.reportSid)")
-  t.gt(i, 0, 'user/message 里有绑定逻辑')
-  const block = host.slice(i, i + 320)
+  // ⚠️ 锚**那行代码本身**，别锚注释里的词 —— 上面那段解释性注释里也有 reportSid，
+  //    锚在注释上会把窗口开进注释里，断言就"看不见"真正的代码了。
+  const i = host.indexOf('const sid0 = sessionIdOf(session || liveSession)')
+  t.gt(i, 0, 'user/message 里有绑定逻辑（找得到取当前会话 id 那行）')
+  // ⚠️ **先剥注释再查代码。**
+  //    这个项目里凡是"用正则检查代码文本"的断言都栽过同一个坑：
+  //    解释性注释里出现了同样的词，断言就匹配到自己的注释上。
+  //    这里更直接 —— 注释太长会把窗口撑爆，真正的代码反而落不进来。
+  const raw = host.slice(Math.max(0, i - 500), i + 1600)
+  const block = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*$/gm, '')
   t.has(block, 'sessionIdOf', '绑定用的是当前这个会话的 id')
   t.ok(!/reportSid = sid0;\s*$/.test(block.replace(/\s+/g, ' ').trim()) ||
     /if \(sid0\) proactive\.reportSid = sid0/.test(block), '取不到 id 就不绑（不写空值）')
-  t.has(block, '!proactive.reportSid', '已经绑过的不会被后来的对话抢走')
+  // ⚠️ 判据改过一次：能不被覆盖，看的是绑定的**来源**。
+  //    · 启动时靠 list() 猜的（reportSidFrom=guess）→ 他开口就覆盖
+  //      （猜错时原来会永远投不出去，实测踩过）
+  //    · 他在某条对话里亲口定下的（reportSidFrom=user）→ 不许动
+  //      （他早先明确要求过「重启信息不要发到别的对话去」）
+  t.has(block, "reportSidFrom === 'guess'", '只覆盖「猜」的那条绑定')
 }
 
 // ══════════════════════════════════════════════════════════

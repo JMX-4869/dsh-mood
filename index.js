@@ -1732,9 +1732,15 @@ export function apply(root, rawConfig) {
                * 现在：只要他在这条里说话了，而绑的不是这条 → **就地改绑**。
                * 顺带立刻试投一次，不用干等 30 秒心跳。
                */
-              if (sid0 && proactive.reportSid !== sid0) {
+              // ⚠️ **只覆盖「猜」的那条。** 判据是绑定的**来源**，不是它空不空：
+              //    · guess = 启动时靠 list() 猜的 → 他开口就覆盖（不然猜错了永远投不出去）
+              //    · user  = 他在某条对话里亲口定下的 → 不许动
+              //      （他早先明确要求过「重启信息不要发到别的对话去」）
+              const rebindable = !proactive.reportSid || proactive.reportSidFrom === 'guess'
+              if (sid0 && proactive.reportSid !== sid0 && rebindable) {
                 try { log('dsh-mood 重启汇报改绑到当前对话 ' + sid0.slice(0, 8) + '…') } catch { /* 不管 */ }
                 proactive.reportSid = sid0
+                proactive.reportSidFrom = 'user'
                 // 立刻试投 —— 他刚开口，正是投递最好的时机
                 try { void maybeReportRestart() } catch { /* 不管 */ }
               }
@@ -1931,6 +1937,8 @@ export function apply(root, rawConfig) {
         // 上一次"重启汇报"检查的结论 —— 没触发时**为什么**没触发。
         // 没这个字段的话，主人只能问"怎么没汇报"，然后两边一起猜。
         lastReportCheck: proactive.lastReportCheck || null,
+        // 最近一次**成功投递**（和上面那个不同：上面会被空跑覆盖）
+        lastReportDone: proactive.lastReportDone || null,
         lastUserAt, lastSpokeAt: proactive.lastSpokeAt || 0,
         sentToday: sentToday(proactive, now),
         awaitingReply: !!proactive.awaitingReply,
@@ -2025,8 +2033,11 @@ export function apply(root, rawConfig) {
         const sid = sessionIdOf(newest)
         if (!sid) return false
         proactive.reportSid = sid
+        // ★ 记下这是**猜**的 —— 猜的可以被「他在哪条里开口」覆盖，
+        //   而他亲口定的那条不许动（他早先明确要求过「提醒不要跟着人跑」）。
+        proactive.reportSidFrom = 'guess'
         await persistProactive()
-        ctx.logger?.info?.('[dsh-mood] 重启汇报已绑到最近的会话 ' + sid.slice(0, 8) + '…')
+        ctx.logger?.info?.('[dsh-mood] 重启汇报已绑到最近的会话 ' + sid.slice(0, 8) + '…（猜的）')
         return true
       } catch { return false }
     }
@@ -2113,6 +2124,11 @@ export function apply(root, rawConfig) {
         // 先清标记再投递：投递失败也不能在下一个回合重来（宁可少说，不能刷屏）
         markReported(proactive, now)
         markSpoke(proactive, now)
+        // ⚠️ 投递成功要**单独记一笔**。
+        //    lastReportCheck 是一个会被覆盖的字段 —— 投完之后的任何一次空跑
+        //    （比如 turn/end 那一拍「没有欠着的汇报」）都会把「已投递」冲掉，
+        //    于是外面看到的是「没有欠着的汇报」，像是根本没投过。实测踩到。
+        proactive.lastReportDone = { at: now, kind, to: sid }
         skip('已投递（' + kind + '）')
         await persistProactive()
         await sessionCtl.prompt({

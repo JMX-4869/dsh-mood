@@ -347,8 +347,15 @@ const N = M.MOOD_IDS.length
       ? OK('投递目标是绑定的对话（reportSid）') : NG('投递还在用 liveSession —— 会发到别的对话')
     const noNearby = /当前活跃的是别的对话/.test(repFn)
     noNearby ? OK('活跃的是别的对话时等着，绝不就近投递') : NG('缺少「不就近投递」的判断')
-    const bindOnSpeak = /if \(\(proactive\.pendingRestart \|\| proactive\.pendingStale\) && !proactive\.reportSid\)/.test(code)
+    // ⚠️ 判据改过一次。原来断言的是 `&& !proactive.reportSid`（只在自己是空的时候才绑）——
+    //    那会导致：启动时靠 list() **猜**错了之后，主人在自己正看的对话里怎么说话都改不了，
+    //    汇报永远投不出去（实测踩到）。现在看绑定的**来源**：
+    //      · guess（启动时猜的）  → 他开口就覆盖
+    //      · user （他亲口定的）  → 不许动（他要求过「提醒不要跟着人跑」）
+    const bindOnSpeak = /const sid0 = sessionIdOf\(session \|\| liveSession\)/.test(code)
     bindOnSpeak ? OK('绑定发生在「主人在某个对话里开口」那一刻') : NG('没找到绑定时机')
+    const rebindGuess = /reportSidFrom === 'guess'/.test(code)
+    rebindGuess ? OK('只覆盖「猜」的那条绑定（他亲口定的不许动）') : NG('覆盖规则丢了：猜错的会永远投不出去')
 
     // 纯函数别放在闭包里 —— 路由（mountApi）也要用 sessionIdOf，
     // 放 mountCore 里的话请求一到就 sessionIdOf is not defined（语法检查抓不到）。

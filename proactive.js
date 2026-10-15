@@ -268,6 +268,7 @@ export function noteBoot(p, now = Date.now(), newestFileMtime = 0) {
     p.pendingRestart = true
     // 换一次待办就重新挑投递的对话 —— 上一次投过的那条不能再背这口锅
     p.reportSid = ''
+    p.reportSidFrom = ''
   }
   if (stale && p.cfg && p.cfg.warnStale !== false) p.pendingStale = true
   return { restarted, stale, needed }

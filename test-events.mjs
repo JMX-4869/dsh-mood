@@ -110,7 +110,10 @@ console.log()
 console.log('════ 诊断字段 ════')
 const st = callApi('GET', '/dsh-mood-api/proactive')
 ok('lastReportCheck 有值', !!(st && st.lastReportCheck && st.lastReportCheck.why), JSON.stringify(st && st.lastReportCheck))
-ok('记的是"已投递"', !!(st && st.lastReportCheck && /已投递/.test(st.lastReportCheck.why)), st && st.lastReportCheck && st.lastReportCheck.why)
+// ⚠️ 看的是 lastReportDone，不是 lastReportCheck ——
+//    后者是个会被覆盖的字段：投完之后的空跑会把它冲成「没有欠着的汇报」，
+//    外面看起来像根本没投过（实测踩到）。
+ok('记下了这次成功投递', !!(st && st.lastReportDone && st.lastReportDone.kind === 'restart'), JSON.stringify(st && st.lastReportDone))
 ok('pendingRestart 清掉了', st && st.pendingRestart === false)
 
 console.log()
