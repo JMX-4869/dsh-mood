@@ -3014,13 +3014,34 @@ export function apply(root, rawConfig) {
                   if (action === 'move') {
                     const dir = String(body.dir || '').trim()
                     if (!dir) return send({ ok: false, error: '得给一个目录' }, 400)
+                    /**
+                     * ⚠️ **指针写失败必须报出来** —— 这里原来漏了。
+                     *
+                     * `writeStoreConfig` 的返回值没人接：文件已经搬到新目录了，
+                     * 指针却没写成 —— 界面照样回「成功」，重启之后插件按旧指针去找，
+                     * **归档就不见了**。
+                     *
+                     * `store.js` 的整目录迁移（migrateStorage）早就防了这一手
+                     * （写不成指针就返回错误），这条**只搬记忆**的岔路漏了。
+                     * 同一件事两条路，补一条漏一条 —— 这个项目里栽过不止一次。
+                     */
+                    let pointerOk = true
                     const r = memory.moveTo(dir, (d2) => {
                       const cfg = readStoreConfig()
                       const dirs = { ...(cfg.dirs || {}) }
                       dirs.memory = d2
-                      writeStoreConfig({ ...cfg, dirs })
+                      pointerOk = writeStoreConfig({ ...cfg, dirs })
                       invalidateDataDir()
                     })
+                    if (r.ok && !pointerOk) {
+                      return send({
+                        ok: false,
+                        error: '文件已经搬到 ' + dir + ' 了，但**配置文件没写成** —— ' +
+                          '插件还不知道新位置。请到「存储位置」里重新指定一次，' +
+                          '否则重启后归档会看起来不见了（文件其实还在那儿）。',
+                        movedTo: dir,
+                      }, 500)
+                    }
                     return send(r.ok
                       ? { ok: true, stats: memory.stats() }
                       : { ok: false, error: r.error }, r.ok ? 200 : 500)

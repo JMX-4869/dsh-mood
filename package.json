@@ -21,6 +21,7 @@
     "news.js",
     "proactive.js",
     "sessions.js",
+    "smoke.mjs",
     "store.js",
     "taste.js",
     "test-api.mjs",
@@ -93,6 +94,7 @@
     "jsdom": "^30.0.0"
   },
   "scripts": {
-    "test": "node test-api.mjs && node test-client.mjs && node test-decay.mjs && node test-deep.mjs && node test-diary.mjs && node test-events.mjs && node test-fixtures.mjs && node test-frames.mjs && node test-logic.mjs && node test-memory-e2e.mjs && node test-memory.mjs && node test-modern.mjs && node test-news.mjs && node test-order.mjs && node test-porting.mjs && node test-proactive.mjs && node test-restart.mjs && node test-romance.mjs && node test-savefail.mjs && node test-sessions.mjs && node test-tools.mjs && node test-voice.mjs && node test-taste.mjs"
+    "test": "node smoke.mjs && node test-api.mjs && node test-client.mjs && node test-decay.mjs && node test-deep.mjs && node test-diary.mjs && node test-events.mjs && node test-fixtures.mjs && node test-frames.mjs && node test-logic.mjs && node test-memory-e2e.mjs && node test-memory.mjs && node test-modern.mjs && node test-news.mjs && node test-order.mjs && node test-porting.mjs && node test-proactive.mjs && node test-restart.mjs && node test-romance.mjs && node test-savefail.mjs && node test-sessions.mjs && node test-tools.mjs && node test-voice.mjs && node test-taste.mjs",
+    "smoke": "node smoke.mjs"
   }
 }
