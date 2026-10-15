@@ -135,7 +135,7 @@ const t = suite('品味库')
 
   const p = T.renderForPrompt(x, { maxPrinciples: 2, maxItems: 2 })
 
-  t.has(p, '## 你的品味', '有标题')
+  t.has(p, '## 审美档案', '有标题')
   t.has(p, '不能模仿', '说了「可以学习，不能模仿」')
   t.has(p, '先有你自己的第一反应', '说了「先出判断，再对原则」')
   t.has(p, '先说出你自己的读法', '给了三步的顺序')
@@ -144,14 +144,26 @@ const t = suite('品味库')
   t.ok(!/跟着走/.test(p), '没有"跟着走"这种照抄口径')
 
   // 顺序：例子在原则**前面**
+  // ── 分两份（主人要求的结构）──
+  //    顶层只有「你的口味」和「我的品味」；底下那三档（你说的 / 你认可的 /
+  //    我自己的）**保留** —— 它们是有用的区别，只是不再当顶层。
+  const iTheirs = p.indexOf('## 你的口味')
+  const iOurs = p.indexOf('## 我的品味')
+  t.gt(iTheirs, 0, '有「你的口味」那一份')
+  t.gt(iOurs, 0, '有「我的品味」那一份')
+  t.ok(iTheirs < iOurs, '两份的顺序：先你给的，后我自己长的')
+
   const iEx = p.indexOf('### 例子')
-  const iOwner = p.indexOf('### 主人说过的话')
-  const iOther = p.indexOf('### 外部判断')
-  const iMine = p.indexOf('### 我自己那套倾向')
+  const iOwner = p.indexOf('### 你说过的话')
+  const iOther = p.indexOf('### 你认可的')
+  const iMine = p.indexOf('### 我自己的倾向')
   t.gt(iEx, 0, '有例子段')
   t.ok(iEx < iOwner, '例子排在原则前面（例子信息量更大）')
   t.ok(iOwner < iOther, '亲口 > 外部')
   t.ok(iOther < iMine, '外部 > 我自己的')
+
+  // 时事也能补品味（主人原话：「抓取的时事可以补足品味」）
+  t.has(p, '时事里也能捡到审美素材', '说了时事可以补品味')
 
   // 三件套都在，且顺序是 myRead → said → lesson
   const iRead = p.indexOf('我当时读的是')
@@ -173,11 +185,11 @@ const t = suite('品味库')
 
   // 空库也不能崩
   const empty = T.renderForPrompt(T.blankTaste(), {})
-  t.has(empty, '## 你的品味', '空库也渲染得出标题')
+  t.has(empty, '## 审美档案', '空库也渲染得出标题')
   // ⚠️ blankTaste 里有 22 条种子，所以它不是空库 —— 真正缺的是「例子」。
   t.ok(!/### 例子/.test(empty), '没有条目时不渲染例子段')
   t.noThrow(() => T.renderForPrompt(null, {}), '传 null 不崩')
-  t.has(T.renderForPrompt(null, {}), '## 你的品味', '传 null 也返回可用文本，不是空白')
+  t.has(T.renderForPrompt(null, {}), '## 审美档案', '传 null 也返回可用文本，不是空白')
 }
 
 // ────────────────────────────────────────────────

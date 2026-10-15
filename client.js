@@ -112,6 +112,10 @@ window.__ModuleLoader__.load({
       //    套到「一条完整的原则」上会把正文压成一条看不全的小框 —— 而看不全就没法改。
       //    实测就是这样，所以这里单开一套。
       // 组标题**长得和 memlisthd 一样**（灰底条）—— 不然一眼就看出是外来的
+      // 两份之间的分界（你的口味 / 我的品味）—— 比组标题重一档，
+      // 因为那是**结构**，组标题只是"谁说的"。
+      '.dshmood .thalf{margin:18px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--dsw-alias-border-l1);font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary)}',
+      '.dshmood .thalf:first-child{margin-top:6px}',
       '.dshmood .tghd{font-size:12px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-bottom:none;border-radius:10px 10px 0 0;padding:8px 12px;margin:14px 0 0}',
       '.dshmood .tcard{border:1px solid var(--dsw-alias-border-l1);border-top:none;border-radius:0;padding:9px 12px;margin:0}',
       '.dshmood .tcard:last-child{border-radius:0 0 10px 10px;margin-bottom:10px}',
@@ -1104,10 +1108,14 @@ window.__ModuleLoader__.load({
       // ⚠️ **按来源分组，别再每行重复标一次。**
       //    原来 22 行每行开头都是「我的」—— 那是 22 次噪音，不是信息。
       //    分组之后它只出现在组标题里一次。
+      // ⚠️ 面板的**顶层**也要分两份（主人要求的结构），和注入那段对齐。
+      //    底下那三档保留 —— 它们是"谁说的"，有用；顶层只回答"这份是谁的"。
+      //    面板没法真套两层标题（那是纯文本的事），所以给 group 加个 `half`，
+      //    渲染到换份的地方插一条分界。
       const GROUP = [
-        { key: 'owner', label: '你亲口定的', hint: '最重的一档 —— 跟着走' },
-        { key: 'other', label: '外部判断（你认可的）', hint: '参考价值有，但别照抄' },
-        { key: 'me', label: '我自己的倾向', hint: '起点，不是结论 —— 改过一条它就变成「你亲口」的' },
+        { key: 'owner', half: 'theirs', label: '你亲口定的', hint: '你那一份里最重的一档 —— 跟着走' },
+        { key: 'other', half: 'theirs', label: '外部判断（你认可的）', hint: '参考价值有，但别照抄' },
+        { key: 'me', half: 'mine', label: '我自己的倾向', hint: '起点，不是结论 —— 改过一条它就变成「你亲口」的' },
       ]
 
       // 一张卡：正文占满整行（**能看全才谈得上改**），下面才是说明和按钮
@@ -1252,10 +1260,17 @@ window.__ModuleLoader__.load({
           ),
         ),
 
-        // ── 原则：按来源分组 ──
-        GROUP.map((g) => {
+        // ── 原则：先按**两份**分（你给的 / 我自己的），再按来源分 ──
+        GROUP.map((g, gi) => {
           const rows = list.filter((x) => x.on && (x.by || 'me') === g.key)
+          // 换份的地方插一条分界 —— 面板没法真套两层标题，这是替代。
+          const prev = GROUP[gi - 1]
+          const newHalf = !prev || prev.half !== g.half
           return h('div', { key: g.key },
+            newHalf
+              ? h('div', { className: 'thalf' },
+                g.half === 'theirs' ? '你的口味 —— 你给的' : '我的品味 —— 我自己长出来的')
+              : null,
             h('div', { className: 'tghd' }, g.label + '（' + rows.length + ' 条）'),
             h('div', { className: 'tnote' }, g.hint),
             rows.length ? rows.map(card) : h('div', { className: 'empty' }, '还没有'),

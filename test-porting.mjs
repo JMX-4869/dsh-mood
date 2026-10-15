@@ -59,7 +59,12 @@ console.log('════ 数字 ════')
 const kb = Math.round(CORE.reduce((a, f) => a + fs.statSync(SRC + '/' + f).size, 0) / 1024)
 const claim = doc.match(/\|\s*\*\*逻辑\*\*[^|]*\|[^|]*\|\s*(\d+)\s*KB/)
 ok('文档写的 ' + (claim ? claim[1] : '?') + ' KB 和实际（' + kb + ' KB）对得上',
-  !!claim && Math.abs(Number(claim[1]) - kb) <= 2, kb + ' KB')
+  // ⚠️ 容差原来是 ±2 KB —— **太窄了**。这个数字是六个模块加起来（现在 177 KB），
+  //    随便写两段注释就漂 3 KB，于是每次动代码都得来改这个数字，
+  //    而真正想防的"文档和代码差一大截"反倒没人注意了（狼来了）。
+  //    改成 15%：够宽，不用追着注释跑；够窄，真漏了一整个模块还是抓得到。
+  !!claim && Math.abs(Number(claim[1]) - kb) <= Math.max(3, Math.round(kb * 0.15)),
+  kb + ' KB（容差 ±' + Math.max(3, Math.round(kb * 0.15)) + '）')
 
 const pkg = JSON.parse(fs.readFileSync(SRC + '/package.json', 'utf8'))
 ok('「dependencies 空的」是真的', Object.keys(pkg.dependencies || {}).length === 0,
