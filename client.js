@@ -107,6 +107,18 @@ window.__ModuleLoader__.load({
       '.dshmood .memnum{flex:none;width:88px;text-align:right}',
       '.dshmood .mempath{flex:1;min-width:200px;font-size:12px;padding:6px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.dshmood button.danger{color:#e5534b;border-color:#e5534b55}',
+      // 品味面板 —— ⚠️ 别拿"硬盘记忆"的 memrow/srcin 去套。
+      //    那两个是给"路径 / 关键词"这种短东西用的（srcin 是 flex:1;min-width:220px），
+      //    套到「一条完整的原则」上会把正文压成一条看不全的小框 —— 而看不全就没法改。
+      //    实测就是这样，所以这里单开一套。
+      '.dshmood .tghd{font-size:12px;color:var(--dsw-alias-label-secondary);margin:16px 0 2px;font-weight:600}',
+      '.dshmood .tcard{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:9px 11px;margin:7px 0}',
+      '.dshmood .tcard textarea,.dshmood .tcard input{width:100%;box-sizing:border-box;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:6px 9px;font-size:12.5px;line-height:1.6;font-family:inherit;outline:none;resize:vertical}',
+      '.dshmood .tcard textarea{min-height:38px}',
+      '.dshmood .tcard textarea:focus,.dshmood .tcard input:focus{border-color:var(--dsw-alias-brand-primary)}',
+      '.dshmood .tcard .trow{display:flex;gap:8px;align-items:center;margin-top:7px;flex-wrap:wrap}',
+      '.dshmood .tcard .tnote{font-size:11.5px;color:var(--dsw-alias-label-secondary);line-height:1.6;margin-top:5px}',
+      '.dshmood .tcard .tsp{flex:1}',
       // 主动开口的时段选择
       '.dshmood .slotbox{margin:14px 0;padding:12px 14px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px}',
       '.dshmood .slothead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}',
@@ -994,10 +1006,15 @@ window.__ModuleLoader__.load({
       const [iRead, setIRead] = React.useState('')
       const [iSaid, setISaid] = React.useState('')
       const [iKind, setIKind] = React.useState('good')
+      // 摘要草稿：拉回来时填进去，用户改完点保存
+      const [summaryDraft, setSummaryDraft] = React.useState('')
 
       const load = React.useCallback(async () => {
-        try { setData(await getJSON('/taste')); setErr('') }
-        catch (e) { setErr(String((e && e.message) || e)) }
+        try {
+          const d = await getJSON('/taste')
+          setData(d); setErr('')
+          setSummaryDraft((d.summary && d.summary.text) || '')
+        } catch (e) { setErr(String((e && e.message) || e)) }
       }, [])
       React.useEffect(() => { void load() }, [load])
 
@@ -1070,10 +1087,82 @@ window.__ModuleLoader__.load({
         h('button', { disabled: busy, className: 'danger', onClick: () => void post({ action: 'delItem', id: x.id }, '删了') }, '删'),
       )
 
+      // ⚠️ **按来源分组，别再每行重复标一次。**
+      //    原来 22 行每行开头都是「我的」—— 那是 22 次噪音，不是信息。
+      //    分组之后它只出现在组标题里一次。
+      const GROUP = [
+        { key: 'owner', label: '你亲口定的', hint: '最重的一档 —— 跟着走' },
+        { key: 'other', label: '外部判断（你认可的）', hint: '参考价值有，但别照抄 —— 照抄别人的结论一样长不出自己的判断' },
+        { key: 'me', label: '我自己的倾向', hint: '起点，不是结论。改过一条它就变成「你亲口」的' },
+      ]
+
+      // 一张卡：正文占满整行（**能看全才谈得上改**），下面才是说明和按钮
+      const card = (p) => h('div', { className: 'tcard', key: p.id },
+        h('textarea', {
+          value: p.text, disabled: busy, rows: 2,
+          onChange: (e) => {
+            const v = e.target.value
+            setData((d) => ({ ...d, principles: d.principles.map((x) => (x.id === p.id ? { ...x, text: v } : x)) }))
+          },
+          onBlur: (e) => {
+            const v = e.target.value.trim()
+            if (!v) return
+            void post({ action: 'editPrinciple', id: p.id, text: v }, '改好了（这条算你亲口的）')
+          },
+        }),
+        p.why ? h('div', { className: 'tnote' }, '为什么：' + p.why) : null,
+        p.unless ? h('div', { className: 'tnote' }, '⚠️ 什么时候不适用：' + p.unless) : null,
+        h('div', { className: 'trow' },
+          h('button', { disabled: busy, onClick: () => void post({ action: 'editPrinciple', id: p.id, on: !p.on }) }, p.on ? '关掉' : '打开'),
+          h('button', { disabled: busy, className: 'danger', onClick: () => void post({ action: 'delPrinciple', id: p.id }, '删了') }, '删'),
+        ),
+      )
+
+      // 条目：指代一行，三段内容各占一行 —— 它们本来就是三样不同的东西
+      const icard = (x) => h('div', { className: 'tcard', key: x.id },
+        h('div', { className: 'trow' },
+          h('span', { className: 'memwho' + (x.kind === 'good' ? '' : ' me') }, x.kind === 'good' ? '正例' : '反例'),
+          h('code', { className: 'tsp', style: { fontSize: '12px' } }, x.ref),
+          x.domain ? h('span', { className: 'memwho' }, x.domain) : null,
+          x.confirmed ? null : h('span', { className: 'memwho me' }, '待确认'),
+        ),
+        h('div', { className: 'tnote' }, '我当时读的是'),
+        h('textarea', {
+          value: x.myRead || '', disabled: busy, rows: 2, placeholder: '我自己先说了什么（在看你的反应之前）',
+          onChange: (e) => {
+            const v = e.target.value
+            setData((d) => ({ ...d, items: d.items.map((y) => (y.id === x.id ? { ...y, myRead: v } : y)) }))
+          },
+          onBlur: (e) => {
+            const v = e.target.value.trim()
+            if (v === (x.myRead || '')) return
+            void post({ action: 'editItem', id: x.id, myRead: v }, '存了')
+          },
+        }),
+        h('div', { className: 'tnote' }, '你说过'),
+        h('input', {
+          value: x.said || '', disabled: busy, placeholder: '原话最好 —— 那是这个库里最有信息量的字段',
+          onChange: (e) => {
+            const v = e.target.value
+            setData((d) => ({ ...d, items: d.items.map((y) => (y.id === x.id ? { ...y, said: v } : y)) }))
+          },
+          onBlur: (e) => {
+            const v = e.target.value.trim()
+            if (v === (x.said || '')) return
+            void post({ action: 'editItem', id: x.id, said: v }, '存了')
+          },
+        }),
+        x.lesson ? h('div', { className: 'tnote' }, '学到：' + x.lesson) : null,
+        h('div', { className: 'trow' },
+          x.confirmed ? null : h('button', { disabled: busy, onClick: () => void post({ action: 'editItem', id: x.id, confirmed: true }, '确认了') }, '确认'),
+          h('button', { disabled: busy, onClick: () => void post({ action: 'editItem', id: x.id, kind: x.kind === 'good' ? 'bad' : 'good' }, '换了') }, x.kind === 'good' ? '转反例' : '转正例'),
+          h('button', { disabled: busy, className: 'danger', onClick: () => void post({ action: 'delItem', id: x.id }, '删了') }, '删'),
+        ),
+      )
+
       return h('div', { className: 'pane' },
         h('div', { className: 'hintline' },
-          '这里存的不是「照抄的规则」，是判断的轨迹：' +
-          '我当时读到什么 → 你的反应 → 我学到什么。',
+          '这里存的不是「照抄的规则」，是判断的轨迹：我当时读到什么 → 你的反应 → 我学到什么。',
         ),
         h('div', { className: 'hintline' },
           '一共 ' + (st.principlesOn || 0) + ' 条原则（你亲口 ' + (st.byOwner || 0) +
@@ -1081,80 +1170,92 @@ window.__ModuleLoader__.load({
           (st.items || 0) + ' 个条目（正 ' + (st.good || 0) + ' / 反 ' + (st.bad || 0) +
           '，待确认 ' + (st.draft || 0) + '）',
         ),
-        h('div', { className: 'hintline' },
-          '带「待确认」的是我打的标 —— 我的判断，可能读偏。你看一眼再点确认，' +
-          '它就变成你的口味了；没确认之前，提示词里会明确标着那是我猜的。',
-        ),
 
         msg ? h('div', { className: 'pill' }, msg) : null,
 
+        // ── 摘要：可看也可改 ──
+        h('div', { className: 'tghd' }, '摘要'),
+        h('div', { className: 'tcard' },
+          h('textarea', {
+            value: summaryDraft, disabled: busy, rows: 4, placeholder: '库大了就压一段 —— 注入时优先看它',
+            onChange: (e) => setSummaryDraft(e.target.value),
+          }),
+          h('div', { className: 'tnote' }, data.summary
+            ? ('写于 ' + new Date(data.summary.at).toLocaleString('zh-CN') + '，当时库里有 ' + data.summary.fromCount + ' 条')
+            : '还没写过'),
+          data.summaryStale && data.summaryStale.stale
+            ? h('div', { className: 'tnote' }, '⚠️ 该重压了：' + data.summaryStale.why)
+            : null,
+          h('div', { className: 'trow' },
+            h('button', {
+              disabled: busy || !summaryDraft.trim() || summaryDraft.trim() === ((data.summary && data.summary.text) || ''),
+              onClick: () => void post({ action: 'summary', text: summaryDraft }, '摘要存了'),
+            }, '保存摘要'),
+          ),
+        ),
+
         // ── 加一条原则 ──
-        h('div', { className: 'memrow' },
-          h('span', { className: 'memlab' }, '加原则'),
-          h('input', { className: 'srcin', placeholder: '一句话，比如：标题别压在人脸上', value: pText, onChange: (e) => setPText(e.target.value) }),
-          h('input', { className: 'srcin', placeholder: '什么时候不适用（可空，但强烈建议填）', value: pUnless, onChange: (e) => setPUnless(e.target.value) }),
-          h('button', {
-            disabled: busy || !pText.trim(),
-            onClick: async () => {
-              const ok = await post({ action: 'addPrinciple', text: pText, unless: pUnless, by: 'owner' }, '加了（算你亲口说的）')
-              if (ok) { setPText(''); setPUnless('') }
-            },
-          }, '加'),
+        h('div', { className: 'tghd' }, '加一条原则'),
+        h('div', { className: 'tcard' },
+          h('textarea', { value: pText, rows: 2, placeholder: '一句话，比如：标题别压在人脸上', onChange: (e) => setPText(e.target.value) }),
+          h('input', { style: { marginTop: '6px' }, value: pUnless, placeholder: '什么时候不适用（可空，但强烈建议填 —— 只会说"避免 X"的品味是教条）', onChange: (e) => setPUnless(e.target.value) }),
+          h('div', { className: 'trow' },
+            h('button', {
+              disabled: busy || !pText.trim(),
+              onClick: async () => {
+                const ok = await post({ action: 'addPrinciple', text: pText, unless: pUnless, by: 'owner' }, '加了（算你亲口说的）')
+                if (ok) { setPText(''); setPUnless('') }
+              },
+            }, '加（算你亲口的）'),
+          ),
         ),
 
         // ── 加一个条目 ──
-        h('div', { className: 'memrow' },
-          h('span', { className: 'memlab' }, '加条目'),
-          h('input', { className: 'srcin', placeholder: '指代：文件名 / 网址 / 简短描述', value: iRef, onChange: (e) => setIRef(e.target.value) }),
-          h('input', { className: 'srcin', placeholder: '我当时的读法', value: iRead, onChange: (e) => setIRead(e.target.value) }),
-          h('input', { className: 'srcin', placeholder: '他说了什么', value: iSaid, onChange: (e) => setISaid(e.target.value) }),
-          h('button', { disabled: busy, onClick: () => setIKind(iKind === 'good' ? 'bad' : 'good') }, iKind === 'good' ? '正例' : '反例'),
-          h('button', {
-            disabled: busy || !iRef.trim(),
-            onClick: async () => {
-              const ok = await post({ action: 'addItem', ref: iRef, myRead: iRead, said: iSaid, kind: iKind }, '收了（标着待确认）')
-              if (ok) { setIRef(''); setIRead(''); setISaid('') }
-            },
-          }, '加'),
+        h('div', { className: 'tghd' }, '加一个条目'),
+        h('div', { className: 'tcard' },
+          h('input', { value: iRef, placeholder: '指代：文件名 / 网址 / 简短描述', onChange: (e) => setIRef(e.target.value) }),
+          h('textarea', { style: { marginTop: '6px' }, value: iRead, rows: 2, placeholder: '我当时的读法（**我先说的**，不是看了你的反应之后补的）', onChange: (e) => setIRead(e.target.value) }),
+          h('input', { style: { marginTop: '6px' }, value: iSaid, placeholder: '你说了什么（原话最好）', onChange: (e) => setISaid(e.target.value) }),
+          h('div', { className: 'trow' },
+            h('button', { disabled: busy, onClick: () => setIKind(iKind === 'good' ? 'bad' : 'good') }, iKind === 'good' ? '正例' : '反例'),
+            h('button', {
+              disabled: busy || !iRef.trim(),
+              onClick: async () => {
+                const ok = await post({ action: 'addItem', ref: iRef, myRead: iRead, said: iSaid, kind: iKind }, '收了（标着待确认）')
+                if (ok) { setIRef(''); setIRead(''); setISaid('') }
+              },
+            }, '加'),
+          ),
         ),
 
-        // ── 摘要 ──
-        h('div', { className: 'hintline' },
-          '摘要：' + (data.summary
-            ? ('写于 ' + new Date(data.summary.at).toLocaleString('zh-CN') + '，当时库里有 ' + data.summary.fromCount + ' 条')
-            : '还没写过') +
-          (data.summaryStale && data.summaryStale.stale ? '　⚠️ 该重压了：' + data.summaryStale.why : ''),
-        ),
-        data.summary && data.summary.text
-          ? h('div', { className: 'hintline' }, data.summary.text)
-          : null,
-
-        // ── 两张表 ──
-        h('div', { className: 'memlist' },
-          h('div', { className: 'memlisthd' }, '原则 · 打开着的 ' + on.length + ' 条（直接改正文，改完自动存）'),
-          on.length ? on.map(prow) : h('div', { className: 'empty' }, '一条都没有。'),
-        ),
+        // ── 原则：按来源分组 ──
+        GROUP.map((g) => {
+          const rows = list.filter((x) => x.on && (x.by || 'me') === g.key)
+          return h('div', { key: g.key },
+            h('div', { className: 'tghd' }, g.label + '（' + rows.length + ' 条）'),
+            h('div', { className: 'tnote' }, g.hint),
+            rows.length ? rows.map(card) : h('div', { className: 'empty' }, '还没有'),
+          )
+        }),
         off.length
-          ? h('div', { className: 'memlist' },
-            h('div', { className: 'memlisthd' }, '关掉的 ' + off.length + ' 条'),
-            off.map(prow))
+          ? h('div', null,
+            h('div', { className: 'tghd' }, '关掉的（' + off.length + ' 条）'),
+            off.map(card))
           : null,
 
-        h('div', { className: 'memlist' },
-          h('div', { className: 'memlisthd' }, '条目 · ' + (data.items || []).length + ' 个'),
-          (data.items || []).length
-            ? data.items.map(irow)
-            : h('div', { className: 'empty' }, '还没有例子。审美很难用规则描述 —— 给两个例子比写十条原则有用。'),
-        ),
+        // ── 条目 ──
+        h('div', { className: 'tghd' }, '条目（' + (data.items || []).length + ' 个）'),
+        (data.items || []).length
+          ? data.items.map(icard)
+          : h('div', { className: 'empty' }, '还没有例子。审美很难用规则描述 —— 给两个例子比写十条原则有用。'),
 
-        h('div', { className: 'memrow' },
+        h('div', { className: 'trow', style: { marginTop: '16px' } },
           h('button', { disabled: busy, onClick: () => void load() }, '刷新'),
         ),
 
         h(StorageBar, { keys: ['taste'] }),
       )
     }
-
     function fmtBytes(n) {
       const b = Number(n) || 0
       if (b < 1024) return b + ' B'
