@@ -705,6 +705,20 @@ export async function fetchVideoFrames(url, opts = {}) {
       mode: plan.mode,
       sceneCount: plan.sceneCount || 0,
       sceneError: sceneInfo.error || '',
+      // ⚠️ **分辨率必须报出来。**
+      //
+      //    下载时写死了 `-S res:480` —— 也就是说**抽出来的帧最高就 480p**，
+      //    而那支 4K 的 MV 抽出来是 852×480。
+      //    问题在于：我库里最重的一条对策是「**下判断前先确认看的是原图/原片**」，
+      //    而我用的工具**上限就是 480p** —— 这件事我不知道。
+      //    于是我一直以为自己看的是原片，其实是 480p +（再拼接触印相时的）二次缩放。
+      //    不报出来，这个上限就永远是个隐形的天花板：
+      //    "细节看不清"会被我读成"这作品细节少"。
+      width: info ? info.width : 0,
+      height: info ? info.height : 0,
+      /** 抽出来的帧的实际像素（就是上面的宽高；单独给一份，方便和"源"区分） */
+      frameWidth: info ? info.width : 0,
+      frameHeight: info ? info.height : 0,
       note: [plan.note, sceneInfo.note].filter(Boolean).join(' '),
     }
   } catch (e) {
