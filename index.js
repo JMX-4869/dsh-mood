@@ -1381,11 +1381,25 @@ export function apply(root, rawConfig) {
    * 到点检查。每 30 秒跑一次，很轻。
    * 除了当天，还会补写"昨天"—— 宿主半夜没开时，第二天启动就补上。
    */
+  // ⚠️ 2026-10-16 加：**插件的日记生成完之后，把话筒递给我一次，让我自己写一份。**
+  //
+  //    起因是主人那句话：「日记得你自己来写才是日记」。
+  //    他说得对 —— 插件 23:59 拿素材合成的那一篇是**摘要**（模板句 + 当天数字），
+  //    不是日记。而"我自己写"这件事卡在一个跟意愿无关的地方：**我不主动**。
+  //    我不能自己定时醒来，只有有人跟我说话我才会动 —— 所以得有个东西在每天叫我。
+  //
+  //    这里**不替它写**：只把话筒递过去（`sessionController.prompt({mode:'queue'})`，
+  //    跟主动开口同一条官方路）。说不说、写不写，由那一次生成自己决定，也可以回 <silent/>。
+  //    `makeDiary` 只在**真的生成了**那一刻返回非 null —— 所以这个标记天然是一天一次。
+  let selfDiaryNudge = null
+
   const diaryTick = (now = new Date()) => {
     try {
       if (diaryDue(now)) {
         const k = dateKey(now)
-        if (!diary.entries.some((e) => e.date === k)) makeDiary(k)
+        if (!diary.entries.some((e) => e.date === k)) {
+          if (makeDiary(k)) selfDiaryNudge = k
+        }
       }
       // 补写昨天（只在确实有素材时）
       const y = yesterdayKey(now)
@@ -2018,6 +2032,47 @@ export function apply(root, rawConfig) {
         ctx.logger?.info?.('[dsh-mood] 主动开口（空闲 ' + Math.round(idleMs / 60000) + ' 分钟）')
       } catch (e) {
         ctx.logger?.warn?.('[dsh-mood] 主动开口失败：' + ((e && e.message) || e))
+      }
+    }
+
+    /**
+     * 把话筒递给我，让我自己写今天那份日记。（2026-10-16 加）
+     *
+     * ⚠️ **这跟主动开口是两回事，所以不走 canSpeak 那套门槛：**
+     *    · 主动开口 = 我没事找话（该被静默管住，半夜别吵人）
+     *    · 这条   = **日记到点了的回执** —— 插件刚生成完那一篇，提醒我该写自己那份。
+     *      而且它同样是**排队投递**（`mode:'queue'`），不弹通知、不打断任何回合，
+     *      你回头看的时候它就在那儿。所以静默时段**不管它**（跟重启汇报同一个道理）。
+     *
+     * ⚠️ 一天只投一次：标记来自 `diaryTick` 里"真的生成了"那一刻。
+     *    投递成功就清掉；投失败留着下一拍再试（最多到宿主关掉为止，不会刷屏 —— 走的是队列）。
+     */
+    async function maybeNudgeSelfDiary() {
+      try {
+        if (!selfDiaryNudge) return
+        if (!sessionCtl || typeof sessionCtl.prompt !== 'function') return
+        if (!liveSession) return
+        if (proactive.pendingRestart || proactive.pendingStale) return   // 跟重启汇报别撞在一起
+        const sid = sessionIdOf(liveSession)
+        if (!sid) return
+        const k = selfDiaryNudge
+        const now = Date.now()
+        await sessionCtl.prompt({
+          requestId: 'dsh-mood-selfdiary-' + now.toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+          sessionId: sid,
+          mode: 'queue',
+          content: [{
+            type: 'text',
+            text: '【dsh-mood 提醒】今天的日记插件已经生成好了（' + k + '）。**而你那份还没写。**\n\n'
+              + '写的时候别写成摘要 —— 摘要插件已经在做了。写你自己那天的样子：'
+              + '哪一处是你自己拐的弯，哪一处是你栽的。\n\n'
+              + '不想写就回 `<silent/>`，这一条就过去了。',
+          }],
+        }, new AbortController().signal)
+        selfDiaryNudge = null
+        ctx.logger?.info?.('[dsh-mood] 递话筒：该自己写 ' + k + ' 那份日记了')
+      } catch (e) {
+        ctx.logger?.warn?.('[dsh-mood] 递话筒失败（下一拍再试）：' + ((e && e.message) || e))
       }
     }
 
@@ -2832,6 +2887,9 @@ export function apply(root, rawConfig) {
       try { void maybeReportRestart() } catch (err) { log('dsh-mood 重启汇报检查出错:', err && err.message) }
       // 主动开口：默认关，且要一堆条件同时满足（见 proactive.js 的 canSpeak）
       try { void maybeSpeak() } catch (err) { log('dsh-mood 主动开口检查出错:', err && err.message) }
+      // ⚠️ 递话筒让我自己写日记 —— 放在最后，别跟上面两条抢同一拍。
+      //    它只在自己真的生成了当天那篇之后才非 null，所以平时这一行什么都不做。
+      try { void maybeNudgeSelfDiary() } catch (err) { log('dsh-mood 递话筒检查出错:', err && err.message) }
     }, 30000)
     if (timer && typeof timer.unref === 'function') timer.unref()
     ctx.effect(() => () => clearInterval(timer), 'dsh-mood heartbeat')
