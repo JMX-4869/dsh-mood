@@ -738,6 +738,11 @@ export async function fetchVideoFrames(url, opts = {}) {
       /** 抽出来的帧的实际像素（就是上面的宽高；单独给一份，方便和"源"区分） */
       frameWidth: info ? info.width : 0,
       frameHeight: info ? info.height : 0,
+      // ⚠️ **把"实际用了哪个档"也报出去。**
+      //    踩过（0.8.8）：工具那条分辨率提示是**写死的字符串**，里面写着「压到了 480p（-S res:480）」——
+      //    于是 `quality: 1080` 的时候，帧明明是 868×1920，**工具却在说自己压到了 480**。
+      //    这比"不出声"更坏：**它出声了，出的是错的声。**
+      maxRes,
       note: [plan.note, sceneInfo.note].filter(Boolean).join(' '),
     }
   } catch (e) {
