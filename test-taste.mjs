@@ -156,11 +156,19 @@ const t = suite('品味库')
   const iEx = p.indexOf('### 例子')
   const iOwner = p.indexOf('### 你说过的话')
   const iOther = p.indexOf('### 你认可的')
-  const iMine = p.indexOf('### 我自己的倾向')
+  // ⚠️ 别断**具体小节名**。原来断的是 '### 我自己的倾向' ——
+  //    后来我把那节拆成「我学到的」+「一开始带的倾向」（因为种子排在前面，
+  //    库一大就把学到的全挤掉了），这个断言就假红了一次。
+  //    改断**稳定的顶层标题**：意图只是"他的排在前面"。
+  const iMine = p.indexOf('## 我的品味')
   t.gt(iEx, 0, '有例子段')
   t.ok(iEx < iOwner, '例子排在原则前面（例子信息量更大）')
   t.ok(iOwner < iOther, '亲口 > 外部')
   t.ok(iOther < iMine, '外部 > 我自己的')
+  // 学到的那批必须排在种子前面 —— 不然库一大就被种子挤掉（踩过，见上面那段注释）
+  const iLearned = p.indexOf('### 我学到的')
+  const iSeed = p.indexOf('一开始带的倾向')
+  t.ok(iLearned < 0 || iSeed < 0 || iLearned < iSeed, '「我学到的」排在种子前面')
 
   // 时事也能补品味（主人原话：「抓取的时事可以补足品味」）
   t.has(p, '时事里也能捡到审美素材', '说了时事可以补品味')

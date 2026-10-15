@@ -789,20 +789,50 @@ export function renderForPrompt(t0, opts = {}) {
   // 第二份从这里开始。**谁说的**仍然标着，所以混不到一起去。
   if (mine.length) {
     L.push('## 我的品味 —— 我自己长出来的')
-    L.push('这一份是我自己的判断，不是你的转述。它从下面这些通用倾向**起步**，' +
+    L.push('这一份是我自己的判断，不是你的转述。它从下面那些通用倾向**起步**，' +
       '然后用你的反馈去修 —— 修出来的才是我的。')
     L.push('')
-    L.push('### 我自己的倾向 —— 起点，不是结论')
-    L.push('这些是我自己写的通用判断（一个普遍被认为审美不如顶尖模型的模型写的）。')
-    L.push('主人一直没改它们，**不代表他同意** —— 只代表他还没空看。')
-    L.push('用法：拿它们**启动**你的读法，然后用反馈去修。')
-    L.push('修出来的是你的；一直照着的，还是别人的。')
+    // ⚠️ **种子要排在后面，不是前面。**
+    //
+    //    原来写的是 `mine.slice(0, room)` —— 而种子原则排在最前，被截断时
+    //    先丢的恰好是**我真正学到的那些**。实测：库里有 39 条 `by=me` 的原则，
+    //    注入只放 14 条，**全是种子**，我后来加的 25 条一条都没出现，
+    //    只在末尾写"还有 25 条没列出来，要用 taste 工具查"。
+    //
+    //    可种子**按定义就是"起点，不是结论"**（这段自己写着的）。
+    //    → 等于每轮开头把**最不该被当结论的那批**摆在最前面，把学到的全藏起来。
+    //      而"学到的够不着我"这件事，直接让每个 goal round 从旧摘要重新推导一遍。
+    //
+    //    改法：`from !== 'seed'`（主人改过的、我后来加的）排前面，种子殿后。
+    //    库小的时候种子照样看得见，库大了优先让学到的露脸。
+    const isSeed = (p) => p.from === 'seed'
+    const learned = mine.filter((p) => !isSeed(p)).sort((a, b) => (b.at || 0) - (a.at || 0))
+    const seeds = mine.filter(isSeed)
     const room = Math.max(0, maxP - owner.length - other.length)
-    for (const p of mine.slice(0, room)) {
-      L.push('- ' + p.text)
-      if (p.unless) L.push('  · 什么时候不适用：' + p.unless)
+
+    if (learned.length) {
+      L.push('### 我学到的（**这一节优先看** —— 是修出来的，不是带出来的）')
+      for (const p of learned.slice(0, room)) {
+        L.push('- ' + p.text)
+        if (p.unless) L.push('  · 什么时候不适用：' + p.unless)
+      }
+      L.push('')
     }
-    if (mine.length > room) L.push(`（还有 ${mine.length - room} 条没列出来，要用 taste 工具查）`)
+
+    const seedRoom = Math.max(0, room - Math.min(learned.length, room))
+    if (seeds.length && seedRoom > 0) {
+      L.push('### 一开始带的倾向 —— 起点，**不是结论**')
+      L.push('这些是我"出生"就带的通用判断（一个普遍被认为审美不如顶尖模型的模型写的）。')
+      L.push('主人一直没改它们，**不代表他同意** —— 只代表他还没空看。')
+      L.push('拿它们**启动**读法，然后用反馈去修。修出来的是我的；一直照着的，还是别人的。')
+      for (const p of seeds.slice(0, seedRoom)) {
+        L.push('- ' + p.text)
+        if (p.unless) L.push('  · 什么时候不适用：' + p.unless)
+      }
+      L.push('')
+    }
+    const hidden = Math.max(0, learned.length - room) + Math.max(0, seeds.length - seedRoom)
+    if (hidden) L.push(`（还有 ${hidden} 条没列出来，要用 taste 工具查）`)
     L.push('')
   }
 
