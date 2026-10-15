@@ -40,13 +40,19 @@ t.ok(String(r1.install || '').includes('faster-whisper'), '降级时给出了装
 t.ok(String(r1.install || '').includes('hf-mirror'), '装法里提到了 hf-mirror —— 官方 hf.co 国内连不上，不说等于没给')
 
 // python 存在但 whisper 没装时，也要给装法（不能只在"连 python 都没有"时给）
-const r2 = await transcribeAndProsody('x.wav', { python: '这个命令根本不存在_zzz' })
+const r2 = await transcribeAndProsody('x.wav', { python: '这个命令根本不存在_zzz', transcribe: true })
 t.eq(r2.ok, false, 'python 是假命令 → 不 ok')
 t.ok(String(r2.install || '').includes('faster-whisper'), 'python 不通时也给装法')
 
+// ⚠️ **不转写的时候不该检查 whisper，也不该提装法。**
+//    因为信号分析只用 numpy —— 没装 whisper 不该挡住它。
+const r3 = await transcribeAndProsody('x.wav', { python: '这个命令根本不存在_zzz' })
+t.eq(r3.ok, false, '不转写 + python 不通 → 还是不 ok（跑不了 python）')
+t.eq(r3.install, undefined, '**不转写时不提"装 whisper"** —— 那是答非所问')
+
 // ── 4. formatASR 的基本行为 ──
 t.eq(formatASR(null), '', 'formatASR(null) → 空串')
-const empty = formatASR({ segments: [], prosody: {} })
+const empty = formatASR({ segments: [], prosody: {}, transcribe_requested: true })
 t.ok(empty.includes('没有识别到语音'), '没有语音时说"没识别到"，不说"读完了"')
 
 const D = {
@@ -55,6 +61,7 @@ const D = {
     { t0: 15.8, t1: 24.1, text: '那你不准辞职' },
   ],
   language: 'zh',
+  transcribe_requested: true,
   prosody: {
     base_f0: 258.1, f0_valid_ratio: 0.66, talking_ratio: 0.73,
     silences: [[21.2, 22.93], [6.34, 6.81]],
@@ -101,7 +108,7 @@ t.eq(formatASR({ segments: [], prosody: {}, notes: [] }).includes('⚠️ 基频
 // 根因：whisper 的 vad_filter 按"像不像人在说话"切，而唱歌带伴奏 → 大批被判成非语音丢掉。
 const cov = formatASR({
   segments: [{ t0: 0, t1: 49.4, text: 'Hello world' }],
-  language: 'zh', vad: false,
+  language: 'zh', vad: false, transcribe_requested: true,
   coverage: { sec: 49.4, total: 242.2, ratio: 0.204, tail_gap: 192.8 },
 })
 t.ok(cov.includes('覆盖 49.4 / 242.2 秒'), '报出了覆盖率（分子分母和秒数）')
@@ -114,18 +121,54 @@ t.ok(cov.includes('别把这份当成全部内容'), '给了结论性提醒')
 // 尾部空白小的时候**不许**硬造警告 —— 那是正常的收尾
 const covOk = formatASR({
   segments: [{ t0: 0, t1: 233, text: '輪到你了' }],
-  language: 'zh', vad: false,
+  language: 'zh', vad: false, transcribe_requested: true,
   coverage: { sec: 212, total: 242.2, ratio: 0.875, tail_gap: 9.2 },
 })
 t.ok(!covOk.includes('没有任何转写'), '尾部只空 9 秒时**不报警**（9 秒是正常收尾，不是缺失）')
 t.ok(!covOk.includes('覆盖率不到一半'), '覆盖率 88% 时不报"不到一半"')
 
 // 没有 coverage 字段时也不能崩（老数据/别处调用的兼容）
-t.noThrow(() => formatASR({ segments: [{ t0: 0, t1: 1, text: 'x' }], prosody: {} }),
+t.noThrow(() => formatASR({ segments: [{ t0: 0, t1: 1, text: 'x' }], prosody: {}, transcribe_requested: true }),
   '没有 coverage 字段 → 不崩')
 
+// ══ 零模型那块（0.12.0 的核心）══
+//
+// 判据就在这儿：**节拍自相关峰 > 0.5 是音乐，< 0.5 是说话。**
+// 实测：242 秒的歌 0.74；26 秒的对白 0.27。中间没有模糊地带。
+const music = formatASR({
+  transcribe_requested: false,
+  signal: { voiced_ratio: 0.95, voiced_n: 32, silence_n: 15,
+    longest_silence: { at: 232.86, sec: 9.28 }, syllable_rate: 5.51,
+    spectral_centroid: { med: 1305, p10: 666, p90: 2182 },
+    beat: { period_sec: 0.39, bpm: 154, acf_peak: 0.74, likely_music: true },
+    pitch_jitter: 0.0151 },
+})
+t.ok(music.includes('音频形状'), 'signal 有内容时报一块「音频形状」')
+t.ok(music.includes('没有模型'), '**明确说这一块没有模型** —— 那是它值钱的地方')
+t.ok(music.includes('是音乐'), '峰 0.74 → 判"是音乐/有节奏的"')
+t.ok(music.includes('0.74'), '报了那个峰的值（不只是结论）')
+t.ok(music.includes('音节率 5.51'), '音节率出来了（**不靠转写**）')
+t.ok(music.includes('谱亮度'), '谱亮度出来了')
+t.ok(music.includes('9.28'), '最长静音出来了')
+t.ok(music.includes('这次没跑'), '不转写时明说"这次没跑"，不假装是空的')
+t.ok(music.includes('多一个模型'), '说清了不跑的原因（多一个几百 MB 的模型）')
+
+const talk = formatASR({
+  transcribe_requested: false,
+  signal: { voiced_ratio: 0.73, beat: { period_sec: 0.3, bpm: 200, acf_peak: 0.27, likely_music: false } },
+})
+t.ok(talk.includes('是说话'), '峰 0.27 → 判"是说话"')
+
+// ⚠️ pitch_jitter 必须是**相对值**。第一版我移植时丢了那个除法，
+//    输出 3.97 而文案写着 0.027 —— **数和说明差 100 倍，两处只有一处错。**
+t.ok(music.includes('0.0151'), 'pitch_jitter 是相对值（0.0151 量级，不是 3.97 那种）')
+t.ok(__test.PY_SCRIPT.includes('/ np.median(fv)'),
+  '**脚本里那个除法还在** —— 防我把相对值又写成绝对 Hz')
+t.ok(__test.PY_SCRIPT.includes("out['signal']"), 'signal 块是在 python 那边算的（不在 JS 里编）')
+t.ok(__test.PY_SCRIPT.includes('acf_peak'), '节拍的峰算出来了')
+
 // ── 6.6 内联脚本里那个开关必须是**活的**（别被写死回去）──
-t.ok(__test.PY_SCRIPT.includes("sys.argv[4] == 'vad'"),
+t.ok(__test.PY_SCRIPT.includes("sys.argv[6] == 'vad'"),
   'VAD 是参数控制的（读 argv[4]）—— 不是写死的')
 t.ok(!/vad_filter=True/.test(__test.PY_SCRIPT),
   '**没有任何地方写死 vad_filter=True** —— 那正是 0.11.1 修掉的 bug')

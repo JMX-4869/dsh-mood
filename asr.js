@@ -91,35 +91,43 @@ if sr != SR:
     print(json.dumps({'ok': False, 'why': 'wav 采样率是 %d，期望 16000' % sr})); sys.exit(0)
 out['duration'] = len(a) / SR
 
-# ── 转写 ──
-# ⚠️ vad_filter 默认**关**。
-#    它按"这里像不像人在说话"来切 —— 对**说话**有用（切掉静音、少些幻觉），
-#    但对**唱歌**是灾难：伴奏会让它把大段判成"不是语音"直接丢掉。
-#    实测那首 242 秒的歌：开着它只转出 49.4 秒（20%），关掉转到 231 秒。
-#    **而且它丢东西的时候不出声** —— 输出照样是一串干净的段落。
-vad_on = (len(sys.argv) > 4 and sys.argv[4] == 'vad')
-try:
-    from faster_whisper import WhisperModel
-    m = WhisperModel(model_name, device='cpu', compute_type='int8')
-    segs, info = m.transcribe(a, language=lan, beam_size=5, vad_filter=vad_on)
-    out['language'] = info.language
-    out['vad'] = vad_on
-    out['segments'] = [{'t0': round(s.start, 2), 't1': round(s.end, 2), 'text': s.text.strip()}
-                       for s in segs if s.text.strip()]
-    # ── 覆盖率：**必须报** ──
-    #    "12 段"看起来就是"全转完了"，而它可能只覆盖 20%。
-    #    **"我读了 20%"和"我读完了"，在输出里长得一模一样。**
-    dur = len(a) / SR
-    cov = sum(s['t1'] - s['t0'] for s in out['segments'])
-    last = out['segments'][-1]['t1'] if out['segments'] else 0
-    out['coverage'] = {
-        'sec': round(cov, 1),
-        'total': round(dur, 1),
-        'ratio': round(cov / dur, 3) if dur else 0,
-        'tail_gap': round(dur - last, 1),   # 最后一句之后还剩多少秒没转
-    }
-except Exception as e:
-    out['notes'].append('转写失败：%s: %s' % (type(e).__name__, e))
+# ── 转写（**可选** —— 默认不跑）──
+#
+# ⚠️ 分界线在这儿，别看错：
+#   **信号分析**（下面那段：段落 / 音节 / 音高 / 谱亮度 / 节拍）—— 只用 numpy。
+#       **没有模型**：不装、不下载、242 秒的音频几秒钟算完。**这个总是跑。**
+#   **转写** —— 要 faster-whisper（几百 MB、要装、慢）。**这才是"多一个模型"，默认不跑。**
+#
+# 为什么 VAD 默认关（顺手记着）：
+#   它按"这里像不像人在说话"切 —— 对说话有用，但唱歌带伴奏会把大段判成"不是语音"丢掉。
+#   实测那首 242 秒的歌：开着只转出 49.4 秒（20%），关掉转到 231 秒（88%）。
+#   **而且它丢东西的时候不出声** —— 输出照样是一串干净的段落。
+want_tr = (len(sys.argv) > 5 and sys.argv[5] == 'transcribe')
+vad_on = (len(sys.argv) > 6 and sys.argv[6] == 'vad')
+out['transcribe_requested'] = want_tr
+if want_tr:
+    try:
+        from faster_whisper import WhisperModel
+        m = WhisperModel(model_name, device='cpu', compute_type='int8')
+        segs, info = m.transcribe(a, language=lan, beam_size=5, vad_filter=vad_on)
+        out['language'] = info.language
+        out['vad'] = vad_on
+        out['segments'] = [{'t0': round(s.start, 2), 't1': round(s.end, 2), 'text': s.text.strip()}
+                           for s in segs if s.text.strip()]
+        # ── 覆盖率：**必须报** ──
+        #    "12 段"看起来就是"全转完了"，而它可能只覆盖 20%。
+        #    **"我读了 20%"和"我读完了"，在输出里长得一模一样。**
+        dur = len(a) / SR
+        cov = sum(s['t1'] - s['t0'] for s in out['segments'])
+        last = out['segments'][-1]['t1'] if out['segments'] else 0
+        out['coverage'] = {
+            'sec': round(cov, 1),
+            'total': round(dur, 1),
+            'ratio': round(cov / dur, 3) if dur else 0,
+            'tail_gap': round(dur - last, 1),   # 最后一句之后还剩多少秒没转
+        }
+    except Exception as e:
+        out['notes'].append('转写失败：%s: %s' % (type(e).__name__, e))
 
 # ── 语气四量 ──
 FRAME, HOP = int(0.040 * SR), int(0.010 * SR)
@@ -210,6 +218,107 @@ if nf > 1:
 else:
     out['notes'].append('音频太短，算不出语气')
 
+# ══ 信号分析（**零模型** —— 不依赖转写，永远能算出来）══
+#
+# 这一段只用 numpy。没有模型、不下载、242 秒的音频几秒钟。
+#
+# ⚠️ **它和上面那段的区别是关键的：**
+#   转写给的是**内容**（说了什么）—— 要一个几百 MB 的模型，还可能骗人（覆盖率）。
+#   信号给的是**形状**（多长、多密、多亮、有没有拍）—— **一定拿得到，而且能复核。**
+#   缺了内容不算塌，缺了形状才是瞎。
+dur = len(a) / SR
+sig = {}
+if nf > 1:
+    # ① 段落：有声 / 静音（用能量包络切，**不需要转写**）
+    segs2, i = [], 0
+    while i < nf:
+        j = i
+        while j < nf and talking[j] == talking[i]:
+            j += 1
+        segs2.append({'voiced': bool(talking[i]), 't0': round(i * HOP / SR, 2),
+                      't1': round(j * HOP / SR, 2), 'sec': round((j - i) * HOP / SR, 2)})
+        i = j
+    # 太短的（<60ms）当抖动，跟邻居合并 —— 不合并的话会切出几百个碎段
+    mg = []
+    for s in segs2:
+        if mg and (s['sec'] < 0.06 or mg[-1]['sec'] < 0.06):
+            mg[-1]['t1'] = s['t1']
+            mg[-1]['sec'] = round(mg[-1]['t1'] - mg[-1]['t0'], 2)
+        else:
+            mg.append(s)
+    vl = [s for s in mg if s['voiced']]
+    sl = [s for s in mg if not s['voiced']]
+    sig['voiced_ratio'] = round(float(talking.mean()), 3)
+    sig['voiced_n'] = len(vl)
+    sig['silence_n'] = len(sl)
+    # 段落列表太长就只给统计，别把几百段塞进输出
+    sig['segments'] = mg if len(mg) <= 60 else None
+    if sl:
+        longest = max(sl, key=lambda s: s['sec'])
+        sig['longest_silence'] = {'at': longest['t0'], 'sec': longest['sec']}
+        sig['silence_total'] = round(sum(s['sec'] for s in sl), 2)
+
+    # ② 音节率：能量包络的峰 —— **不需要转写**
+    sm = np.convolve(rms, np.ones(5) / 5, mode='same')
+    pk = []
+    for k in range(1, nf - 1):
+        if not talking[k]:
+            continue
+        if sm[k] >= sm[k - 1] and sm[k] > sm[k + 1] and sm[k] > thr * 1.5:
+            if not pk or (k - pk[-1]) * HOP / SR > 0.08:
+                pk.append(k)
+    if pk:
+        vsec = sum(s['sec'] for s in vl) or 1
+        sig['syllable_rate'] = round(len(pk) / vsec, 2)
+        b5 = {}
+        for k in pk:
+            b = int(k * HOP / SR // 5)
+            b5[b] = b5.get(b, 0) + 1
+        sig['peaks_per_5s'] = [b5.get(b, 0) for b in range(int(dur // 5) + 1)]
+
+    # ③ 谱亮度：频谱重心 —— "闷"还是"亮"
+    win2 = np.hanning(FRAME)
+    fq = np.fft.rfftfreq(FRAME, 1 / SR)
+    ct = []
+    for k in range(0, nf, 50):
+        if not talking[k]:
+            continue
+        sp = np.abs(np.fft.rfft(fr[k] * win2))
+        if sp.sum() > 1e-6:
+            ct.append(float((sp * fq).sum() / sp.sum()))
+    if ct:
+        c = np.array(ct)
+        sig['spectral_centroid'] = {'med': round(float(np.median(c))),
+                                    'p10': round(float(np.percentile(c, 10))),
+                                    'p90': round(float(np.percentile(c, 90)))}
+
+    # ④ **节拍周期性** —— 这条能把"歌"和"讲话"分开，而且不需要任何模型。
+    #    实测：26 秒的对白峰 0.27；242 秒的歌峰 0.74。
+    env = sm - sm.mean()
+    cut = min(len(env), int(30 * SR / HOP))
+    if cut > 100:
+        ac2 = np.correlate(env[:cut], env[:cut], mode='full')[cut - 1:]
+        ac2 = ac2 / (ac2[0] + 1e-12)
+        lo, hi = int(0.3 * SR / HOP), int(3.0 * SR / HOP)
+        band = ac2[lo:hi]
+        if len(band):
+            k2 = int(np.argmax(band)) + lo
+            per = k2 * HOP / SR
+            sig['beat'] = {'period_sec': round(per, 3), 'bpm': round(60 / per),
+                           'acf_peak': round(float(ac2[k2]), 2),
+                           'likely_music': bool(ac2[k2] > 0.5)}
+
+    # ⑤ 音高跳动：相邻有效帧的音高差（不靠形容说"起伏大不大"）
+    #
+    # ⚠️ **必须除一下中位音高** —— 这里是相对值。
+    #    第一版我写成绝对 Hz，输出 3.97；而文案里那两条对照（说话 0.027 / 唱歌 0.013）
+    #    是相对值。**数和说明差 100 倍，而两处只有一处错** —— 移植的时候丢了一个除法。
+    if valid.any():
+        fv = f0[valid]
+        if len(fv) > 2 and np.median(fv) > 0:
+            sig['pitch_jitter'] = round(float(np.median(np.abs(np.diff(fv))) / np.median(fv)), 4)
+out['signal'] = sig
+
 print(json.dumps(out, ensure_ascii=False))
 `
 
@@ -255,14 +364,20 @@ export function transcribeAndProsody(wavPath, opts = {}) {
           '  huggingface.co 在国内多半连不上）',
       })
     }
-    const probe = probeWhisper(py)
-    if (!probe.ok) {
-      return resolve({
-        ok: false, why: probe.why,
-        install: 'py -m pip install faster-whisper\n' +
-          '（模型走 hf-mirror：设环境变量 HF_ENDPOINT=https://hf-mirror.com ——\n' +
-          '  huggingface.co 在国内多半连不上）',
-      })
+    // ⚠️ **whisper 只在真的要转写的时候才检查。**
+    //    信号分析（段落 / 音节 / 音高 / 谱亮度 / 节拍）只用 numpy ——
+    //    没有模型、不用装、几秒钟。**没装 whisper 不该挡住它。**
+    const wantTr = !!opts.transcribe
+    if (wantTr) {
+      const probe = probeWhisper(py)
+      if (!probe.ok) {
+        return resolve({
+          ok: false, why: probe.why,
+          install: 'py -m pip install faster-whisper\n' +
+            '（模型走 hf-mirror：设环境变量 HF_ENDPOINT=https://hf-mirror.com ——\n' +
+            '  huggingface.co 在国内多半连不上）',
+        })
+      }
     }
     const dir = join(tmpdir(), 'dsh-mood-asr')
     try { mkdirSync(dir, { recursive: true }) } catch { /* 已存在 */ }
@@ -277,8 +392,8 @@ export function transcribeAndProsody(wavPath, opts = {}) {
     const vadArg = opts.vad ? 'vad' : 'off'
     let r
     try {
-      r = spawnSync(py, [script, wavPath, model, lang, vadArg], {
-        timeout: (opts.timeoutMs || 1800000),
+      r = spawnSync(py, [script, wavPath, model, lang, wantTr ? 'transcribe' : 'no', vadArg], {
+        timeout: (opts.timeoutMs || (wantTr ? 1800000 : 300000)),
         windowsHide: true, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
         env: { ...process.env, PYTHONIOENCODING: 'utf-8', HF_ENDPOINT: process.env.HF_ENDPOINT || 'https://hf-mirror.com' },
       })
@@ -304,7 +419,48 @@ export function transcribeAndProsody(wavPath, opts = {}) {
 export function formatASR(data, opts = {}) {
   const L = []
   if (!data) return ''
-  if (!data.segments || !data.segments.length) {
+
+  // ══ 信号分析（**零模型**）先报 ══
+  //
+  // 顺序是故意的：**这一块永远拿得到，而转写可能拿不到。**
+  // 先报拿得到的那块，读的人才知道"至少这些是真的"。
+  const g = data.signal
+  if (g && Object.keys(g).length) {
+    L.push('**音频形状**（只用信号处理，**没有模型** —— 不装、不下载、几秒钟）：')
+    const bits = []
+    if (g.voiced_ratio != null) bits.push('有声占 ' + Math.round(g.voiced_ratio * 100) + '%')
+    if (g.voiced_n != null) bits.push('有声段 ' + g.voiced_n + ' 个')
+    if (g.silence_n != null) bits.push('静音段 ' + g.silence_n + ' 个')
+    if (g.longest_silence) bits.push('最长静音 ' + g.longest_silence.sec + ' 秒 @ '
+      + g.longest_silence.at + ' 秒')
+    if (g.syllable_rate != null) bits.push('**音节率 ' + g.syllable_rate + ' 个/秒**（有声部分）')
+    if (bits.length) L.push('  ' + bits.join(' · '))
+    if (g.peaks_per_5s && g.peaks_per_5s.length) {
+      L.push('  每 5 秒的密度：' + g.peaks_per_5s.join(' '))
+    }
+    if (g.spectral_centroid) {
+      const s = g.spectral_centroid
+      L.push('  谱亮度（频谱重心，越高越亮）：中位 ' + s.med + ' Hz（' + s.p10 + ' ~ ' + s.p90 + '）')
+    }
+    if (g.beat) {
+      const b = g.beat
+      L.push('  **节拍**：最强周期 ' + b.period_sec + ' 秒（≈ ' + b.bpm + ' BPM）· 自相关峰 **'
+        + b.acf_peak + '**')
+      L.push('    ' + (b.likely_music
+        ? '→ **峰 > 0.5，这段有明显的拍 —— 是音乐/有节奏的，不是纯说话。**'
+        : '→ 峰 < 0.5，没有稳定的拍 —— **是说话**（对白实测 0.27，歌实测 0.74）。'))
+    }
+    if (g.pitch_jitter != null) {
+      L.push('  音高跳动（相邻帧差 ÷ 中位音高，相对值）：中位 ' + g.pitch_jitter
+        + ' —— 说话的音高乱飘（实测 0.027），**唱歌的反而稳**（实测 0.013）')
+    }
+    L.push('')
+  }
+
+  if (!data.transcribe_requested) {
+    L.push('**转写**：这次没跑（那是"多一个模型"：faster-whisper 几百 MB）。')
+    L.push('  上面那块形状是**没花代价拿到的**；要文字才需要开 `transcribe`。')
+  } else if (!data.segments || !data.segments.length) {
     L.push('**转写**：没有识别到语音（可能是纯音乐/无对白，或者这段真的没人说话）')
   } else {
     // ── 覆盖率摆在段数旁边 ──
@@ -374,7 +530,14 @@ export function formatASR(data, opts = {}) {
   }
   if (opts.showLimit !== false) {
     L.push('')
-    L.push('⚠️ 这是**转写 + 数字**，不是"我听过了" —— 音质差、方言重、多人抢话时转写会错，')
+    // ⚠️ 这句尾注要跟着**这次实际跑了什么**走。
+    //    第一版写死成"这是转写 + 数字" —— 而不转写的时候它就是在说假话。
+    if (data.transcribe_requested && data.segments && data.segments.length) {
+      L.push('⚠️ 这是**转写 + 数字**，不是"我听过了" —— 音质差、方言重、多人抢话时转写会错。')
+    } else {
+      L.push('⚠️ 这是**逐帧量出来的形状**，不是"我听过了" —— ')
+      L.push('   我知道它多密、多亮、有没有拍、停了几次，**但我不知道它说了什么**。')
+    }
     L.push('   而"什么语气"这一步我没做：**数字只是数字，起名是解读**。')
   }
   return L.join('\n')

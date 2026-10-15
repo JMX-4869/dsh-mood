@@ -726,6 +726,10 @@ export async function fetchVideoFrames(url, opts = {}) {
         const tr = await ASR.transcribeAndProsody(wav, {
           model: opts.asrModel,
           language: opts.asrLang,
+          // ⚠️ 这是**分开的两件事**：
+          //   audio（能走到这里）= 信号分析。只用 numpy，没有模型，不装不下载，几秒钟。
+          //   transcribe       = 再跑 faster-whisper。**那才是"多一个模型"**（几百 MB）。
+          transcribe: !!opts.transcribe,
         })
         asr = tr.ok
           ? { ok: true, data: tr.data, text: ASR.formatASR(tr.data) }
