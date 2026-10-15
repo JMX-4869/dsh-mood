@@ -2559,6 +2559,22 @@ export function apply(root, rawConfig) {
                 const id = String(args.id || '').trim()
                 if (!id) return { ok: false, message: '要 id，先 list 看。' }
                 const isP = String(args.target || '') === 'principle' || (!args.target && id.startsWith('p'))
+                // ⚠️ **参数给了但这张表用不上，必须说出来。**
+                //
+                //    踩过：我给一条**原则**传了 `note`，工具收了、回了「改好了」，
+                //    但原则只有 text/why/unless 三个字段 —— `note` 整个被忽略，
+                //    **一个字都没进库，而且不报错**。和 0.7.12 那个静默截断是同一族：
+                //    参数被接受、然后被丢掉、还不说。
+                const misfit = []
+                if (isP) {
+                  for (const k of ['note', 'said', 'tags', 'kind', 'ref']) {
+                    if (args[k] !== undefined && args[k] !== '') misfit.push(k)
+                  }
+                } else {
+                  for (const k of ['text', 'why', 'unless']) {
+                    if (args[k] !== undefined && args[k] !== '') misfit.push(k)
+                  }
+                }
                 const r = isP
                   ? editPrinciple(tk, id, { text: args.text, why: args.why, unless: args.unless })
                   : updateItem(tk, id, { kind: args.kind, note: args.note, said: args.said, tags: parseTags(args.tags) })
@@ -2574,7 +2590,13 @@ export function apply(root, rawConfig) {
                   ok: true,
                   message: '改好了 [' + id + ']' + (isP
                     ? '（改过了。⚠️ **by 没动** —— 它仍然记在原来那一档；「改过」只表示它不再是种子）'
-                    : '') + cutWarn(r),
+                    : '') + cutWarn(r) + (misfit.length
+                    ? '\n\n⚠️ **这些参数这次没用上**：' + misfit.join(', ') +
+                      '\n   ' + (isP
+                        ? '原则只有 text / why / unless 三个字段 —— note、said、tags 是**条目**才有的。'
+                        : '条目只有 kind / note / said / tags 四个字段 —— text、why、unless 是**原则**才有的。') +
+                      '\n   **没有被写进去**，别以为写上了。'
+                    : ''),
                 }
               }
 
