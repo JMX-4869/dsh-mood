@@ -274,6 +274,29 @@ window.__ModuleLoader__.load({
      * 调色板说的是"颜色"，比品味窄；星星说的是"好"，比品味糊。
      * 而且眼睛这个形状在 20px 下认得出来 —— 导航图标首先要"一眼看出是哪格"。
      */
+    /**
+     * 经验卡：一张**索引卡**（卡 + 顶部一个凸起的标签）+ 卡上两条线。
+     *
+     * ⚠️ 我第一版画的是"带折角的便签"—— **而它不行**：
+     *    在 20px 下那个折角只有约 4px，看不见，
+     *    于是它和 NEWS（方框 + 里面几条线）**几乎分不清**。
+     *    而时事（order 27）和经验卡（order 31）在导航里是**相邻两格** —— 那就成了真问题。
+     *    （这是把它们九个画在一张图上看出来的。**作者那条"20px 下要认得出来"是对的判据。**）
+     *
+     * 改成索引卡：**卡片顶部的凸起会打断外轮廓** —— 而形状的"打断"比"角落的细节"抗缩小。
+     * 这也是那套七种里没有的形状（书/报纸/硬盘/眼睛/手/方块叠方块/线条人，全是闭合轮廓）。
+     */
+    const PROC_D = [
+      // 卡的本体（顶边被凸起打断，所以分两段画）
+      'M4.5 10A2 2 0 0 1 6.5 8h2',
+      'M15.5 8h2A2 2 0 0 1 19.5 10v7a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2v-7',
+      // 顶部那个凸起的标签 —— **它是这个图标唯一的识别点**
+      'M8.5 8V6.2A1.2 1.2 0 0 1 9.7 5h4.6a1.2 1.2 0 0 1 1.2 1.2V8',
+      // 卡上两条线（长的那条就是"症状"）
+      'M8.5 11.8h7',
+      'M8.5 15h4',
+    ]
+
     const TASTE_D = [
       'M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z',
       'M12 9.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6Z',
@@ -1436,50 +1459,56 @@ window.__ModuleLoader__.load({
       const cards = (data.cards || []).filter((c) => !c.helper)
       const helpers = (data.cards || []).filter((c) => c.helper)
 
-      // ── 一张卡在列表里的一行 ──
-      const row = (c) => h('div', { className: 'memrow', key: c.id },
-        h('span', { className: 'memlab' }, (c.bytes / 1024).toFixed(1) + 'k'),
-        h('div', { style: { flex: 1, minWidth: 0 } },
-          h('div', {
-            style: { cursor: 'pointer', fontWeight: 600 },
-            onClick: () => void openCard(c.id),
-            title: '点开看正文',
-          }, c.name),
-          c.trigger
-            ? h('div', { className: 'hintline', style: { marginTop: 2 } }, '症状：' + c.trigger)
-            : h('div', { className: 'hintline', style: { marginTop: 2 } },
-                '⚠️ 这张没有「症状」那一行 —— 那个是下次能搜到它的唯一入口'),
+      // ── 头部：目录 + 一句话说明 ──
+      const head = h('div', { className: 'slotnote', style: { marginBottom: 8 } },
+        '卡片放在工作区的 procedures/ 里 —— **是普通 .md 文件**，那样模型能直接 grep/read。',
+        h('br'),
+        h('span', { style: { opacity: .75 } }, data.dir || '（找不到工作区）'),
+      )
+
+      // ── 一张卡 = 一个 tcard（和品味/时事那几页同一套 class）──
+      const card = (c) => h('div', { className: 'tcard', key: c.id },
+        h('div', { className: 'trow' },
+          h('div', { className: 'tsp', style: { cursor: 'pointer' }, onClick: () => void openCard(c.id) },
+            h('div', { style: { fontWeight: 600 } }, c.name),
+            c.trigger
+              ? h('div', { className: 'tnote' }, c.trigger)
+              : h('div', { className: 'tnote', style: { color: 'var(--dsw-alias-label-warning,#c88)' } },
+                  '⚠️ 这张没有「症状」那一行 —— 那是下次能搜到它的唯一入口'),
+          ),
+          h('span', { className: 'pill' }, (c.bytes / 1024).toFixed(1) + 'k'),
+          h('button', { className: 'btn', disabled: busy, onClick: () => void openCard(c.id) }, '打开'),
         ),
       )
 
-      // ── inbox 每一行 ──
+      // ── inbox：一行一个，每行能直接预填成新卡 ──
       const inboxLines = String(inbox || '').split('\n')
         .map((l) => l.trim()).filter((l) => l && l.startsWith('- '))
 
-      return h('div', null,
-        h('div', { className: 'hintline' },
-          '经验卡放在工作区的 procedures/ 里（**普通 .md 文件**，模型能直接 grep/read）。' +
-          '一张卡 = 一个踩过的坑，按「下次会出现的症状」命名。'),
-        h('div', { className: 'hintline', style: { marginTop: 4 } }, '目录：' + (data.dir || '（找不到工作区）')),
+      const makeCard = (line) => {
+        const symptom = line.replace(/^症状[:：]\s*/, '').slice(0, 60)
+        setOpen('__new__')
+        setDraft(
+          '# ' + symptom.replace(/[\\/:*?"<>|]/g, '').slice(0, 24) + '\n\n' +
+          '> **症状**：' + symptom + '\n' +
+          '> **验证**：\n\n' +
+          '## 首选\n\n\n' +
+          '## 被挡时\n\n\n' +
+          '## 别做（反面清单）\n\n\n' +
+          '## 代价\n'
+        )
+      }
 
-        msg ? h('div', { className: 'hintline', style: { marginTop: 6 } }, msg) : null,
-
-        // ── 卡片 ──
-        h('div', { style: { marginTop: 10, fontWeight: 600 } },
-          '卡片（' + cards.length + '）'),
-        cards.length
-          ? cards.map(row)
-          : h('div', { className: 'hintline' },
-              '还没有卡。先按下面那步开张，之后**踩坑的当下**往 inbox 记一行就行。'),
-
-        // ── inbox ──
-        h('div', { style: { marginTop: 14, fontWeight: 600 } },
-          'inbox（' + (data.inbox || 0) + ' 行待整理）'),
-        h('div', { className: 'hintline' },
-          '踩到坑的**当下**就往这里记一行 —— 别等收尾，收尾要靠回忆。记一行也算数。'),
-        h('div', { style: { display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' } },
+      const inboxCard = h('div', { className: 'tcard' },
+        h('div', { className: 'trow' },
+          h('div', { className: 'tsp' },
+            h('div', { style: { fontWeight: 600 } }, 'inbox'),
+            h('div', { className: 'tnote' },
+              '踩到坑的**当下**就往这儿记一行 —— 别等收尾，收尾要靠回忆。记一行也算数。'),
+          ),
+          h('span', { className: 'pill' }, (data.inbox || 0) + ' 行'),
           h('button', { className: 'btn', disabled: busy, onClick: () => void loadInbox() },
-            showInbox ? '重读 inbox' : '看 inbox'),
+            showInbox ? '重读' : '展开'),
           h('button', {
             className: 'btn', disabled: busy || !(data.inbox > 0),
             onClick: async () => {
@@ -1489,85 +1518,90 @@ window.__ModuleLoader__.load({
             },
           }, '清空'),
         ),
-        showInbox ? h('div', { style: { marginTop: 6 } },
-          inboxLines.length
-            ? inboxLines.map((l, i) => h('div', { className: 'memrow', key: i },
-                h('div', { style: { flex: 1, minWidth: 0, wordBreak: 'break-all' } }, l.slice(2)),
-                h('button', {
-                  className: 'btn',
-                  title: '把这一行预填成一张新卡的骨架（症状就用这句话）',
-                  onClick: () => {
-                    const symptom = l.slice(2).replace(/^症状[:：]\s*/, '').slice(0, 60)
-                    setOpen('__new__')
-                    setDraft(
-                      '# ' + symptom.replace(/[\\/:*?"<>|]/g, '').slice(0, 24) + '\n\n' +
-                      '> **症状**：' + symptom + '\n' +
-                      '> **验证**：\n\n' +
-                      '## 首选\n\n\n' +
-                      '## 被挡时\n\n\n' +
-                      '## 别做（反面清单）\n\n\n' +
-                      '## 代价\n'
-                    )
-                  },
-                }, '做成卡'),
-              ))
-            : h('div', { className: 'hintline' }, '（空）'),
-        ) : null,
+        showInbox
+          ? (inboxLines.length
+              ? h('div', null, inboxLines.map((l, i) => h('div', { className: 'trow', key: i },
+                  h('div', { className: 'tsp', style: { wordBreak: 'break-all' } }, l.slice(2)),
+                  h('button', {
+                    className: 'btn',
+                    title: '把这一行预填成一张新卡（症状就用这句话）',
+                    onClick: () => makeCard(l.slice(2)),
+                  }, '做成卡'),
+                )))
+              : h('div', { className: 'tnote', style: { marginTop: 6 } }, '（空）'))
+          : null,
+      )
 
-        // ── 编辑器 ──
-        open ? h('div', { style: { marginTop: 14 } },
-          h('div', { style: { fontWeight: 600 } },
-            (open === '__new__' ? '新卡（改完点保存）' : '编辑：' + open)),
-          h('div', { style: { display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' } },
-            h('button', {
-              className: 'btn', disabled: busy,
-              onClick: async () => {
-                const id = open === '__new__'
-                  // 文件名就用第一行（去掉 # ），那是"症状"
-                  ? (draft.split('\n')[0].replace(/^#\s*/, '').trim() || '未命名') + '.md'
-                  : open
-                const j = await post({ action: 'saveCard', id, text: draft }, '存了：' + id)
-                if (j && j.ok) { setOpen(j.id || id); }
-              },
-            }, '保存'),
-            h('button', { className: 'btn', disabled: busy, onClick: () => { setOpen(''); setDraft('') } }, '关闭'),
-            open !== '__new__' ? h('button', {
-              className: 'btn', disabled: busy,
-              onClick: async () => {
-                if (!confirm('删掉 ' + open + '？')) return
-                await post({ action: 'delCard', id: open }, '删了')
-                setOpen(''); setDraft('')
-              },
-            }, '删除') : null,
-          ),
-          h('textarea', {
-            className: 'srcin', value: draft, disabled: busy,
-            spellCheck: false,
-            style: { width: '100%', minHeight: 260, marginTop: 6, fontFamily: 'monospace', whiteSpace: 'pre' },
-            onChange: (e) => setDraft(e.target.value),
-          }),
-          h('div', { className: 'hintline' }, draft.length + ' 字（卡该 ≤ 2 KB = 2048 字）'),
-        ) : null,
-
-        // ── 开张 / 辅助文件 ──
-        h('div', { style: { marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' } },
+      // ── 编辑器：也是一张 tcard ──
+      const editor = open ? h('div', { className: 'tcard' },
+        h('div', { className: 'trow' },
+          h('div', { className: 'tsp', style: { fontWeight: 600 } },
+            open === '__new__' ? '新卡' : '编辑：' + open),
           h('button', {
             className: 'btn', disabled: busy,
             onClick: async () => {
-              const j = await post({ action: 'scaffold' }, '开张了')
-              if (j && j.wrote && j.wrote.length) setMsg('建了：' + j.wrote.join(' / '))
+              const id = open === '__new__'
+                ? (draft.split('\n')[0].replace(/^#\s*/, '').trim() || '未命名') + '.md'
+                : open
+              const j = await post({ action: 'saveCard', id, text: draft }, '存了：' + id)
+              if (j && j.ok) setOpen(j.id || id)
             },
-          }, '一键开张（建目录 + 模板 + 空索引）'),
-          h('button', {
+          }, '保存'),
+          open !== '__new__' ? h('button', {
             className: 'btn', disabled: busy,
-            onClick: () => { setOpen('__new__'); setDraft('') },
-          }, '新建一张空卡'),
+            onClick: async () => {
+              if (!confirm('删掉 ' + open + '？')) return
+              await post({ action: 'delCard', id: open }, '删了')
+              setOpen(''); setDraft('')
+            },
+          }, '删除') : null,
+          h('button', { className: 'btn', disabled: busy, onClick: () => { setOpen(''); setDraft('') } }, '关闭'),
         ),
+        h('textarea', {
+          value: draft, disabled: busy, spellCheck: false,
+          style: { width: '100%', boxSizing: 'border-box', minHeight: 280, marginTop: 7, fontFamily: 'ui-monospace, Consolas, monospace', whiteSpace: 'pre' },
+          onChange: (e) => setDraft(e.target.value),
+        }),
+        h('div', { className: 'trow' },
+          h('div', { className: 'tnote' }, draft.length + ' 字（卡该 ≤ 2 KB）'),
+          h('div', { className: 'tsp' }),
+          h('div', { className: 'tnote' }, '症状那一行用**你下次会搜的那句话**，别用行话'),
+        ),
+      ) : null
+
+      // ── 底部动作 ──
+      const foot = h('div', { className: 'trow', style: { marginTop: 10 } },
+        h('button', {
+          className: 'btn', disabled: busy,
+          onClick: async () => {
+            const j = await post({ action: 'scaffold' }, '开张了')
+            if (j && j.wrote && j.wrote.length) setMsg('建了：' + j.wrote.join(' / '))
+          },
+        }, '一键开张（目录 + 模板 + 空索引）'),
+        h('button', {
+          className: 'btn', disabled: busy,
+          onClick: () => { setOpen('__new__'); setDraft('') },
+        }, '新建一张空卡'),
+        h('div', { className: 'tsp' }),
         helpers.length
-          ? h('div', { className: 'hintline', style: { marginTop: 10 } },
-              '辅助文件：' + helpers.map((c) => c.name).join(' · ') +
-              '（INDEX.md 只放**容易混的几对症状**，别逐卡列 —— 那是症状行的手工副本）')
+          ? h('div', { className: 'tnote' }, '辅助：' + helpers.map((c) => c.name).join(' · '))
           : null,
+      )
+
+      return h('div', { className: 'dshmood' },
+        msg ? h('div', { className: 'slotnote' }, msg) : null,
+        head,
+        cards.length ? h('div', null, cards.map(card))
+          : h('div', { className: 'slotnote' },
+              '还没有卡。点下面的「一键开张」，之后**踩坑的当下**往 inbox 记一行就行。'),
+        h('div', { style: { marginTop: 10 } }, inboxCard),
+        editor,
+        foot,
+        h('div', { className: 'slotnote', style: { marginTop: 10 } },
+          h('div', { className: 'tnote' },
+            'INDEX.md 只放**容易混的几对症状**，别逐卡列 —— ' +
+            '逐卡列等于把每张卡的「症状」行抄一遍，而 agent 最后会自己绕过它去 ls。'),
+        ),
       )
     }
 
@@ -2132,6 +2166,7 @@ window.__ModuleLoader__.load({
     const NAV_TASTE = '品味'
     const NAV_TALK = '主动开口'
     const NAV_STORE = '存储位置'
+    const NAV_PROC = '经验卡'
 
     /**
      * 当前是否已获授权（决定画合上还是张开的书本）。
@@ -2154,6 +2189,7 @@ window.__ModuleLoader__.load({
       if (label === NAV_LABEL) return navUnlocked ? 'book-open' : 'book-closed'
       if (label === NAV_NEWS) return 'news'
       if (label === NAV_TASTE) return 'taste'
+      if (label === NAV_PROC) return 'procedures'
       if (label === NAV_TALK) return 'talk'
       if (label === NAV_STORE) return 'store'
         if (label === NAV_PERSONA) return 'persona'
@@ -2168,7 +2204,8 @@ window.__ModuleLoader__.load({
      */
     function paintAs(svg, style) {
       try {
-        const paths = style === 'taste' ? TASTE_D
+        const paths = style === 'procedures' ? PROC_D
+          : style === 'taste' ? TASTE_D
           : style === 'book-open' ? BOOK_OPEN_D
           : style === 'book-closed' ? BOOK_CLOSED_D
             : style === 'talk' ? TALK_D
