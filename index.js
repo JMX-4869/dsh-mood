@@ -1,6 +1,8 @@
 import { dataFile, storageStatus, migrateStorage, humanSize, invalidateDataDir } from './store.js'
 import { loadIndex, saveIndex, scanAll, renderIndex, currentSession, activeSessionsDir, dbg }
   from './sidx.js'
+// 经验卡（踩过的坑，按"症状"存，命中才读）—— 见 procedures.js 开头那段说明
+import * as PROC from './procedures.js'
 /**
  * dsh-mood — DeepSeek Harness 心情插件
  *
@@ -1619,6 +1621,30 @@ export function apply(root, rawConfig) {
     //    提示词缓存是**前缀**匹配 —— 排在前面的东西一变，后面全部作废。
     //    品味只在你改它的时候变（几天一次），心情每 3~6 小时自己变。
     //    所以稳的排前面：品味 890、心情 900。
+    // 0) 经验卡（procedures/）—— **排在品味之前**（order 885）。
+    //
+    //    ⚠️ 排序依据是**变化频率**，不是重要性：缓存是前缀匹配，稳的排前面。
+    //       这一节只在"卡增减"时变；而品味我每轮都在往库里加东西（今晚那 12 轮就是）。
+    //       → 它比品味稳，所以它该排前面。
+    //
+    //    ⚠️ 而它是**每轮都发**的 —— 所以 procedures.js 里那段钩子压到了最短。
+    //       一张卡都没有时 renderHook() 返回空串，不占地方。
+    if (ctx.systemPrompt && typeof ctx.systemPrompt.section === 'function') {
+      ctx.effect(() => ctx.systemPrompt.section({
+        name: 'dsh-mood/procedures',
+        order: 885,
+        interpolate: false,
+        text: () => {
+          try { return PROC.renderHook(0) } catch (e) {
+            // 这一节出错不能把提示词整条带崩 —— 少一节，好过整轮没有上下文
+            try { log('dsh-mood 经验卡钩子生成失败：' + ((e && e.message) || e)) } catch {}
+            return ''
+          }
+        },
+      }), 'dsh-mood procedures section')
+    }
+
+    // 1) 系统提示词一节：让模型随时知道自己的品味档案
     if (ctx.systemPrompt && typeof ctx.systemPrompt.section === 'function') {
       ctx.effect(() => ctx.systemPrompt.section({
         name: 'dsh-mood/taste',
@@ -3288,6 +3314,42 @@ export function apply(root, rawConfig) {
                   }
                   if (r && r.ok === false) return send({ ok: false, error: r.error }, 400)
                   return done()
+                })
+              }
+              return send({ ok: false, error: '只支持 GET / POST' }, 405)
+            }
+            // ---- 经验卡（procedures/）----
+            //
+            // GET  /procedures               → 卡片列表（**只给元信息**，正文不转）
+            // GET  /procedures?card=<id>     → 读一张卡的正文
+            // GET  /procedures?inbox=1       → 读 inbox 原文
+            // POST /procedures {action:…}    → addInbox / clearInbox / saveCard / delCard / scaffold
+            //
+            // ⚠️ **卡片放在「工作区」的 procedures/ 里，不是插件的数据目录。**
+            //    这套机制的关键是"agent 能直接 grep / read 那些文件" ——
+            //    放进 dataFile() 的话，模型就只能靠工具接口读，而检索那种便宜的用法就没了。
+            //
+            // ⚠️ **工作区路径不用 `process.cwd()`** —— 那个我栽过。
+            //    走 procedures.js 里那条：扫会话文件 → 取最近在写的那个 → 读它 header 里的 cwd。
+            //    所以下面全传 `0` 当"没指定"（`proceduresDir` 会因为"不像路径"回退到自动探测）。
+            if (path === '/procedures') {
+              if (req.method === 'GET') {
+                const card = String(urlObj.searchParams.get('card') || '')
+                if (card) return send(PROC.readCard(0, card))
+                if (urlObj.searchParams.get('inbox') === '1') return send(PROC.readInbox(0))
+                const info = PROC.listCards(0)
+                return send({ ok: true, dir: info.dir, cards: info.cards, inbox: info.inbox })
+              }
+              if (req.method === 'POST') {
+                return readBody(req, (body, err) => {
+                  if (err) return send({ ok: false, error: 'body 不是合法 JSON' }, 400)
+                  const a = String(body.action || '')
+                  if (a === 'addInbox') return send(PROC.addInbox(0, body.line))
+                  if (a === 'clearInbox') return send(PROC.clearInbox(0))
+                  if (a === 'saveCard') return send(PROC.writeCard(0, body.id, body.text))
+                  if (a === 'delCard') return send(PROC.deleteCard(0, body.id))
+                  if (a === 'scaffold') return send(PROC.scaffold(0))
+                  return send({ ok: false, error: '未知 action：' + a }, 400)
                 })
               }
               return send({ ok: false, error: '只支持 GET / POST' }, 405)

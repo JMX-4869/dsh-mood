@@ -1371,6 +1371,206 @@ window.__ModuleLoader__.load({
      * 时事面板。**只有用户点按钮才去抓** —— 不做后台定时抓取，
      * 免得插件在用户不知情的时候往外发请求。
      */
+    /**
+     * 经验卡面板 —— 就是 `<工作区>/procedures/` 那个文件夹的界面。
+     *
+     * ⚠️ 它和别的面板有个**根本不同**：那些的数据在插件自己的目录里（dataFile），
+     *    而这个的东西是**工作区里的普通 .md 文件** —— 因为它要能被 `grep` / `read` 直接用。
+     *    → 所以这个面板干的事是"让那些文件可看可改"，而不是"管理一份插件数据"。
+     *
+     * 三块：卡片列表（点开看/改/删）· inbox（一行一行，能一键整理成卡）· 一键开张。
+     */
+    function ProceduresPanel() {
+      const [data, setData] = React.useState(null)
+      const [err, setErr] = React.useState('')
+      const [msg, setMsg] = React.useState('')
+      const [busy, setBusy] = React.useState(false)
+      const [open, setOpen] = React.useState('')      // 正在看的那张卡的 id
+      const [draft, setDraft] = React.useState('')    // 它的正文
+      const [inbox, setInbox] = React.useState('')
+      const [showInbox, setShowInbox] = React.useState(false)
+
+      const load = React.useCallback(async () => {
+        try {
+          const d = await getJSON('/procedures')
+          setData(d); setErr('')
+        } catch (e) { setErr(String((e && e.message) || e)) }
+      }, [])
+      React.useEffect(() => { void load() }, [load])
+
+      const post = async (body, okMsg) => {
+        setBusy(true)
+        try {
+          const r = await fetch(API + '/procedures', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-dsh-mood': '1' },
+            body: JSON.stringify(body),
+          })
+          const j = await r.json()
+          if (!j.ok) throw new Error(j.error || ('HTTP ' + r.status))
+          if (okMsg) { setMsg(okMsg); setTimeout(() => setMsg(''), 2500) }
+          await load()
+          return j
+        } catch (e) { setMsg('失败：' + ((e && e.message) || e)); return null }
+        finally { setBusy(false) }
+      }
+
+      const openCard = async (id) => {
+        try {
+          const j = await getJSON('/procedures?card=' + encodeURIComponent(id))
+          if (!j.ok) throw new Error(j.error || '读不到')
+          setOpen(id); setDraft(j.text || '')
+        } catch (e) { setMsg('失败：' + ((e && e.message) || e)) }
+      }
+
+      const loadInbox = async () => {
+        try {
+          const j = await getJSON('/procedures?inbox=1')
+          setInbox(j.text || ''); setShowInbox(true)
+        } catch (e) { setMsg('失败：' + ((e && e.message) || e)) }
+      }
+
+      if (err) return h('div', { className: 'hintline' }, '读不到经验卡目录：' + err)
+      if (!data) return h('div', { className: 'hintline' }, '读取中…')
+
+      const cards = (data.cards || []).filter((c) => !c.helper)
+      const helpers = (data.cards || []).filter((c) => c.helper)
+
+      // ── 一张卡在列表里的一行 ──
+      const row = (c) => h('div', { className: 'memrow', key: c.id },
+        h('span', { className: 'memlab' }, (c.bytes / 1024).toFixed(1) + 'k'),
+        h('div', { style: { flex: 1, minWidth: 0 } },
+          h('div', {
+            style: { cursor: 'pointer', fontWeight: 600 },
+            onClick: () => void openCard(c.id),
+            title: '点开看正文',
+          }, c.name),
+          c.trigger
+            ? h('div', { className: 'hintline', style: { marginTop: 2 } }, '症状：' + c.trigger)
+            : h('div', { className: 'hintline', style: { marginTop: 2 } },
+                '⚠️ 这张没有「症状」那一行 —— 那个是下次能搜到它的唯一入口'),
+        ),
+      )
+
+      // ── inbox 每一行 ──
+      const inboxLines = String(inbox || '').split('\n')
+        .map((l) => l.trim()).filter((l) => l && l.startsWith('- '))
+
+      return h('div', null,
+        h('div', { className: 'hintline' },
+          '经验卡放在工作区的 procedures/ 里（**普通 .md 文件**，模型能直接 grep/read）。' +
+          '一张卡 = 一个踩过的坑，按「下次会出现的症状」命名。'),
+        h('div', { className: 'hintline', style: { marginTop: 4 } }, '目录：' + (data.dir || '（找不到工作区）')),
+
+        msg ? h('div', { className: 'hintline', style: { marginTop: 6 } }, msg) : null,
+
+        // ── 卡片 ──
+        h('div', { style: { marginTop: 10, fontWeight: 600 } },
+          '卡片（' + cards.length + '）'),
+        cards.length
+          ? cards.map(row)
+          : h('div', { className: 'hintline' },
+              '还没有卡。先按下面那步开张，之后**踩坑的当下**往 inbox 记一行就行。'),
+
+        // ── inbox ──
+        h('div', { style: { marginTop: 14, fontWeight: 600 } },
+          'inbox（' + (data.inbox || 0) + ' 行待整理）'),
+        h('div', { className: 'hintline' },
+          '踩到坑的**当下**就往这里记一行 —— 别等收尾，收尾要靠回忆。记一行也算数。'),
+        h('div', { style: { display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' } },
+          h('button', { className: 'btn', disabled: busy, onClick: () => void loadInbox() },
+            showInbox ? '重读 inbox' : '看 inbox'),
+          h('button', {
+            className: 'btn', disabled: busy || !(data.inbox > 0),
+            onClick: async () => {
+              if (!confirm('清空 inbox？整理过的那些该先做成卡。')) return
+              await post({ action: 'clearInbox' }, 'inbox 清了')
+              setShowInbox(false); setInbox('')
+            },
+          }, '清空'),
+        ),
+        showInbox ? h('div', { style: { marginTop: 6 } },
+          inboxLines.length
+            ? inboxLines.map((l, i) => h('div', { className: 'memrow', key: i },
+                h('div', { style: { flex: 1, minWidth: 0, wordBreak: 'break-all' } }, l.slice(2)),
+                h('button', {
+                  className: 'btn',
+                  title: '把这一行预填成一张新卡的骨架（症状就用这句话）',
+                  onClick: () => {
+                    const symptom = l.slice(2).replace(/^症状[:：]\s*/, '').slice(0, 60)
+                    setOpen('__new__')
+                    setDraft(
+                      '# ' + symptom.replace(/[\\/:*?"<>|]/g, '').slice(0, 24) + '\n\n' +
+                      '> **症状**：' + symptom + '\n' +
+                      '> **验证**：\n\n' +
+                      '## 首选\n\n\n' +
+                      '## 被挡时\n\n\n' +
+                      '## 别做（反面清单）\n\n\n' +
+                      '## 代价\n'
+                    )
+                  },
+                }, '做成卡'),
+              ))
+            : h('div', { className: 'hintline' }, '（空）'),
+        ) : null,
+
+        // ── 编辑器 ──
+        open ? h('div', { style: { marginTop: 14 } },
+          h('div', { style: { fontWeight: 600 } },
+            (open === '__new__' ? '新卡（改完点保存）' : '编辑：' + open)),
+          h('div', { style: { display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' } },
+            h('button', {
+              className: 'btn', disabled: busy,
+              onClick: async () => {
+                const id = open === '__new__'
+                  // 文件名就用第一行（去掉 # ），那是"症状"
+                  ? (draft.split('\n')[0].replace(/^#\s*/, '').trim() || '未命名') + '.md'
+                  : open
+                const j = await post({ action: 'saveCard', id, text: draft }, '存了：' + id)
+                if (j && j.ok) { setOpen(j.id || id); }
+              },
+            }, '保存'),
+            h('button', { className: 'btn', disabled: busy, onClick: () => { setOpen(''); setDraft('') } }, '关闭'),
+            open !== '__new__' ? h('button', {
+              className: 'btn', disabled: busy,
+              onClick: async () => {
+                if (!confirm('删掉 ' + open + '？')) return
+                await post({ action: 'delCard', id: open }, '删了')
+                setOpen(''); setDraft('')
+              },
+            }, '删除') : null,
+          ),
+          h('textarea', {
+            className: 'srcin', value: draft, disabled: busy,
+            spellCheck: false,
+            style: { width: '100%', minHeight: 260, marginTop: 6, fontFamily: 'monospace', whiteSpace: 'pre' },
+            onChange: (e) => setDraft(e.target.value),
+          }),
+          h('div', { className: 'hintline' }, draft.length + ' 字（卡该 ≤ 2 KB = 2048 字）'),
+        ) : null,
+
+        // ── 开张 / 辅助文件 ──
+        h('div', { style: { marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' } },
+          h('button', {
+            className: 'btn', disabled: busy,
+            onClick: async () => {
+              const j = await post({ action: 'scaffold' }, '开张了')
+              if (j && j.wrote && j.wrote.length) setMsg('建了：' + j.wrote.join(' / '))
+            },
+          }, '一键开张（建目录 + 模板 + 空索引）'),
+          h('button', {
+            className: 'btn', disabled: busy,
+            onClick: () => { setOpen('__new__'); setDraft('') },
+          }, '新建一张空卡'),
+        ),
+        helpers.length
+          ? h('div', { className: 'hintline', style: { marginTop: 10 } },
+              '辅助文件：' + helpers.map((c) => c.name).join(' · ') +
+              '（INDEX.md 只放**容易混的几对症状**，别逐卡列 —— 那是症状行的手工副本）')
+          : null,
+      )
+    }
+
     function NewsPanel() {
       const h = React.createElement
       const [data, setData] = React.useState(null)
@@ -1906,6 +2106,11 @@ window.__ModuleLoader__.load({
       slots.inject('settings.section', () => slots.register(
         { name: 'settings.section', id: 'taste', order: 30, label: '品味' },
         () => React.createElement(MoodErrorBoundary, null, React.createElement(TastePanel, {})),
+      ))
+      // 经验卡：工作区里那个 procedures/ 文件夹的界面（踩过的坑，按"症状"存）
+      slots.inject('settings.section', () => slots.register(
+        { name: 'settings.section', id: 'procedures', order: 31, label: '经验卡' },
+        () => React.createElement(MoodErrorBoundary, null, React.createElement(ProceduresPanel, {})),
       ))
 
       // ---- 把设置导航里「心情日记」那格的图标换成黑线条书本 ----
