@@ -1650,7 +1650,15 @@ export function apply(root, rawConfig) {
     if (ctx.systemPrompt && typeof ctx.systemPrompt.section === 'function') {
       ctx.effect(() => ctx.systemPrompt.section({
         name: 'dsh-mood/sessions',
-        order: 895,
+        // ⚠️ **905，不是 895。** 一开始我按"稳的在前"排了 895（品味 890 之后），
+        //    而那是**想当然**：这一节只在**启动时**刷新一次，所以它自己很稳 ——
+        //    可它读的那个索引文件是**另一个对话每轮都在写**的，
+        //    → 摘要一变，**900 之后那段（心情 + 人设 + 长期记忆，几千字）每轮作废**。
+        //
+        //    依据是量出来的：同样的对话，命中缓存那几轮 0.03~0.04 元/百万，
+        //    没命中的 0.21 元/百万 —— **差 10 倍**。
+        //    → 把这一节挪到**心情之后**，让它只影响自己。
+        order: 905,
         interpolate: false,
         text: () => {
           try {
