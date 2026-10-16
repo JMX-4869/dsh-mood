@@ -97,7 +97,21 @@ export function activeSessionsDir() {
   const home = process.env.DSH_HOME || join(process.env.USERPROFILE || '', '.dsh')
   const base = join(home, 'sessions')
   if (!existsSync(base)) return ''
-  let bestKey = '', bestT = 0
+
+  // ⚠️ **先在"最近 5 分钟内写过"的里面挑最大的** —— 不能只挑 mtime 最新的。
+  //
+  //    原来只挑 mtime 最新，假设"正在写的就是我自己"。**那个假设漏了一半。**
+  //    实测（就是宿主重启那一刻）：**别的工作区的会话也会被写** ——
+  //    悬浮球 dsh-orb 在 4 秒内就落了一次盘，它的文件 mtime 变成"刚刚"，
+  //    于是抢在真正在写的我这里被选中 →
+  //    **索引整个扫成了别人工作区的对话**：界面里显示的是两个 10-14 的会话，
+  //    而当前工作区里明明有 7 个、最新的就在几分钟前。
+  //
+  //    当前会话的特征是两条：**一直在写**（所以最近写过）+ **通常文件最大**（它最长）。
+  //    于是：限制在"最近 5 分钟内写过"的里面，按**大小**选最大的。
+  //    退路：一个都不满足就退回按 mtime 选 —— 宁可不准，也不要返回空。
+  const now = Date.now()
+  const cands = []
   for (const key of readdirSync(base)) {
     const dir = join(base, key)
     let ids
@@ -106,12 +120,16 @@ export function activeSessionsDir() {
       const f = join(dir, id, 'session.v4.jsonl.zstd')
       if (!existsSync(f)) continue
       try {
-        const t = statSync(f).mtimeMs
-        if (t > bestT) { bestT = t; bestKey = key }
+        const st = statSync(f)
+        cands.push({ key, mtime: st.mtimeMs, size: st.size })
       } catch { /* 读不动就跳过 */ }
     }
   }
-  return bestKey ? join(base, bestKey) : ''
+  if (!cands.length) return ''
+  const fresh = cands.filter((c) => now - c.mtime < 5 * 60 * 1000)
+  const pool = fresh.length ? fresh : cands
+  pool.sort((a, b) => b.size - a.size || b.mtime - a.mtime)
+  return join(base, pool[0].key)
 }
 
 /**
