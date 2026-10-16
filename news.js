@@ -1,5 +1,12 @@
 import { dataFile, dataDir } from './store.js'
 import * as F from './frames.js'
+// 量测（学自 CFITCorporation/video-watch-skill）：**抽帧之前先看全片**。
+// ⚠️ 原来这里只有一个信号 —— 场景切换。而它在两类素材上是聋的：
+//    低运动（导视/文档）切点 0 个而画面一直在变；高运动（动画/影视）切点几个而每两帧都不同。
+//    两边都退回"按秒均分"，而**均分的盲区有多大，说不清**。
+// now：measure() 一条 ffmpeg 拿逐秒运动量（零 token），planFromMeasure() 用
+//      **骨架（保证盲区上界）+ 事件（切点/突变/谷底）** 定计划。
+import * as M from './measure.js'
 import * as ASR from './asr.js'
 /**
  * dsh-mood / news.js —— 「更新时事」
@@ -736,27 +743,51 @@ export async function fetchVideoFrames(url, opts = {}) {
       opts = { ...opts, fps: info.fps }
     }
 
-    // ── 场景检测（自适应抽帧的依据）──
+    // ── 量测 → 采样计划 ──
     //
-    // ⚠️ 这一步**是可以失败/为空的**，而且失败不该让整件事挂掉：
-    //    · 单镜头 / 静止画面的视频检不出切换 —— 那是**正常**的，退回均匀抽帧
-    //    · 视频太长会超时 —— 也退回均匀
-    //    所以它只影响"取哪几帧"，不影响"能不能抽"。
-    let sceneInfo = { times: [], error: '', note: '' }
+    // 旧做法是「场景检测 → 有场景表就自适应、没有就退回均分」。**那个顺序错了。**
+    // 场景切换只是"信号之一"，而它在两头都是聋的（低运动检不出、高运动太密），
+    // 于是最常见的结果是**退回均分 —— 而均分的盲区多大，说不出来。**
+    //
+    // 现在先量测（ffmpeg 看全部帧，零 token），拿逐秒运动量 + 切点/冻结/静音，
+    // 再定计划：**骨架保证盲区上界，事件用剩余预算。**
+    // 那条路失败（没有 ffmpeg / 超时 / 素材没有可解画面）就退回旧路 —— 而**说清为什么退**。
+    let mz = null
+    let planNote = ''
     try {
-      sceneInfo = F.detectScenes(videoPath, ffmpeg, { timeoutMs: 120000 })
-    } catch (e) {
-      sceneInfo = { times: [], error: String((e && e.message) || e), note: '' }
-    }
+      mz = M.measure(videoPath, ffmpeg, { timeoutMs: 240000 })
+    } catch (e) { mz = { error: String((e && e.message) || e) } }
 
-    // ── 计划 + 抽帧 ──
-    const plan = F.planFrames(durationSec, {
-      maxFrames: opts.maxFrames || 12,
-      perSecond: opts.perSecond || 1,
-      everySec: opts.everySec,
-      fps: opts.fps || 30,
-      scenes: sceneInfo.times,        // 有场景表就走自适应；没有就退回均分
-    })
+    let plan
+    if (mz && !mz.error && Array.isArray(mz.perSec) && mz.perSec.length) {
+      // 骨架帧数：默认 16（盲区 = 时长/16）。它比 maxFrames 重要 ——
+      // **盲区上界是骨架给的，而预算超一点比"说不清漏了什么"划算。**
+      const skeleton = Math.max(6, Math.min(24, Number(opts.skeleton) || 16))
+      plan = M.planFromMeasure(mz, {
+        skeleton,
+        max: Math.max(skeleton + 2, Number(opts.maxFrames) || 36),
+        burst: 3,
+        fps: opts.fps || 30,
+      })
+      if (plan.error) plan = null
+    }
+    if (!plan) {
+      // ── 退路：旧路（场景表 + 均分）──
+      let sceneInfo = { times: [], error: '', note: '' }
+      try {
+        sceneInfo = F.detectScenes(videoPath, ffmpeg, { timeoutMs: 120000 })
+      } catch (e) {
+        sceneInfo = { times: [], error: String((e && e.message) || e), note: '' }
+      }
+      plan = F.planFrames(durationSec, {
+        maxFrames: opts.maxFrames || 12,
+        perSecond: opts.perSecond || 1,
+        everySec: opts.everySec,
+        fps: opts.fps || 30,
+        scenes: sceneInfo.times,
+      })
+      planNote = '⚠️ 量测没成（' + ((mz && mz.error) || '未知') + '），退回旧路：' + (plan.note || '')
+    }
     const ex = F.extractFrames(videoPath, plan, batch, ffmpeg)
     if (!ex.ok) return { ok: false, title, durationSec, error: ex.error }
 
@@ -812,8 +843,20 @@ export async function fetchVideoFrames(url, opts = {}) {
       // 抽帧是"怎么取的" —— 让调用方（和模型）知道这是自适应还是均分，
       // 以及有没有退回。不说的话，"怎么只有 5 张"就没法解释。
       mode: plan.mode,
-      sceneCount: plan.sceneCount || 0,
-      sceneError: sceneInfo.error || '',
+      /** 选了几帧（不是"检到几个场景"—— 那个数在两头都是聋的） */
+      pickCount: plan.picks.length,
+      // ── 量测那一层（新增）──
+      //
+      // ⚠️ 报这些的理由和上面报 times 一样：**不报，我就只能靠猜。**
+      //    尤其 `blindSpot` —— 它是"任何 X 秒里至少有一帧"的硬上界。
+      //    旧做法（均分）给不出这个数，于是"到底漏了什么"永远说不清。
+      //    （而那正是 2026-10-17 那 12 轮里最难受的一点。）
+      motion: mz && mz.motion ? mz.motion : null,
+      kind: (mz && mz.kind) || '',
+      blindSpot: plan.blindSpot || 0,
+      cuts: (mz && mz.events && mz.events.cuts ? mz.events.cuts.length : 0),
+      freezes: (mz && mz.events && mz.events.freezes ? mz.events.freezes.length : 0),
+      silences: (mz && mz.events && mz.events.silences ? mz.events.silences.length : 0),
       // ⚠️ **分辨率必须报出来。**
       //
       //    下载时写死了 `-S res:480` —— 也就是说**抽出来的帧最高就 480p**，
@@ -833,7 +876,7 @@ export async function fetchVideoFrames(url, opts = {}) {
       //    于是 `quality: 1080` 的时候，帧明明是 868×1920，**工具却在说自己压到了 480**。
       //    这比"不出声"更坏：**它出声了，出的是错的声。**
       maxRes,
-      note: [plan.note, sceneInfo.note].filter(Boolean).join(' '),
+      note: [planNote, plan.note].filter(Boolean).join(' '),
     }
   } catch (e) {
     return { ok: false, title, error: '抽帧出错：' + ((e && e.message) || e) }
