@@ -289,12 +289,66 @@ export function loadTaste() {
   }
 }
 
+/**
+ * 按 id 求并集 —— 给"写之前重读"用。
+ *
+ * ⚠️ 有这个函数是因为 **taste 库会同时被两个对话写**：
+ *    这边一个、还有一个专门"刷品味"的对话（它每轮都 `taste add`）。
+ *    而 `saveTaste` 原来是"最后写入者赢"——
+ *      两边都 loadTaste（各 26 条）→ 各加一条 → 各写回 27 条
+ *      → **后写的那次把先写的那一条吃掉**，而且一声不响。
+ *
+ * 规则：
+ *   · **盘上有、这次没有的 → 保留**（那是别人刚加的）
+ *   · **这次有、盘上没有的 → 用它**（那是这次要加的）
+ *   · **同一个 id 两边都有** → 以**这次传入的**为准（它是本次调用的意图）
+ *   · 顺序：先按盘上的排，再把新增的追加在后面
+ */
+function mergeById(diskArr, nextArr) {
+  const a = Array.isArray(diskArr) ? diskArr : []
+  const b = Array.isArray(nextArr) ? nextArr : []
+  const key = (x) => (x && (x.id || x.text || JSON.stringify(x))) || ''
+  const bMap = new Map(b.map((x) => [key(x), x]))
+  const out = []
+  const seen = new Set()
+  for (const x of a) {                       // 盘上的顺序先摆好
+    const k = key(x)
+    seen.add(k)
+    out.push(bMap.has(k) ? bMap.get(k) : x)  // 同一 id → 用这次的
+  }
+  for (const x of b) {                       // 再把这次新增的追加
+    const k = key(x)
+    if (!seen.has(k)) { seen.add(k); out.push(x) }
+  }
+  return out
+}
+
 export function saveTaste(t) {
   try {
     const p = tasteFile()
     mkdirSync(dirname(p), { recursive: true })
-    const tmp = p + '.tmp'
-    writeFileSync(tmp, JSON.stringify(t, null, 2), 'utf8')
+
+    // ⚠️ tmp 名字**必须带本进程的 pid 和一点随机**。
+    //    原来固定写 `p + '.tmp'`：两个进程同时保存时，
+    //    A 写的 tmp 会被 B 覆盖，然后 A 拿着 B 的 tmp rename 成"自己的库"。
+    const tmp = p + '.' + process.pid + '.' + Math.random().toString(36).slice(2, 8) + '.tmp'
+
+    // ⚠️ **写之前重读盘上的那份并合并** —— 见上面 mergeById 的说明。
+    //    不这么做就是"最后写入者赢"，而两边都在写。
+    let merged = t
+    try {
+      const disk = loadTaste()
+      merged = {
+        ...t,
+        principles: mergeById(disk.principles, t.principles),
+        items: mergeById(disk.items, t.items),
+        // summary 是"压出来的"，通常只有一边会动它 ——
+        // 这次没带就用盘上的，带了就用这次的
+        summary: (t.summary && Object.keys(t.summary).length) ? t.summary : disk.summary,
+      }
+    } catch { /* 盘上那份读不动就按原样写 —— 总比什么都不写强 */ }
+
+    writeFileSync(tmp, JSON.stringify(merged, null, 2), 'utf8')
     renameSync(tmp, p)
     return true
   } catch (e) {
