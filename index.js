@@ -3338,7 +3338,8 @@ export function apply(root, rawConfig) {
                 if (card) return send(PROC.readCard(0, card))
                 if (urlObj.searchParams.get('inbox') === '1') return send(PROC.readInbox(0))
                 const info = PROC.listCards(0)
-                return send({ ok: true, dir: info.dir, cards: info.cards, inbox: info.inbox })
+                // custom = 用户把它指到别处了（界面上要能看出"这是跟随工作区"还是"指定的"）
+                return send({ ok: true, dir: info.dir, cards: info.cards, inbox: info.inbox, custom: !!PROC.customDirFor('procedures') })
               }
               if (req.method === 'POST') {
                 return readBody(req, (body, err) => {
@@ -3349,6 +3350,8 @@ export function apply(root, rawConfig) {
                   if (a === 'saveCard') return send(PROC.writeCard(0, body.id, body.text))
                   if (a === 'delCard') return send(PROC.deleteCard(0, body.id))
                   if (a === 'scaffold') return send(PROC.scaffold(0))
+                  // 改存储位置：搬到别处 + 写进 store 配置（旧目录不删）
+                  if (a === 'move') return send(PROC.moveTo(body.dir, 0))
                   return send({ ok: false, error: '未知 action：' + a }, 400)
                 })
               }

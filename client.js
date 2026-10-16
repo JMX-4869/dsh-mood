@@ -1412,6 +1412,7 @@ window.__ModuleLoader__.load({
       const [draft, setDraft] = React.useState('')    // 它的正文
       const [inbox, setInbox] = React.useState('')
       const [showInbox, setShowInbox] = React.useState(false)
+      const [moveDraft, setMoveDraft] = React.useState('')   // 改存储位置时输入的新目录
 
       const load = React.useCallback(async () => {
         try {
@@ -1569,6 +1570,52 @@ window.__ModuleLoader__.load({
         ),
       ) : null
 
+      // ── 存储位置（和别的设置项一样能改）──
+      //
+      // ⚠️ 这一项和别的数据文件**不一样**：别的默认落在 dataDir() 底下，
+      //    而它**默认跟随当前工作区** —— 因为卡片是普通 .md 文件，
+      //    模型要能直接 grep / read（放进固定目录就跨工作区共享了，那是另一种用法）。
+      const storeRow = h('div', { className: 'tcard' },
+        h('div', { className: 'trow' },
+          h('div', { className: 'tsp' },
+            h('div', { style: { fontWeight: 600 } }, '存储位置'),
+            h('div', { className: 'tnote' },
+              data.custom
+                ? '已指定到一个固定目录 —— 那样它**跨工作区共享**（换个工作区也看到同一批卡）。'
+                : '跟随当前工作区（默认）—— 卡片是普通 .md 文件，模型能直接 grep/read。'),
+            h('div', {
+              className: 'tnote',
+              style: { fontFamily: 'ui-monospace, Consolas, monospace', wordBreak: 'break-all', opacity: .85 },
+            }, data.dir || '（找不到工作区）'),
+          ),
+        ),
+        h('div', { className: 'trow' },
+          h('input', {
+            className: 'srcin', value: moveDraft, disabled: busy,
+            placeholder: '要搬到的目录，例如 D:\\经验卡',
+            onChange: (e) => setMoveDraft(e.target.value),
+          }),
+          h('button', {
+            className: 'btn', disabled: busy || !moveDraft.trim(),
+            onClick: async () => {
+              const to = moveDraft.trim()
+              if (!confirm('把卡片复制到：\n' + to + '\n\n旧目录会留着不删（要清自己清）。')) return
+              const j = await post({ action: 'move', dir: to }, '搬好了')
+              if (j && j.ok) setMoveDraft('')
+            },
+          }, '搬过去'),
+          data.custom
+            ? h('button', {
+                className: 'btn', disabled: busy,
+                onClick: async () => {
+                  if (!confirm('改回「跟随工作区」？卡片不会丢，只是换个地方找它。')) return
+                  await post({ action: 'move', dir: '' }, '改回跟随工作区了')
+                },
+              }, '恢复默认')
+            : null,
+        ),
+      )
+
       // ── 底部动作 ──
       const foot = h('div', { className: 'trow', style: { marginTop: 10 } },
         h('button', {
@@ -1596,6 +1643,7 @@ window.__ModuleLoader__.load({
               '还没有卡。点下面的「一键开张」，之后**踩坑的当下**往 inbox 记一行就行。'),
         h('div', { style: { marginTop: 10 } }, inboxCard),
         editor,
+        h('div', { style: { marginTop: 10 } }, storeRow),
         foot,
         h('div', { className: 'slotnote', style: { marginTop: 10 } },
           h('div', { className: 'tnote' },

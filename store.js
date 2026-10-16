@@ -66,6 +66,7 @@ export const KEY_LABELS = {
   proactive: '主动开口',
   memory: '硬盘记忆',
   taste: '品味库',
+  procedures: '经验卡',
 }
 
 /**
@@ -87,6 +88,7 @@ export const KEY_OWNER = {
   proactive: 'proactive',
   memory: 'memory',
   taste: 'taste',
+  procedures: 'procedures',
 }
 
 const normDir = (d) => {
@@ -217,6 +219,47 @@ export function invalidateDataDir() {
  *   第一版这里写的是 `join(dataDir(), name)`，结果"只把日记搬到另一个目录"之后，
  *   `storageStatus()` 显示新位置、而 `diaryFile()` 还指着旧位置 —— 界面和实际两张皮。
  */
+/**
+ * 把某个键（或整体的默认）指到新目录 —— 读-改-写，**别把别的字段吃掉**。
+ *
+ * ⚠️ 写完**必须**失效解析缓存（见下面 resolved() 那段"迁移后到重启前"）：
+ *    不失效的话，跑着的进程还在往旧位置读写，那一段的改动全落在旧盘。
+ *
+ * @param key 短键（'procedures' / 'diary' / …）；传空 = 改整体的默认
+ * @param dir 新目录（绝对路径）；传空 = 恢复默认
+ */
+export function setDirForKey(key, dir) {
+  const c = readStoreConfig()
+  const next = { default: c.default, dirs: { ...c.dirs } }
+  if (key) {
+    const d = normDir(dir)
+    if (d) next.dirs[key] = d
+    else delete next.dirs[key]
+  } else {
+    next.default = normDir(dir)
+  }
+  const ok = writeStoreConfig(next)
+  if (ok) invalidateDataDir()
+  return ok
+}
+
+/**
+ * 「目录型」的东西 —— 和 DATA_FILES 那些「单个文件」不是一回事。
+ *
+ * 现在只有一个：**procedures（经验卡）**。它是一整个目录，而且默认值很特殊 ——
+ * **默认跟随当前工作区**（那样模型能直接 grep / read 那些 .md，不必绕工具接口），
+ * 但用户可以把它指到一个固定位置（比如让它**跨工作区共享**）。
+ *
+ * → 所以它不是 dataDir() 底下的一个文件，而是「配置过就用配置的，没配过才跟随工作区」。
+ *   别的键也走这套，将来要加目录型的东西不用再想一遍。
+ */
+export function customDirFor(key) {
+  try {
+    const cfg = readStoreConfig()
+    return normDir(((cfg && cfg.dirs) || {})[key]) || null
+  } catch { return null }
+}
+
 export function dataFile(name) {
   const key = FILE_KEYS[name]
   return join(key ? dirForKey(key) : dataDir(), name)

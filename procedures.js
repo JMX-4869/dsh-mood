@@ -35,9 +35,10 @@
  *    那个思路我留着，但我没做脚本：这里把"最近有没有人读过卡"记在
  *    `_reads.json` 里，面板上直接显示。**少一个要维护的文件。**
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs'
-import { join, dirname, basename } from 'node:path'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, copyFileSync } from 'node:fs'
+import { join, dirname, basename, resolve } from 'node:path'
 import { activeSessionsDir, extractSession } from './sidx.js'
+import { customDirFor, setDirForKey } from './store.js'
 
 /**
  * 当前工作区路径。
@@ -66,12 +67,23 @@ export function workspaceDir() {
 }
 
 export function proceduresDir(ws) {
+  // ⚠️ **先问存储配置。** 用户可以在设置页把这一项指到一个固定目录
+  //    （那样它就跨工作区共享了 —— 换个工作区也能看到同一批卡）。
+  //    没指过才跟随工作区。
+  const custom = customDirFor('procedures')
+  if (custom) return custom
+
   // ⚠️ **不能信传进来的 `ws`** —— 我第一版就信了它：
   //    把一行中文当成工作区传进来时，它会 join 出一个假路径，
   //    而 `ensure()` 会**真的去建那个目录**。
   //    （就是刚发生的事：我把 addInbox(line) 写成了漏掉 ws 参数。）
   //    → 不像路径就当没给，回退到自动探测。
-  const w = (typeof ws === 'string' && /^[A-Za-z]:[\/]|^\//.test(ws)) ? ws : workspaceDir()
+  //
+  // ⚠️ 而这里的正则和 moveTo 那边是同一个坑：`[\/]` 丢反斜杠，
+  //    于是**任何 `D:\...` 都会被判成"不像路径"** —— 而它一直没暴露，
+  //    因为调用方总是传工作区或 `0`，坏的那一支永远走不到。
+  //    （"永远走不到的分支"不等于"对的分支"。）
+  const w = (typeof ws === 'string' && /^[A-Za-z]:[\\/]|^\//.test(ws)) ? ws : workspaceDir()
   return w ? join(w, 'procedures') : ''
 }
 
@@ -255,13 +267,58 @@ export function renderHook(ws) {
   const info = listCards(ws)
   const n = info.cards.filter((c) => !c.helper).length
   if (!info.dir || n === 0) return ''   // 一张卡都没有就不占地方
+  // ⚠️ 目录**可能是被指到别处的**（设置页里能改存储位置）。
+  //    那样"工作区里有 procedures/"就是错的 —— 而模型会照着那句去工作区里搜，
+  //    搜不到就以为没有卡。**所以这里说真实路径。**
+  const custom = customDirFor('procedures')
+  const where = custom ? `\`${custom}\`` : '工作区里的 `procedures/`'
   return [
     '## 经验卡（procedures/）',
     '',
-    `工作区里有 \`procedures/\`（现在 **${n} 张卡**${info.inbox ? ` · inbox ${info.inbox} 行待整理` : ''}）——` +
+    `${where}（现在 **${n} 张卡**${info.inbox ? ` · inbox ${info.inbox} 行待整理` : ''}）——` +
     '存的是**踩过的坑**，按"下次会出现的症状"命名，**命中才读**。',
     '',
-    '· **撞上症状先去搜**，别凭记忆答：拿任务里的说法搜 `procedures/*.md`，命中哪张读哪张；拿不准就多搜一个词。',
-    '· **踩坑的当下**就往 `procedures/_inbox.md` 追一行（症状 + 一句话解法）—— **别等收尾，收尾要靠回忆**。记一行也算数。',
+    `· **撞上症状先去搜**，别凭记忆答：拿任务里的说法搜那里的 \`*.md\`，命中哪张读哪张；拿不准就多搜一个词。`,
+    `· **踩坑的当下**就往 \`_inbox.md\` 追一行（症状 + 一句话解法）—— **别等收尾，收尾要靠回忆**。记一行也算数。`,
   ].join('\n')
+}
+
+/**
+ * 把经验卡目录搬到别处（设置页里点"改存储位置"就是走这条）。
+ *
+ * ⚠️ **旧的目录不删。** 删用户数据这种事不该自动做 ——
+ *    搬过去之后旧的那份留着当备份，要清理自己清。
+ *    （同理：复制失败就**不写配置**，免得指针指到一个空目录。）
+ */
+export function moveTo(newDir, ws) {
+  const d = String(newDir || '').trim()
+  // ⚠️ **空 = 恢复默认（跟随工作区）**，不是"出错"。
+  //    面板上那个「恢复默认」按钮就是发一个空 dir 过来。
+  //    （我第一版这里直接 return 错误，于是那个按钮永远失败。）
+  if (!d) {
+    const okDel = setDirForKey('procedures', '')
+    return okDel
+      ? { ok: true, to: proceduresDir(), note: '改回跟随工作区了' }
+      : { ok: false, error: '清配置失败' }
+  }
+  if (!/^[A-Za-z]:[\\/]|^\//.test(d)) return { ok: false, error: '要绝对路径（相对路径会跟着 cwd 乱跑）' }
+  const from = proceduresDir(ws)
+  if (!from) return { ok: false, error: '找不到当前目录' }
+  if (resolve(from) === resolve(d)) return { ok: false, error: '和现在一样' }
+
+  let copied = 0
+  try {
+    mkdirSync(d, { recursive: true })
+    if (existsSync(from)) {
+      for (const name of readdirSync(from)) {
+        if (!name.endsWith('.md')) continue
+        copyFileSync(join(from, name), join(d, name))
+        copied++
+      }
+    }
+  } catch (e) { return { ok: false, error: '复制失败：' + ((e && e.message) || e) } }
+
+  const ok = setDirForKey('procedures', d)
+  if (!ok) return { ok: false, error: '写配置失败' }
+  return { ok: true, from, to: d, copied, note: '旧目录留着没删（要清自己清）' }
 }
