@@ -1,3 +1,20 @@
+## 0.14.4 — 修：经验卡那条 GET 一直报错（一个我只验了一半的错）
+
+**症状**：设置页「经验卡」那一格读不出东西，接口回
+`{"ok":false,"error":"PROC.customDirFor is not a function"}`。
+
+**原因**：`index.js` 写的是 `import * as PROC from './procedures.js'`，
+而 `customDirFor` 是 **store.js 的导出** —— procedures.js 没把它转出来。
+于是那条 GET 永远报错，而 **POST 那条（改存储位置）走得通**，
+因为它走的是 `PROC.moveTo`，那是我自己在 procedures.js 里写的。
+
+**⚠️ 教训（这条比代码值钱）**：我改完那条路由**只验了 POST**。
+   `moveTo` 通了、`note` 字段回来了，我就以为整条路由没事。
+   —— **一条路由有多个方法时，「验了一个」不是「验过了」。**
+   而这次的表现恰好会骗人：POST 全对、GET 全错，而界面上只表现为"那一格是空的"。
+
+**修**：procedures.js 加一行 `export { customDirFor }`。
+
 ## 0.14.3 — 经验卡也能改存储位置（和别的设置项一样）
 
 **它和别的数据文件不一样**：别的默认落在 `dataDir()` 底下，而它**默认跟随当前工作区** ——

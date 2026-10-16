@@ -39,6 +39,11 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSy
 import { join, dirname, basename, resolve } from 'node:path'
 import { activeSessionsDir, extractSession } from './sidx.js'
 import { customDirFor, setDirForKey } from './store.js'
+// ⚠️ **转出来** —— index.js 那条 GET 用的是 `PROC.customDirFor(...)`，
+//    而它是 store.js 的导出、不是这个模块的。不转的话那条路由永远报
+//    「PROC.customDirFor is not a function」，而**别的都正常**（POST 那条就走得通）——
+//    于是"验了一个方法"会让人以为整条路由没事。
+export { customDirFor }
 
 /**
  * 当前工作区路径。
