@@ -31,3 +31,6 @@ dsh-mood-diary.json
 dsh-mood-news.json
 dsh-mood-proactive.json
 dsh-mood-store.json
+
+# 带时间戳的备份（*.bak 那条匹配不到这种）
+*.bak-*

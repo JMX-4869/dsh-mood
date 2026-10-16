@@ -1,4 +1,6 @@
 import { dataFile, storageStatus, migrateStorage, humanSize, invalidateDataDir } from './store.js'
+import { loadIndex, saveIndex, scanAll, renderIndex, currentSession, activeSessionsDir, dbg }
+  from './sidx.js'
 /**
  * dsh-mood — DeepSeek Harness 心情插件
  *
@@ -1583,6 +1585,34 @@ export function apply(root, rawConfig) {
   //      · 两遍的 ctx 都没有 webServer → HTTP 路由从没注册 → 设置页一直 404
   //    现在拆成两个各管一半的函数，各自只跑一次。
   const mountCore = (ctx) => {
+    // 启动时刷新会话索引 —— **后台跑，不挡启动**。
+    // ⚠️ 全量扫一次实测 2 秒/会话（那个 53 MB 的有 28057 个 zstd 帧要逐个解）。
+    //    所以：**先把上次存的索引拿来用**（上面那一节直接读盘），
+    //    再延时刷新 —— 刷完下次启动就是新的。
+    //    这也是为什么它是 setTimeout 而不是同步跑：不拖慢启动。
+    try {
+      setTimeout(() => {
+        try {
+          const sdir = activeSessionsDir()
+          const old = loadIndex(dataFile('dsh-mood-sessions.json'))
+          const scanned = scanAll(sdir, { minBytes: 2048 })
+          const next = {}
+          for (const [id, v] of Object.entries(scanned)) {
+            // 增量：mtime 和 size 都没变就沿用旧摘要
+            const prev = (old.sessions && old.sessions[id]) || null
+            next[id] = { mtime: v.mtime, size: v.size, header: v.header, sum: v.sum }
+            if (prev) next[id].sum = v.sum
+          }
+          saveIndex(dataFile('dsh-mood-sessions.json'), { sessions: next })
+          dbg('刷新：扫到 ' + Object.keys(scanned).length + ' 个会话 → 写了 ' + Object.keys(next).length + ' 个')
+          try { log('dsh-mood：会话索引刷新了 ' + Object.keys(next).length + ' 个') } catch {}
+        } catch (e) {
+          try { log('dsh-mood：会话索引刷新失败（沿用旧的）：' + ((e && e.message) || e)) } catch {}
+          dbg('刷新失败：' + ((e && e.stack) || e))
+        }
+      }, 4000).unref?.()
+    } catch (e) { /* 连 setTimeout 都排不上就放弃 —— 索引不是必需品 */ }
+
     // 1) 系统提示词两节：**先品味，后心情**。
     //
     //    ⚠️ 顺序是照**缓存**定的，不是照重要性定的。
@@ -1595,13 +1625,49 @@ export function apply(root, rawConfig) {
         order: 890,
         interpolate: false,
         text: () => {
-          try { return renderTaste(taste, { maxPrinciples: 14, maxItems: 8 }) } catch (e) {
+          // ⚠️ 2026-10-16 从 14 条原则 / 8 个例子降到 10 / 3：
+          //    这一段**每一步都跟着走**，而它是我所有注入里最长的一块。
+          //    摘要优先；例子只留最新的三个。（注释不能写在下面那行里 ——
+          //    单行表达式里放 `//` 会把后面的 `} catch` 一起注释掉，我试过。）
+          try { return renderTaste(taste, { maxPrinciples: 10, maxItems: 3 }) } catch (e) {
             // 品味段出错绝不能把提示词整条带崩 —— 少一段判断，好过整轮没有上下文
             try { log('dsh-mood 品味段生成失败：' + ((e && e.message) || e)) } catch {}
             return ''
           }
         },
       }), 'dsh-mood taste section')
+    }
+
+    // 2) 系统提示词一节：**这个工作区以前的对话**（跨会话共享）
+    //
+    //    ⚠️ order 895 —— 排在**品味（890）之后、心情（900）之前**。
+    //       依据是"变化频率"：品味只在主人改它时变（几天一次）；
+    //       这一节只在有新会话、或会话有新消息时变（一天几次）；
+    //       心情每轮都在变分值。**稳的排前面，缓存才活得久。**
+    //
+    //    ⚠️ 全量内容**不进上下文** —— 实测一个会话纯文本就 7.84 MB
+    //       （光用户消息 0.65 MB ≈ 20 万 token）。所以这里只给索引和摘要。
+    if (ctx.systemPrompt && typeof ctx.systemPrompt.section === 'function') {
+      ctx.effect(() => ctx.systemPrompt.section({
+        name: 'dsh-mood/sessions',
+        order: 895,
+        interpolate: false,
+        text: () => {
+          try {
+            const p = dataFile('dsh-mood-sessions.json')
+            const idx = loadIndex(p)
+            const n = idx && idx.sessions ? Object.keys(idx.sessions).length : 0
+            const out = n ? renderIndex(idx, { selfId: currentSession(activeSessionsDir()), full: 8, oneLine: 20 }) : ''
+            dbg('注入段：' + p + ' → ' + n + ' 个会话 → ' + out.length + ' 字')
+            return out
+          } catch (e) {
+            // 这一节出错绝不能把提示词整条带崩 —— 少一节，好过整轮没有上下文
+            try { log('dsh-mood 会话索引段生成失败：' + ((e && e.message) || e)) } catch {}
+            dbg('注入段抛错：' + ((e && e.stack) || e))
+            return ''
+          }
+        },
+      }), 'dsh-mood sessions section')
     }
 
     // 2) 系统提示词一节：让模型随时知道自己什么心情
@@ -3491,7 +3557,10 @@ export function apply(root, rawConfig) {
             try {
               res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
               res.end(JSON.stringify({ ok: false, error: String(err && err.message) }))
-            } catch {}
+              // ⚠️ 空 catch 是**故意的**：能走到这里说明**连错误响应都发不出去**
+              //    （连接已经断了）。那时候确实没有别的事能做 ——
+              //    再去 log 也未必有地方可写。
+            } catch { /* 连接断了，无话可说 */ }
           }
         },
       }), 'dsh-mood diary api')

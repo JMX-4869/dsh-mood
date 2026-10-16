@@ -2020,7 +2020,11 @@ window.__ModuleLoader__.load({
     /** 授权状态变化后调一次，让导航图标跟着开合 */
     function refreshNavIcon(unlocked) {
       navUnlocked = !!unlocked
-      try { swapNavIcon(document) } catch {}
+      // ⚠️ 这个空 catch 是**故意的**，不是漏写：
+      //    swapNavIcon 内部已经有一层 `catch { /* 结构变了就算了 */ }`，
+      //    外面这层是"连那层都挂了，也别让**换图标**这件事影响面板本身"。
+      //    （排查脚本会把它列成"静默吞错" —— **它是对的，只是没解释**。）
+      try { swapNavIcon(document) } catch { /* 见上：图标是装饰，不该让面板挂 */ }
     }
 
     function installNavIcon(doc, ctx) {
