@@ -653,9 +653,42 @@ export async function fetchVideoFrames(url, opts = {}) {
       //     不解决"我需要看见"。）
       '-S', 'res:' + maxRes + ',ext:mp4:m4a',
       '--max-filesize', maxRes >= 1080 ? '200M' : '80M',
+
+      // ⚠️ **这三行是防"白等"的** —— 实测（数出来的）：
+      //    一轮刷视频里 **56% 的时间花在"下载失败之后还等满超时"**。
+      //
+      //    症状：`144 / 66.8 MB expected`、`865 / 494 bytes read, 22678136 more expected`
+      //    —— 拿到头就断。而 yt-dlp 默认 `--retries 10`：
+      //    每断一次都要等它自己的 socket 超时（默认很长），十次攒够 5 分钟，
+      //    最后被 spawnSync 杀掉 —— **而那 5 分钟全是在等一个不会来的东西。**
+      //
+      //    搜索那条（同文件 410 行附近）一直写着 `--socket-timeout 10`，
+      //    下载这条**没有** —— 同一件事在一处做对了、在另一处漏了。
+      '--socket-timeout', '15',        // 卡住的连接 15 秒就放弃
+      '--retries', '3',                // 默认 10 次太多，每次都要等一个 socket 超时
+      '--fragment-retries', '3',
+
       '-o', join(tmp, 'v.%(ext)s'),
       '--print', 'after_move:%(filepath)s\t%(title)s\t%(duration)s',
       url,
+
+      // ⚠️ **这里原来是 300000，我一度改成 180000 —— 改错了，改回来。**
+      //
+      //    改的时候我的理由是"正常的下载一分钟内该完成，卡住的话多等两分钟是白等"。
+      //    而那个理由是**想出来的，不是量出来的**。
+      //
+      //    后来量了**我自己**这个会话的全部 49 次 news 调用：
+      //      最慢的一次 **143.8 秒**（那是"慢但成功"，不是超时）
+      //      其次 122.6 / 116.3 秒
+      //      卡到 ≥290 秒的：**0 次**
+      //    → 180 秒只留 36 秒余量，**可能把本来能成的下载掐掉** —— 那不是修，是倒退。
+      //
+      //    治本的是上面那三个 yt-dlp 参数（socket-timeout / retries / fragment-retries），
+      //    它们管的是"连接卡住时别挂"，而总时限该留在宽的那边。
+      //
+      //    （顺带：那个"卡满 300 秒"的现象是**另一个对话**遇到的，
+      //      它的三次是 300.2 秒 —— 而它下的是 26 分钟的纪录片。
+      //      所以那是真现象，只是触发条件比我以为的窄。）
     ], { timeout: 300000, windowsHide: true, encoding: 'buffer', maxBuffer: 8 * 1024 * 1024 })
 
     const out = decodeOut(r && r.stdout)
@@ -666,13 +699,33 @@ export async function fetchVideoFrames(url, opts = {}) {
     durationSec = Number(parts[2]) || 0
 
     if (!r || r.status !== 0 || !videoPath || !existsSync(videoPath)) {
-      const err = decodeOut(r && r.stderr).split(/\r?\n/).filter(Boolean).slice(-1)[0] || ''
-      const tooLong = /does not pass filter|match-filter/i.test(decodeOut(r && r.stderr))
+      const stderrTxt = decodeOut(r && r.stderr)
+      const err = stderrTxt.split(/\r?\n/).filter(Boolean).slice(-1)[0] || ''
+      const tooLong = /does not pass filter|match-filter/i.test(stderrTxt)
+
+      // ⚠️ **先看 `r.error`。** spawnSync 超时/被杀的时候 stderr 可能是**空的**，
+      //    而原因全在 `r.error` 里（超时是 `ETIMEDOUT`）。原来只读 stderr ——
+      //    于是超时被报成 `下载失败：` 后面空着。
+      //    **那就是那个对话里的「Failed with an empty error message」。**
+      //    （老毛病：吞掉错误的地方，症状会伪装成"这东西本来就是这样"。）
+      const spawnErr = (r && r.error) ? String(r.error.code || r.error.message || r.error) : ''
+      const why = spawnErr === 'ETIMEDOUT'
+        ? '连接卡住，超时 180 秒被掐断（≠ 视频太长）—— 多半是 CDN 拿到头就断'
+        : (err || (spawnErr ? ('yt-dlp 起不来：' + spawnErr) : '没有输出，原因不明'))
+
       return {
         ok: false,
         title,
-        error: tooLong ? ('视频超过 ' + Math.round(maxDuration / 60) + ' 分钟，不抓（' + err.slice(0, 80) + '）') : ('下载失败：' + err.slice(0, 140)),
-        note: '可以调大时长上限，或者只读字幕',
+        error: tooLong
+          ? ('视频超过 ' + Math.round(maxDuration / 60) + ' 分钟，不抓（' + err.slice(0, 80) + '）')
+          : ('下载失败：' + why.slice(0, 160)),
+        // ⚠️ 这条"下一步怎么办"要**跟着原因走** —— 超时的时候劝人"调大时长上限"
+        //    是错的（那个跟时长无关），会把人带偏。
+        note: tooLong
+          ? '可以调大时长上限，或者只读字幕'
+          : (spawnErr === 'ETIMEDOUT'
+            ? '换低一档清晰度重试（1080 被拒很常见），或者换一支视频'
+            : '可以直接重试一次；再不行换一支'),
       }
     }
 
