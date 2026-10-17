@@ -72,6 +72,21 @@ winget install Git.Git          # 装完必须**彻底退出 DSH 再重开**
 
 **0.14.6 已修好。** 升级：`pnpm update dsh-mood`，或者重装一次。
 
+### git 自动装（一条命令）
+
+如果那台机器上**根本没有 git**，跑这个（随包附带，也在仓库根目录）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install-git.ps1
+```
+
+它做四件事：找 git → 找不到就装（winget 优先，没有 winget 就下 PortableGit 便携版）
+→ 加进**用户级** PATH（不需要管理员）→ 提示你重启 DSH。
+
+**⚠️ 跑完必须彻底退出 DSH 再重开**（托盘也要退）。
+进程的 PATH 是启动那一刻的快照 —— 不重启，DSH 里照样找不到 git。
+重开之后再去插件面板点「重试」。
+
 ### 不想碰 git
 
 用 [Release](https://github.com/JMX-4869/dsh-mood/releases) 里的 **`dsh-mood-pack.zip`**：

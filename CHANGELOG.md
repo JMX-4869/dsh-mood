@@ -1,3 +1,42 @@
+## 0.14.7 — git 自动装 + 一条不需要 git 的安装路
+
+**问题**：DSH 装插件时先 `git ls-remote` 检查仓库，再调 `pnpm add` ——
+**git 不在 PATH 里那一步就当场失败**，报 `'git' 不是内部或外部命令`。
+而 DSH 是打包好的 `app.asar`（182 MB 归档），装插件的逻辑改不了，改了也会被下次更新覆盖。
+所以只能在**这台机器上**把 git 补齐。
+
+**① `install-git.ps1`（随包附带）**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install-git.ps1
+```
+
+四步：找 git → 找不到就装（winget 优先，退到 PortableGit 便携版，**不需要管理员**）
+→ 加进**用户级** PATH → 提示重启 DSH。
+
+**本机实测**：跑完发现用户级 PATH 里原本**只有机器级有** `C:\Program Files\Git\cmd` ——
+补上之后，任何新起的进程都能直接看见 git。
+
+**② 一条完全不需要 git 的路**
+
+Release 里现在多一个 **`.tgz`** 资产：
+
+```
+pnpm add https://github.com/JMX-4869/dsh-mood/releases/download/v0.14.7/dsh-mood-0.14.7.tgz
+```
+
+`pnpm add` 吃本地 tgz / 直链 tarball 时**不调用 git** —— 它不需要问仓库"最新是哪个 commit"。
+这条路也不需要能连 github.com 的 git 协议。
+
+**③ 为什么这两条都不是"改 DSH"**
+
+改 `app.asar` 能行，但：一是要重新打包 182 MB 的归档，二是**每次 DSH 更新都会覆盖**，
+三是改坏了整个 app 起不来。而装 git / 换安装方式，是**在用户机器上补一个缺的东西**，
+不碰宿主、不被更新抹掉、也不需要谁去维护一个 fork。
+
+**教训**：**别去修一个你控制不了、而且会被覆盖的东西。**
+能在自己这一侧解决的，就留在自己这一侧。
+
 ## 0.14.6 — 修一个「别人装了也起不来」的发布 bug
 
 **这个 bug 比它看起来严重。** `package.json` 的 `files` 白名单漏了 4 个**运行时**模块：
