@@ -1045,6 +1045,37 @@ window.__ModuleLoader__.load({
           h('button', { onClick: load, disabled: busy }, '刷新'),
         ),
 
+        // ── 不落盘（逐项开）──
+        //
+        // ⚠️ 这里必须**把"到底写到哪"写出来**。
+        //    如果只写"不存本地"，用户会以为一个字都没落盘 —— 而实际是写到系统临时目录。
+        //    说清楚比好听重要：那仍然是写了一次盘，只是系统清理/重启就没了。
+        data.nostore && data.nostore.keys && data.nostore.keys.length
+          ? h('div', { style: { marginTop: 14 } },
+            h('div', { className: 'memrow' },
+              h('span', { className: 'memlab', style: { minWidth: 'auto' } }, '不落盘'),
+              h('span', { style: { opacity: .72, fontSize: 12 } },
+                '开着的那几项不再写进你的目录，改写到系统临时目录'),
+            ),
+            h('div', { style: { marginTop: 6 } },
+              data.nostore.keys.map((it) => h('div', { className: 'memrow', key: it.key },
+                h('span', { className: 'memlab' }, it.label),
+                h('span', { style: { opacity: .72, fontSize: 12, marginRight: 8 } },
+                  it.on ? '不落盘' : '正常保存'),
+                h('button', {
+                  disabled: busy,
+                  className: it.on ? 'danger' : '',
+                  onClick: () => void patch2({ action: 'nostore', key: it.key, on: !it.on }),
+                }, it.on ? '改回正常保存' : '改成不落盘'),
+              )),
+            ),
+            h('div', { className: 'hintline', style: { marginTop: 6 } },
+              '⚠️ 「不落盘」= 写到 ' + (data.nostore.tmpDir || '系统临时目录') + '，' +
+              '**不是**一个字都不写。系统清理或重启之后它就没了 —— ' +
+              '所以关掉的那些项，重启后等于从零开始（旧的还在原处，只是不再读写）。'),
+          )
+          : null,
+
         // ── 试查 ──
         h('div', { className: 'memrow' },
           h('span', { className: 'memlab' }, '翻一下'),

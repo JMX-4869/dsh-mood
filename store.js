@@ -40,6 +40,10 @@ export const DATA_FILES = [
   'dsh-mood-proactive.json',
   'dsh-mood-memory.jsonl',
   'dsh-mood-taste.json',
+  // ⚠️ 跨会话摘要 —— **这是所有文件里最敏感的一个**：它存的内容是从别的会话抽出来的
+  //    对话摘要（谁说了什么、干过什么）。0.14.x 之前它连键都没挂，
+  //    也就是说"选择性不存"根本够不着它 —— 那种漏是最难发现的。
+  'dsh-mood-sessions.json',
 ]
 
 /**
@@ -56,6 +60,7 @@ export const FILE_KEYS = {
   // 硬盘记忆是 jsonl（一行一条），不是 json —— 但键名照旧走这套
   'dsh-mood-memory.jsonl': 'memory',
   'dsh-mood-taste.json': 'taste',
+  'dsh-mood-sessions.json': 'sessions',
 }
 
 /** 短键 → 人话（界面上用） */
@@ -67,6 +72,7 @@ export const KEY_LABELS = {
   memory: '硬盘记忆',
   taste: '品味库',
   procedures: '经验卡',
+  sessions: '跨会话摘要',
 }
 
 /**
@@ -108,7 +114,7 @@ const normDir = (d) => {
  */
 export function readStoreConfig() {
   try {
-    if (!existsSync(POINTER_FILE)) return { default: null, dirs: {}, raw: null }
+    if (!existsSync(POINTER_FILE)) return { default: null, dirs: {}, nostore: {}, raw: null }
     const j = JSON.parse(readFileSync(POINTER_FILE, 'utf8')) || {}
     // 老字段 dir 当作 default —— 用户之前迁过的位置不能被丢掉
     const def = normDir(j.default) || normDir(j.dir)
@@ -119,9 +125,17 @@ export function readStoreConfig() {
         if (d) dirs[k] = d
       }
     }
-    return { default: def, dirs, raw: j }
+    // 「不落盘」：哪些键改成只写系统临时目录。
+    // 只认 true —— 其他值一律当没写，免得手改坏配置之后整片静默失效。
+    const nostore = {}
+    if (j.nostore && typeof j.nostore === 'object') {
+      for (const [k, v] of Object.entries(j.nostore)) {
+        if (v === true) nostore[k] = true
+      }
+    }
+    return { default: def, dirs, nostore, raw: j }
   } catch {
-    return { default: null, dirs: {}, raw: null }
+    return { default: null, dirs: {}, nostore: {}, raw: null }
   }
 }
 
@@ -262,7 +276,47 @@ export function customDirFor(key) {
 
 export function dataFile(name) {
   const key = FILE_KEYS[name]
+  // ── 「不落盘」：这个键被关掉时，改成写系统临时目录 ──
+  //
+  // ⚠️ 为什么不是"完全不写"：各模块都是自己 `writeFileSync(dataFile(...))`，
+  //    要让它们一个都不写，得改十来个调用点 —— **漏一个就是静默的隐私故障**，
+  //    而那种故障不会报错、只在某天被人发现文件还在盘上。
+  //    指向临时目录只有一处改动，而且系统清理 / 重启就没了。
+  //    代价是：它仍然写了一次盘（在 %TEMP% 里），所以 UI 上要写清这句，别让人误以为"一个字都没落盘"。
+  if (key && noStoreFor(key)) {
+    const d = join(os.tmpdir(), 'dsh-mood-nostore')
+    try { mkdirSync(d, { recursive: true }) } catch { /* 真写的时候会再报 */ }
+    return join(d, name)
+  }
   return join(key ? dirForKey(key) : dataDir(), name)
+}
+
+/** 这个键是不是被设成「不落盘」 */
+export function noStoreFor(key) {
+  if (!key) return false
+  try {
+    const c = readStoreConfig()
+    return (c.nostore || {})[key] === true
+  } catch { return false }
+}
+
+/** 改某个键的「不落盘」开关（read-modify-write，只动 nostore 这一段） */
+export function setNoStoreFor(key, on) {
+  try {
+    const prev = readStoreConfig().raw || {}
+    const next = { ...prev }
+    const ns = { ...(next.nostore || {}) }
+    if (on) ns[key] = true
+    else delete ns[key]
+    if (Object.keys(ns).length) next.nostore = ns
+    else delete next.nostore
+    mkdirSync(dirname(POINTER_FILE), { recursive: true })
+    const tmp = POINTER_FILE + '.tmp'
+    writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf8')
+    renameSync(tmp, POINTER_FILE)
+    invalidateDataDir()
+    return true
+  } catch { return false }
 }
 
 /** 现在这套是不是自定义位置 */

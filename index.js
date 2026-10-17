@@ -1,4 +1,5 @@
-import { dataFile, storageStatus, migrateStorage, humanSize, invalidateDataDir } from './store.js'
+import { dataFile, storageStatus, migrateStorage, humanSize, invalidateDataDir,
+         noStoreFor, setNoStoreFor, KEY_LABELS } from './store.js'
 import { loadIndex, saveIndex, scanAll, renderIndex, currentSession, activeSessionsDir, dbg }
   from './sidx.js'
 // 经验卡（踩过的坑，按"症状"存，命中才读）—— 见 procedures.js 开头那段说明
@@ -636,6 +637,35 @@ function dshHome() {
 }
 // 路径统一走 store.js —— 数据目录可以被搬到别的盘（见 store.js 顶部说明）
 function stateFile() { return dataFile('dsh-mood.json') }
+
+/**
+ * 「选择性不落盘」的那几项。
+ *
+ * ⚠️ **顺序按敏感度排，不是按字母。** 越靠前的越该考虑关掉：
+ *   sessions —— 跨会话摘要，里面是**别的会话里谁说了什么**
+ *   memory   —— 硬盘记忆，长期留下的事实和教训
+ *   diary    —— 日记，当天素材（加密存的，但仍是素材）
+ *   其余几个是配置性质，关了基本只是"重启后回到默认"。
+ *
+ * ⚠️ 只有走 `dataFile()` 的文件能被这一层拦住。
+ *    `procedures`（经验卡）在工作区目录、`frames`（抽帧图）在自己的图片目录，
+ *    都不经过这里 —— 所以别在界面上把它们混进来假装能关。
+ */
+const NOSTORE_KEYS = ['sessions', 'memory', 'diary', 'taste', 'news', 'proactive', 'state']
+
+function nostoreState() {
+  return {
+    keys: NOSTORE_KEYS.map((k) => ({
+      key: k,
+      label: KEY_LABELS[k] || k,
+      on: noStoreFor(k),
+    })),
+    // 关掉之后实际写到哪 —— 必须显出来，不然"不存"是个说不清的状态
+    tmpDir: (() => {
+      try { return join(os.tmpdir(), 'dsh-mood-nostore') } catch { return '' }
+    })(),
+  }
+}
 
 // ---------------------------------------------------------------- 人设兼容
 //
@@ -3399,6 +3429,9 @@ export function apply(root, rawConfig) {
                     stats: st,
                     recent: memory.recent(lim).map((o) => ({ ...o, id8: o.id })),
                     minChars: MEM_MIN_CHARS,
+                    // 「选择性不落盘」—— 每一项单独开。
+                    // 顺序按**敏感度**排（越靠前越该考虑关掉），不是按字母。
+                    nostore: nostoreState(),
                   })
                 }
                 return send({ ok: true, query: q, stats: st, hits: memory.search(q, lim) })
@@ -3427,6 +3460,18 @@ export function apply(root, rawConfig) {
                     state.memory = NEXT
                     saveState(state)
                     return send({ ok: true, stats: memory.stats() })
+                  }
+                  if (action === 'nostore') {
+                    // 开/关某一项的「不落盘」。只接这几个键 ——
+                    // 其它键（procedures / frames）走的是别的路（工作区目录 / 图片目录），
+                    // 不在 dataFile 这一层，所以在这里改不到也不该假装改到了。
+                    const key = String(body.key || '')
+                    if (!NOSTORE_KEYS.includes(key)) {
+                      return send({ ok: false, error: '这个键不支持不落盘：' + (key || '(空)') }, 400)
+                    }
+                    const okk = setNoStoreFor(key, !!body.on)
+                    if (!okk) return send({ ok: false, error: '写指针文件失败' }, 500)
+                    return send({ ok: true, nostore: nostoreState() })
                   }
                   if (action === 'move') {
                     const dir = String(body.dir || '').trim()

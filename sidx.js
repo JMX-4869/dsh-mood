@@ -194,14 +194,25 @@ function extractText(o) {
  */
 export function extractSession(file, opt = {}) {
   const maxMsgs = opt.maxMsgs || 40000
+  // ⚠️ opt.shouldStop：让"退出 / 更新安装"能中途叫停这次扫描（见 scanAll 那段）。
+  const stop = typeof opt.shouldStop === 'function' ? opt.shouldStop : null
   const buf = readFileSync(file)
+  // ⚠️ 找 zstd 帧头**别用 JS 逐字节比**。
+  //    那个 58 MB 的会话文件就是 **5800 万次 readUInt32LE**，实测是秒级；
+  //    而这段跑在「启动后 4 秒」——正好可能撞上退出/更新：
+  //    事件循环被占住，dispose 和信号处理都排不进去，宿主就报
+  //    「Host did not complete graceful task teardown … graceful deadline exceeded」，
+  //    更新于是**自己放弃安装**。Buffer.indexOf 是原生的，快一到两个数量级。
+  const needle = Buffer.alloc(4)
+  needle.writeUInt32LE(MAGIC, 0)
   const offs = []
-  for (let i = 0; i < buf.length - 4; i++) {
-    if (buf.readUInt32LE(i) === MAGIC) offs.push(i)
-  }
+  let at = buf.indexOf(needle)
+  while (at !== -1) { offs.push(at); at = buf.indexOf(needle, at + 1) }
   const msgs = []
   let header = null
   for (const off of offs) {
+    // 每个会话文件里帧数能到几万 —— 每帧都是一个可能的长阻塞点，逐帧给出口。
+    if (stop && stop()) return { header, msgs, aborted: true }
     let out
     try { out = zstdDecompressSync(buf.subarray(off)) } catch { continue }
     for (const L of out.toString('utf8').split('\n')) {
@@ -218,7 +229,7 @@ export function extractSession(file, opt = {}) {
     }
     if (msgs.length >= maxMsgs) break
   }
-  return { header, msgs }
+  return { header, msgs, aborted: false }
 }
 
 /** 高频词（2~6 字的中文/英文词，去掉停用词） */
@@ -283,14 +294,30 @@ export function scanAll(sessionsDir, opt = {}) {
   const out = {}
   if (!dir) return out
   if (!existsSync(dir)) return out
+  const prev = opt.prev || {}
   for (const name of readdirSync(dir)) {
+    if (typeof opt.shouldStop === 'function' && opt.shouldStop()) break
     const f = join(dir, name, 'session.v4.jsonl.zstd')
     if (!existsSync(f)) continue
     let st
     try { st = statSync(f) } catch { continue }
     if (opt.minBytes && st.size < opt.minBytes) continue
+    // ⚠️ **没变就跳过 —— 这条才是真省。**
+    //    实测全量扫 9 个会话 = **5144 ms**，而那 5 秒几乎全花在
+    //    "逐帧解压 29858 个 zstd 帧"上（找帧头只占 254 ms）。
+    //    每次都重解一遍，等于每次启动都让事件循环停摆 5 秒 ——
+    //    正好能把更新的 graceful teardown 拖过期限。
+    //    mtime 和 size 都没变 ⇒ 摘要不可能变 ⇒ 直接沿用。
+    const old = prev[name]
+    if (old && old.mtime === st.mtimeMs && old.size === st.size && old.sum) {
+      out[name] = { file: f, mtime: st.mtimeMs, size: st.size, header: old.header, sum: old.sum, skipped: true }
+      continue
+    }
     try {
-      const { header, msgs } = extractSession(f, opt)
+      const { header, msgs, aborted } = extractSession(f, opt)
+      // ⚠️ 被叫停的这一次**不当成结果** —— 半个会话写进索引，下次就会显示成
+      //    "这个对话最近没说话"，而那是一次退出动作造成的假象。
+      if (aborted) break
       if (!msgs.length) continue
       out[name] = { file: f, mtime: st.mtimeMs, size: st.size, header, sum: summarize(msgs), msgs }
     } catch { /* 读不动就跳过这个会话 —— 不让一个坏文件毁掉整次扫描 */ }
