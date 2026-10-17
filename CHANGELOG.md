@@ -1,3 +1,36 @@
+## 0.14.6 — 修一个「别人装了也起不来」的发布 bug
+
+**这个 bug 比它看起来严重。** `package.json` 的 `files` 白名单漏了 4 个**运行时**模块：
+
+| 漏的 | 谁 import 它 | 后果 |
+| --- | --- | --- |
+| `asr.js` | `news.js` | 语音转写那一层坏 |
+| `measure.js` | `news.js` | 视频量测坏（0.14.5 新加的） |
+| `procedures.js` | `index.js` | **经验卡整块坏，插件可能直接起不来** |
+| `sidx.js` | `procedures.js` | 连锁第二层 |
+
+**本机为什么完全看不出来**：一直在往 `node_modules/dsh-mood` 里拷目录（`cp`），
+从来没走过 `files` 白名单。而 README 推荐的正是 `github:JMX-4869/dsh-mood` ——
+**那条路一直是坏的**：装下来缺件，`index.js` 一 import 就崩。
+
+**修法**：
+- 补全 `files` 白名单（14 个 js）。
+- **用 `pnpm pack` 真打一次包验证** —— 那是唯一能证明"别人装得到"的办法：
+
+```
+包 dsh-mood-0.14.6.tgz  410 KB  14 个 js
+✅ asr.js  ✅ measure.js  ✅ procedures.js  ✅ sidx.js
+```
+
+**顺带写清 README 的两种「装不上」**：
+1. `'git' 不是内部或外部命令` → 装 git 后**必须彻底重启 DSH**（PATH 是启动那一刻的快照）。
+   实测过一台机器：机器级 PATH 里明明有 `C:\Program Files\Git\cmd`，DSH 里的 pnpm 仍然找不到。
+2. 装上了但起不来 → 就是上面这个缺件 bug，0.14.6 修好。
+3. 不想碰 git → 用 Release 里的 `dsh-mood-pack.zip` 解压进 `node_modules/dsh-mood/`。
+
+**教训（该记住的）**：**发布物要验，不是"我这边能跑"就算完了。**
+本机是拷贝路径，发布是打包路径 —— **两条路不一样，只验一条等于没验。**
+
 ## 0.14.5 — 补齐看视频：抽帧之前先量测
 
 **学的是什么**（来源：[CFITCorporation/video-watch-skill](https://github.com/CFITCorporation/video-watch-skill)，MIT；**只学方法，没装它、也不依赖它**）：

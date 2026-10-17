@@ -4,7 +4,7 @@
 
 **它会累、会烦、会好奇。**
 
-> **当前版本 `0.12.1`** —— 每一版都发 [Release](https://github.com/JMX-4869/dsh-mood/releases)；
+> **当前版本 `0.14.6`** —— 每一版都发 [Release](https://github.com/JMX-4869/dsh-mood/releases)；
 > 完整历史改动见 [CHANGELOG.md](CHANGELOG.md)。
 > 版本号走**语义化版本**：`主.次.修` —— 第一位不兼容才动，第二位加功能（+1 时第三位归零），第三位修 bug。
 
@@ -45,6 +45,42 @@
 ### 推荐：用 DSH 的插件面板
 
 侧边栏 → **插件** → 安装。面板会处理依赖和挂载，装完启用即可。
+
+### ⚠️ 装不上？两种死法，两种解法
+
+**① `'git' 不是内部或外部命令，也不是可运行的程序`**
+
+那不是插件的问题 —— 是 **DSH 进程的 PATH 里没有 git**。
+
+```powershell
+winget install Git.Git          # 装完必须**彻底退出 DSH 再重开**
+```
+
+**必须重启**，因为进程的 PATH 是**启动那一刻**的快照，装完 git 不重启是不生效的。
+验证：新开一个 cmd，敲 `git --version`，能出版本号才算通了。
+
+> 注意：**系统 PATH 里有 git 也可能照样失败** —— 本项目实测过一台机器，
+> 机器级 PATH 里明明写着 `C:\Program Files\Git\cmd`，DSH 里的 pnpm 仍然报"不是内部或外部命令"。
+> 那种情况只能重启 DSH，让它重新继承环境。
+
+**② 装完了，但插件不出现 / 日志里 `Cannot find module './measure.js'`**
+
+**0.14.5 及以前有这个 bug**：`package.json` 的 `files` 白名单漏了 4 个运行时模块 ——
+`asr.js`、`measure.js`、`procedures.js`、`sidx.js`。从 Git 仓库或 npm 装下来是**缺件的**，
+而 `index.js` 和 `news.js` 直接 import 它们，于是插件根本起不来。
+（本机开发看不出来，因为一直是拷目录，从没走过白名单。）
+
+**0.14.6 已修好。** 升级：`pnpm update dsh-mood`，或者重装一次。
+
+### 不想碰 git
+
+用 [Release](https://github.com/JMX-4869/dsh-mood/releases) 里的 **`dsh-mood-pack.zip`**：
+
+```
+解压到  ~/.dsh/profiles/<profile>/node_modules/dsh-mood/
+```
+
+**不需要 git，也不需要能连 github.com** —— zip 是从源码目录直接压的，不经过任何包管理器。
 
 ### 手动装
 
