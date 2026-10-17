@@ -1592,12 +1592,19 @@ export function apply(root, rawConfig) {
     //    所以：**先把上次存的索引拿来用**（上面那一节直接读盘），
     //    再延时刷新 —— 刷完下次启动就是新的。
     //    这也是为什么它是 setTimeout 而不是同步跑：不拖慢启动。
+    // ⚠️ 「退出中」标志 —— 让扫描自己收手。
+    //    它**不是**万能药：事件循环真被占死时，dispose 回调同样排不进去。
+    //    真正保命的是 sidx.js 里把「逐字节找帧头」换成 Buffer.indexOf
+    //    （5800 万次 JS 比较 → 原生扫描），那段从秒级掉到几十毫秒，
+    //    才不会再撞上更新/退出时那条 graceful deadline。
+    let quitting = false
+    try { ctx.effect(() => () => { quitting = true }, 'dsh-mood shutdown flag') } catch { /* 没有 effect 就当没有 */ }
     try {
       setTimeout(() => {
         try {
           const sdir = activeSessionsDir()
           const old = loadIndex(dataFile('dsh-mood-sessions.json'))
-          const scanned = scanAll(sdir, { minBytes: 2048 })
+          const scanned = scanAll(sdir, { minBytes: 2048, shouldStop: () => quitting, prev: (old && old.sessions) || {} })
           const next = {}
           for (const [id, v] of Object.entries(scanned)) {
             // 增量：mtime 和 size 都没变就沿用旧摘要
