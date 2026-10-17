@@ -97,6 +97,38 @@ powershell -ExecutionPolicy Bypass -File install-git.ps1
 
 **不需要 git，也不需要能连 github.com** —— zip 是从源码目录直接压的，不经过任何包管理器。
 
+### 另一条不需要 git 的路：`.tgz` 直链
+
+Release 里同时有 `.tgz`。`pnpm add` 吃直链 tarball 时**不调用 git** ——
+它不需要问仓库"最新是哪个 commit"：
+
+```
+pnpm add https://github.com/JMX-4869/dsh-mood/releases/download/v0.14.7/dsh-mood-0.14.7.tgz
+```
+
+**实测过（2026-10-17）**：在 profile 目录里，把一个**假的 git 挡在 PATH 最前面**（一调用就 `exit 1`），
+这条命令照样装成 —— 装出 14 个 js、四个模块齐全，而**假 git 一次都没被调用**。
+
+> ⚠️ **它只能装在 profile 目录里。** 空目录装不了，会报
+> `Failed to resolve @deepseek-ai/dsh-type-meta → 404`。
+> 那是 **DSH 自己提供、不在 npm registry 里的包**，只有 profile 环境里才有。
+> 别拿它当"任意目录都能装"用。
+
+> ⚠️ **tgz 写死了版本**，升级要换 URL。想自动跟最新就用 `github:` 那条。
+
+### 升级 / 换依赖写法
+
+```powershell
+# 1. 先**完全退出 DSH**（托盘也退）—— 开着的时候 package.json 是锁的
+# 2. 在 profile 目录里跑
+pnpm update dsh-mood            # 跟随当前写法升到最新
+pnpm add github:JMX-4869/dsh-mood   # 或者换成跟随 main 的写法
+# 3. 重新打开 DSH
+```
+
+**⚠️ DSH 开着的时候会报 `Failed to save the manifest file: 拒绝访问 (os error 5)`** ——
+不是权限问题，是它锁着那个文件。**先退干净再改。**
+
 ### 手动装
 
 DSH 插件就是**一个包**。你那台机器上的 profile 长这样（`~/.dsh/profiles/<profile>/`）：
