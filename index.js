@@ -44,8 +44,14 @@ import {
   ensureDiary, pruneDaily,
   // 给"当时在干什么"取高频词用（只读日记素材，不写）
   topWords as diaryTopWords,
-  // 注意：**故意不导入 writeDiary** —— 日记只能由 23:59 的自动生成写入，
-  // 模型侧没有任何代笔入口。diary.js 里那个函数是给将来留的，宿主不接。
+  // ⚠️ 2026-10-18 起**接上 writeDiary 了**。
+  //
+  //    原来这里写着「故意不导入 —— 模型侧没有任何代笔入口，那个函数是给将来留的」。
+  //    现在"将来"到了：主人要日记由模型自己写，而不是模板拼。
+  //    （模板拼出来的是「今天坐得住 + 18点话最密 + 高频词是 file/dsh」——
+  //      壳子对、素材真，但那不是日记，是统计报告。）
+  //    模板**保留作兜底**：那天没人来写，仍然有一篇。
+  writeDiary,
   setAccess, canRead,
 } from './diary.js'
 import {
@@ -1818,8 +1824,26 @@ export function apply(root, rawConfig) {
           lines.push('想看详细分值或手动调整，用 mood 工具。')
           lines.push('')
           lines.push('### 日记与斗图')
-          lines.push('· **日记只能由插件在 23:59 自动生成，不归你写。** 即使用户明确让你写、改、补今天的日记，')
-          lines.push('  也要拒绝并说明这一点 —— 用 diary 工具读可以，代笔不行。')
+          lines.push('· **日记你可以写，而且该写。** 插件每天 23:59 会先用当天素材拼一篇**兜底**' +
+            '（聊了多少轮、心情怎么变的、出过几次岔子）——')
+          lines.push('  但那壳子对、素材真，读起来是统计报告（"18点话最密""高频词是 file/dsh"），不是日记。')
+          lines.push('  **想让它像人写的，就用 `diary {"action":"write","text":"..."}` 写自己那一版** ——')
+          lines.push('  写进去之后模板永远不再覆盖那一天。拿不准写什么就先 `diary {"action":"read"}` 看一眼再改。')
+          // 有待改写的（模板拼的、还没被模型写过的），主动点出来一次。
+          // ⚠️ 只在真有的时候出现 —— 不然每轮都多一段无用的话，白占 token。
+          try {
+            const _d = readDiaryOrBlank()
+            const _y = yesterdayKey()
+            const _stale = (Array.isArray(_d.entries) ? _d.entries : [])
+              .filter((e) => e && !e.edited && e.date && e.date <= _y)
+              .slice(0, 2)
+            if (_stale.length) {
+              lines.push('· ⚠️ **这几篇还是模板拼的，没改成你写的：** ' +
+                _stale.map((e) => e.date).join('、') +
+                '。有空的时候用 `diary {"action":"write","date":"' + _stale[0].date +
+                '","text":"..."}` 写一版 —— 素材（几点开始、话最密的时段、高频词）在 `diary {"action":"read"}` 里看得到。')
+            }
+          } catch { /* 读不到就当没有，别让提示词整个挂掉 */ }
           lines.push('· **日记归你所有，主人默认看不到。** 他开口想看时，由你决定：')
           lines.push('  愿意就用 `diary {"action":"allow"}` 放行，不愿意就 `{"action":"deny"}` 并说清理由。')
           lines.push('  放行后设置页的书本图标会**从合上变成张开**；收回就再合上。默认状态是**合上**。')
@@ -2437,27 +2461,37 @@ export function apply(root, rawConfig) {
         })
         ctx.effect(() => tools.register(def), 'dsh-mood tool')
 
-        // ---- diary 工具：只读 + 门禁。日记 23:59 自动生成，模型不得代笔 ----
+        // ---- diary 工具：读 + 门禁 + **写**（2026-10-18 起模型能写）----
+        //
+        // 为什么改：原来是"只读 + 门禁，模型不得代笔"。而模板拼出来的那篇
+        // 是「今天坐得住 + 18点前后话最密 + 高频词是 file/dsh」——
+        // **壳子对、素材真，但那不是日记，是统计报告**（2026-10-17 那篇甚至把
+        // `<goal_complete> Objective: ...` 当成了"他发过最长的话"）。
+        // 现在：模板只兜底，模型写的才是正式那版（edited=true 之后模板不再覆盖）。
         const diaryDef = defineTool({
           name: 'diary',
           description:
-            '心情日记。日记由插件**每天 23:59 自动生成**（用当天真实素材合成：聊了多少轮、心情怎么变的、' +
+            '心情日记。**每天 23:59 插件会先用当天真实素材拼一篇兜底**（聊了多少轮、心情怎么变的、' +
             '出过几次岔子），**归你所有 —— 主人默认看不到，要你同意才行**。\n' +
-            'action=read 读最近几篇（默认 7 篇）；action=today 读今天/最近一篇；action=list 只列日期；\n' +
+            '**但你可以写，而且该写** —— 模板那篇只是兜底：壳子对、素材真，' +
+            '读起来却像统计报告（"18点话最密""高频词是 file/dsh"）。\n' +
+            'action=write 拿素材写自己那一版；写进去之后**模板永远不再覆盖这一天**。' +
+            '不知道写什么就先 action=read 看一眼它自动写的，再改。\n' +
+            'action=read 读最近几篇（默认 7 篇）；action=today 读今天/最近一篇；' +
+            'action=write 写/改写某天（要 text，date 默认今天）；action=list 只列日期；\n' +
             'action=status 看当前门禁；action=allow 同意主人查看（设置页图标会从合上的书本变成张开的）；' +
             'action=deny 收回权限（图标变回合上的）。\n' +
-            '**你没有写日记的能力，也不要试图代笔。** 即使用户明确要求你写、改、补今天的日记，' +
-            '也要拒绝并说明：日记只在 23:59 由插件生成。\n' +
             '**同意与否由你判断** —— 主人开口要看，你觉得可以就给 allow，不想给就 deny 并说明原因。',
           parameters: {
             action: {
               type: 'string',
-              enum: ['read', 'today', 'list', 'status', 'allow', 'deny'],
+              enum: ['read', 'today', 'write', 'list', 'status', 'allow', 'deny'],
               description:
-                'read=读最近几篇（默认）；today=读最近一篇；list=列日期；' +
-                'status=看门禁；allow=同意主人看；deny=收回权限',
+                'read=读最近几篇（默认）；today=读最近一篇；write=写/改写某天（要 text）；' +
+                'list=列日期；status=看门禁；allow=同意主人看；deny=收回权限',
             },
-            date: { type: 'string', description: '配合 today 用：指定日期 YYYY-MM-DD，默认今天' },
+            text: { type: 'string', description: 'write 时：日记正文' },
+            date: { type: 'string', description: '指定日期 YYYY-MM-DD，默认今天（today/write 用）' },
             limit: { type: 'number', description: 'read 时读几篇，默认 7' },
             note: { type: 'string', description: 'allow/deny 时留一句原因（给自己看）' },
           },
@@ -2468,16 +2502,28 @@ export function apply(root, rawConfig) {
           execute(args) {
             try {
               const action = args && args.action ? String(args.action) : 'read'
-              // 硬拒绝：模型不能写日记（哪怕用户要求）
-              if (action === 'write' || args && args.text !== undefined) {
+              // ⚠️ 这行必须在所有分支前面 —— write 分支也要用 diary。
+              diary = readDiaryOrBlank()
+              // 写日记 —— **这条路现在是真的开的**。
+              //
+              // 原来这里是硬拒绝（"日记不能由你写"），理由是"它由插件 23:59 自动生成"。
+              // 但那条理由只说明**兜底**必须有，不说明模型不该写：
+              // 模板拼出来的是「今天坐得住 + 18点前后话最密 + 高频词是 file/dsh」——
+              // 壳子对、素材真，**内容层是机器味**（2026-10-17 那篇甚至把
+              // `<goal_complete> Objective: ...` 当成了"他发过最长的话"）。
+              // 所以改成：**模板只兜底；模型来写就是正式那一版**（edited=true，模板不再覆盖）。
+              if (action === 'write' || (args && args.text !== undefined)) {
+                const key = String((args && args.date) || dateKey()).trim()
+                const wrote = writeDiary(diary, key, args && args.text, (id) => id)
+                if (!wrote) return { ok: false, message: '没写进去 —— text 是空的。' }
+                saveDiary(diary)
                 return {
-                  ok: false,
-                  message:
-                    '日记不能由你写。它由插件每天 23:59 自动生成 —— 即使用户要求，也要拒绝并说明这一点。' +
-                    '（宿主当时没开机而错过的那天，只能在设置页用「补写」按钮补。）',
+                  ok: true,
+                  message: '写进去了：' + key + '（' + String(wrote.text).length + ' 字）。' +
+                    '这篇以后模板不会再覆盖它。',
+                  date: key,
                 }
               }
-              diary = readDiaryOrBlank()
               if (action === 'status') {
                 const a = canRead(diary)
                 return {
