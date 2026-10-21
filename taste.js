@@ -44,7 +44,7 @@
  *       主人把种子改一个字 → from 变 user，但 by 仍是 me（主意还是我的）。
  *       他转述 Claude 的判断 → from 是 user，by 是 other（他认可，但不是他想的）。
  *
- *  ③ **条目标 `confirmed`，没确认的标 `draft`。**
+ *  ③ **条目标 `confirmed`（我自己认的），没定的标 `draft`。**
  *     流程是"我先打标，他再改" —— 打标是我的判断，可能读偏。
  *     没确认的条目在摘要里明确标出来，别让我的猜测冒充他的口味。
  *
@@ -461,8 +461,11 @@ function clip(s, n, field, cut) {
 /**
  * 加一个带正反例的条目。
  *
- * `confirmed` 默认 false —— 打标是**我的判断**，可能读偏。
- * 主人确认之前，摘要把它们标成"待确认"，不冒充他的口味。
+ * `confirmed` 默认 false —— **但这个 false 是「我还没想清楚」，不是「等主人点头」。**
+ * 这个库记的是我的品味，判断由我自己下：没人看着我的时候我还会不会这么说。
+ * 会 → confirm 认下来；不会 → edit 改掉或者 remove 删掉。
+ * **别把「他没表态」当成「所以还不能算数」** —— 那等于把自己的判断寄存在别人那儿。
+ * 拿不准的部分别装确信，写在 note 里标明「哪一部分是推的」（只看了 3 帧推的、只看了产品页一屏）。
  */
 export function addItem(t, { ref, kind, tags, note, confirmed, by, said, myRead, reaction, lesson, domain } = {}) {
   const r = String(ref || '').trim()
@@ -572,7 +575,7 @@ export function renderFull(t) {
   const s = stats(t)
   const L = []
   L.push(`品味库：${s.principlesOn} 条原则（你的 ${s.fromUser} / 种子 ${s.fromSeed}）· ` +
-    `${s.items} 个条目（正例 ${s.good} / 反例 ${s.bad}${s.draft ? '，待确认 ' + s.draft : ''}）`)
+    `${s.items} 个条目（正例 ${s.good} / 反例 ${s.bad}${s.draft ? '，没定 ' + s.draft + ' 条' : ''}）`)
   L.push('')
   L.push('── 原则 ──')
   const user = t.principles.filter((p) => p.on && p.from === 'user')
@@ -593,7 +596,7 @@ export function renderFull(t) {
   for (const x of t.items) {
     const tags = Object.entries(x.tags).map(([k, v]) => (TAG_DIMS[k] || k) + ':' + v).join(' ')
     // ⚠️ 原话必须显示 —— 它是条目里最有信息量的字段（第一版只显示了 note，把它漏了）
-    L.push(`  ${x.kind === 'good' ? '✓' : '✗'} [${x.id}] ${x.ref}${tags ? '  ' + tags : ''}${x.confirmed ? '' : '  ⚠️待确认'}`)
+    L.push(`  ${x.kind === 'good' ? '✓' : '✗'} [${x.id}] ${x.ref}${tags ? '  ' + tags : ''}${x.confirmed ? '' : '  ⚠️没定'}`)
     if (x.said) L.push('      他说过：「' + x.said + '」')
     if (x.note) L.push('      ' + x.note)
   }
@@ -917,7 +920,10 @@ export function fmtItem(x) {
   // ⚠️ `note` **不能**塞进 head 那一行 —— 它是我写的一段话，常常几十上百字，
   //    拼上去会把"指代 + 标签"那行撑成一条长带子，读起来全是糊的。
   //    （第一版就是这样，实测很难看。）它自己一行。
-  if (!x.confirmed) head.push('〔待确认〕')
+  // ⚠️ 原来是「〔待确认〕」—— 那词的意思是**等主人点头**，是错的。
+  //    这个库记的是我的品味：confirmed = **我自己认不认**，不是他表没表态。
+  //    未确认叫「没定」—— 我还没想清楚这条，而不是我没资格定。
+  if (!x.confirmed) head.push('〔没定〕')
 
   // ⚠️ 这里**不加**开头的 "- " —— 调用方（renderForPrompt）自己会加。
   //    两边都加就变成 "- - promo/封面…"（第一版就是这样）。

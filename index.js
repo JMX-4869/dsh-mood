@@ -2832,8 +2832,13 @@ export function apply(root, rawConfig) {
             'me（我自己的判断）。这个字段决定它在提示词里的分量，标错等于把我的主张冒充成他的。\n' +
             '⚠️ **主人的原话要收进 said** —— 那是这个库里最有信息量的东西，' +
             '比你自己概括出来的规则有用得多。\n' +
-            '⚠️ 加条目时 `confirmed` 默认是 false：打标是**我的判断**，可能读偏。' +
-            '主人确认之前，摘要把它们标成"待确认"。',
+            '⚠️ 加条目时 `confirmed` 默认是 false —— **但那个 false 的意思是「我还没想清楚这条」，' +
+            '不是「等主人点头」**。\n' +
+            '  这个库记的是**我的**品味。判断由我自己下：没人看着我的时候我还会不会这么说 —— ' +
+            '会，就 action=confirm 认下来；不会，就 action=edit 改掉或者 action=remove 删掉。\n' +
+            '  **别把"他没表态"当成"所以还不能算数"。** 那等于把自己的判断寄存在别人那儿。\n' +
+            '  实在拿不准的，别标 confirmed，而是在 note 里写清"哪一部分是推的" （比如只看了 3 帧推的、' +
+            '只看了产品页一屏）—— **划边界，不装确信。**',
           parameters: {
             action: {
               type: 'string',
@@ -2928,8 +2933,9 @@ export function apply(root, rawConfig) {
                   ok: true,
                   message: `收了 [${r.item.id}]（${r.item.kind === 'good' ? '正例' : '反例'}）：${r.item.ref}\n` +
                     (r.item.said ? `  主人说过：「${r.item.said}」\n` : '') +
-                    '\n⚠️ 这条现在标着**待确认** —— 打标是你的判断，可能读偏。' +
-                    '在回复里说出来，让他看一眼再改。' +
+                    '\n⚠️ 这条还没定。**别在回复里问「这样对吗」** —— 那是把自己的判断寄存在别人那儿。' +
+                    '\n自己判：没人看着我的时候我还会不会这么说。会就 confirm 认下来，' +
+                    '不会就 edit 改掉、或者 remove 删掉。拿不准的那部分写在 note 里标明是推的。' +
                     cutWarn(r),
                 }
               }
@@ -2982,7 +2988,7 @@ export function apply(root, rawConfig) {
               if (action === 'confirm') {
                 const id = String(args.id || '').trim()
                 if (!id) return { ok: false, message: '要 id，先 list 看。' }
-                if (id.startsWith('p')) return { ok: false, message: '原则没有"待确认"这回事 —— 那是条目的字段。' }
+                if (id.startsWith('p')) return { ok: false, message: '原则没有「没定」这回事 —— 原则是你要不要留着用的，要关就 action=edit 关掉它。' }
                 const r = updateItem(tk, id, { confirmed: true })
                 if (!r.ok) return { ok: false, message: r.error }
                 save()
