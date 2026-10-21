@@ -304,20 +304,29 @@ export function loadTaste() {
  *   · **同一个 id 两边都有** → 以**这次传入的**为准（它是本次调用的意图）
  *   · 顺序：先按盘上的排，再把新增的追加在后面
  */
-function mergeById(diskArr, nextArr) {
+function mergeById(diskArr, nextArr, dropIds) {
   const a = Array.isArray(diskArr) ? diskArr : []
   const b = Array.isArray(nextArr) ? nextArr : []
   const key = (x) => (x && (x.id || x.text || JSON.stringify(x))) || ''
+  // ⚠️ 2026-10-22 加的：**删掉的东西必须真删掉。**
+  //    上面那条规则「盘上有、这次没有的 → 保留」本意是保护"别人刚加的"，
+  //    但它也保护了"我刚删的" —— 于是 removeItem 永远失效：
+  //    内存删了 → 写盘时又把磁盘那份 merge 回来 → 下次读还是一样。
+  //    （实测：连着删了三次都"成功"了，文件里那条一直在。）
+  //    所以显式传一个本次删除的 id 集合，被点名的**无论磁盘有没有都不进**。
+  const drop = new Set(Array.isArray(dropIds) ? dropIds : [])
   const bMap = new Map(b.map((x) => [key(x), x]))
   const out = []
   const seen = new Set()
   for (const x of a) {                       // 盘上的顺序先摆好
     const k = key(x)
+    if (drop.has(k)) continue               // ← 这次删的，不要
     seen.add(k)
     out.push(bMap.has(k) ? bMap.get(k) : x)  // 同一 id → 用这次的
   }
   for (const x of b) {                       // 再把这次新增的追加
     const k = key(x)
+    if (drop.has(k)) continue
     if (!seen.has(k)) { seen.add(k); out.push(x) }
   }
   return out
@@ -338,14 +347,18 @@ export function saveTaste(t) {
     let merged = t
     try {
       const disk = loadTaste()
+      const dropped = Array.isArray(t._dropped) ? t._dropped : []
       merged = {
         ...t,
-        principles: mergeById(disk.principles, t.principles),
-        items: mergeById(disk.items, t.items),
+        principles: mergeById(disk.principles, t.principles, dropped),
+        items: mergeById(disk.items, t.items, dropped),
         // summary 是"压出来的"，通常只有一边会动它 ——
         // 这次没带就用盘上的，带了就用这次的
         summary: (t.summary && Object.keys(t.summary).length) ? t.summary : disk.summary,
       }
+      // ⚠️ `_dropped` 只是本次调用的临时名单，**不能写进文件** ——
+      //    写进去的话下次启动会以为"这些还要再删一遍"。
+      delete merged._dropped
     } catch { /* 盘上那份读不动就按原样写 —— 总比什么都不写强 */ }
 
     writeFileSync(tmp, JSON.stringify(merged, null, 2), 'utf8')
@@ -537,6 +550,10 @@ export function removeItem(t, id) {
   const i = t.items.findIndex((x) => x.id === id)
   if (i < 0) return { ok: false, error: '没找到 ' + id }
   const [x] = t.items.splice(i, 1)
+  // ⚠️ 顺手记进"这次删掉的"名单 —— saveTaste 的 merge 要靠它，
+  //    不然磁盘那份会在写盘时把刚删的 merge 回来（见 mergeById 那段）。
+  t._dropped = Array.isArray(t._dropped) ? t._dropped : []
+  t._dropped.push(id)
   t.touchedAt = Date.now()
   return { ok: true, item: x }
 }
