@@ -790,7 +790,10 @@ export function renderForPrompt(t0, opts = {}) {
         for (const x of (maxI ? his.slice(-maxI) : [])) L.push('- ' + fmtItem(x))
       }
       if (mine.length) {
-        L.push('**我判的**（' + kindLabel + ' —— **主人还没确认，不是他的意见**）')
+        // ⚠️ 原来这里写「主人还没确认，不是他的意见」—— 那个说法把判断挂在别人身上。
+        //    2026-10-22 改：这个库记的是**我的**品味，`confirmed` 是**我自己认不认**，
+        //    不是他表没表态。所以标签写「我判的」，不加括号里的免责声明。
+        L.push('**我判的**（' + kindLabel + '）')
         for (const x of (maxI ? mine.slice(-maxI) : [])) L.push('- ' + fmtItem(x))
       }
     }
@@ -799,7 +802,7 @@ export function renderForPrompt(t0, opts = {}) {
     const drafts = t.items.filter((x) => !x.confirmed)
     if (drafts.length) {
       L.push('')
-      L.push(`⚠️ 其中 ${drafts.length} 条是我打的标、**主人还没确认** —— 那是我的判断，别当成他的口味。`)
+      L.push(`⚠️ 其中 ${drafts.length} 条我**还没定**（不是等谁点头，是我自己没想清楚）—— 用的时候当参考，别当结论。`)
     }
     L.push('')
   }
