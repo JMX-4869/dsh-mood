@@ -1851,6 +1851,40 @@ export function apply(root, rawConfig) {
           lines.push('· **表情包是心情的自然流露，不是任务。** 说话时顺手甩一张，是因为当时就是那个心情；')
           lines.push('  心情不对就不发 —— 不必硬凑，也不用查什么对照表。发不发、发什么，跟着感觉走。')
           lines.push('')
+          // ── 复读检测：模型卡在「写。做。好。」这类短句循环里时，主动喊停 ──
+          //
+          // 为什么要它：2026-10-24 有个会话（更新小说工具）烧了 93 轮 / 203M tok，
+          // 输出一直是「写。/ 做。/ 好。」轮转，它自己都写了「我卡在循环里了」还是出不来。
+          // 那种情况没人及时发现，钱和时间一起烧掉。
+          //
+          // 判据（三条同时满足，防止误报）：
+          //   ① 最近 8 条助手消息里，≥5 条是 12 字以内
+          //   ② 这 8 条的内容总共只有 ≤3 种
+          //   ③ 至少 5 条
+          // 实测：库里 7124 条消息，≤12 字的只占 5.1%，正常对话里同一句最多出现 2 次 ——
+          // 所以这个判据在正常对话上不会触发。
+          try {
+            const look = memory.recent(20).filter((o) => o && o.k === 'a' && o.x).slice(0, 8)
+            if (look.length >= 5) {
+              const texts = look.map((o) => String(o.x).trim())
+              const short = texts.filter((t) => t.length <= 12)
+              const uniq = Array.from(new Set(texts))
+              // ⚠️ 原来写的是 `uniq.length <= 3` —— 太严了：真实那个卡死会话里
+              //    夹着「我现在写代码」「（我真正的开始写了）」这种稍长的，种类很快就超过 3。
+              //    改成看"短 + 密"：大多很短，而且这些短句平均不到 6 个字。
+              //    （「写。」2 字、「好。」2 字 —— 平均 2~3 字。正常回复不会这样。）
+              const shortAvg = short.length ? short.reduce((a, t) => a + t.length, 0) / short.length : 99
+              if (short.length >= 6 && shortAvg <= 6 && uniq.length <= 5) {
+                const samples = uniq.slice(0, 3).map((t) => '「' + t.slice(0, 10) + '」').join('')
+                lines.push('')
+                lines.push('⚠️ **你可能卡在复读循环里。** 最近 ' + texts.length + ' 条回复里有 ' +
+                  short.length + ' 条在 12 字以内，而内容只有 ' + uniq.length + ' 种：' + samples)
+                lines.push('**停一下。** 别再吐字 —— 先一句话说清你要做什么，' +
+                  '然后**直接调用工具**，或者把卡住的地方问明白。继续吐字只会把这一轮烧光。')
+                lines.push('')
+              }
+            }
+          } catch { /* 读不到就不检测，别让提示词整个挂掉 */ }
           lines.push('### 压缩之后')
           lines.push('对话被压缩时细节会丢，但**别认**。')
           lines.push('· 会话全文一直在磁盘上（压缩只影响窗口，不影响 session 文件），硬盘记忆也在读它。')
