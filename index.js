@@ -1857,6 +1857,46 @@ export function apply(root, rawConfig) {
           lines.push('· **发现某个细节只剩摘要、而它要拿来做判断 → 先 memory 搜一次，别凭摘要下结论。**')
           lines.push('  实测：搜「graceful deadline 残包 sha512」能捞回原文，连 sha512 前缀和两个字节数都在。')
           lines.push('· 摘要挑的是"看起来重要"，不是"你以后会用到" —— **这两件事不一样**。')
+          // ── 自动索引：别指望"模型会想起来去搜"，直接把手边有什么摆出来 ──
+          //
+          // 用户提了三次「只要查询已压缩的对话就搜一次」。前两次我都在写"规矩"
+          // （"发现只剩摘要就先搜"）—— 那还是靠自觉。他要的是**不用想就知道有得查**。
+          // 所以每轮直接把最近归档的标题挂在这儿：看见索引才谈得上搜。
+          // ⚠️ 只挂 8 条 × 一行，约 400 字 —— 比让它自己去翻要省得多。
+          try {
+            // ⚠️ **不能用 recent(8)** —— 最近 8 条十有八九还在窗口里，正是压缩要丢的
+            //    反而是更早那段。所以从"最后 2000 条"里**等距抽 8 条**。
+            //
+            //    为什么是 2000 不是 200：实测取 200 条只覆盖一天半（10/23~10/24），
+            //    而压缩掉的是更早的；2000 条覆盖六天（10/18~10/24），够用。
+            //    全量（6870 条）能覆盖十天，但每轮读 2.5 MB 不值。
+            //    ⚠️ 这是"够用"不是"全覆盖" —— 十天以前的东西索引里看不到，要搜还是能搜到。
+            const all = memory.recent(2000).reverse()   // 老 → 新
+            const want = 8
+            const idx = []
+            if (all.length) {
+              for (let i = 0; i < want; i++) {
+                const j = Math.floor((i + 0.5) * all.length / want)
+                if (all[j] && !idx.includes(all[j])) idx.push(all[j])
+              }
+            }
+            if (idx.length) {
+              lines.push('· **手边这些能直接搜原文**（硬盘记忆，从最近 ' + all.length + ' 条里等距抽的 ' + idx.length + ' 条）：')
+              for (const o of idx) {
+                // ⚠️ 字段是 `t`（时间戳）/ `s`（会话 id）/ `x`（文本）/ `k`（u=用户 a=助手）。
+                //    第一版我按直觉写成 at/sid/text —— 全是 undefined，整段会渲染成空白。
+                const when = o.t ? new Date(o.t).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) : '??'
+                const sid = String(o.s || '').slice(0, 8)
+                const txt = String(o.x || '').replace(/\s+/g, ' ').slice(0, 36)
+                // ⚠️ 系统注入的那些不是对话，别当索引给人看 ——
+                //    实测抽出来两条是「Current runtime context…」「Time sampled while preparing turn…」。
+                //    （memory.js 顶部说过要挡这类，但显然没挡全。）
+                if (/^(Current runtime context|Time sampled|This snapshot supersedes|\[系统\])/.test(txt)) continue
+                lines.push('  - ' + when + (sid ? ' [' + sid + '] ' : ' ') + txt)
+              }
+              lines.push('  → `memory {action:"search", query:"…"}` 拿全文。**别凭摘要下结论。**')
+            }
+          } catch { /* 读不到就当没有，别让提示词整个挂掉 */ }
           lines.push('')
           lines.push('### 说话要跟上当下的说法')
           lines.push('· 用**现在通行的说法**。已经过时的表达（"亲""么么哒""图样图森破"这类）别用，')
