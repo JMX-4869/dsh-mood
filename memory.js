@@ -176,6 +176,22 @@ export function createMemory(opts) {
   function note(kind, text, sessionId, ts) {
     const x = String(text || '').trim()
     if (x.length < MIN_CHARS) return false
+    // ⚠️ **压缩摘要不是对话，别归档。**
+    //
+    //    实测：7932 条归档里有 2 条是 8005 字的
+    //    「This is an automatically generated checkpoint condensing an …」，
+    //    而且被标成了 `u`（用户）—— 它不是谁说的话，是插件自己写的复述。
+    //
+    //    为什么挡：
+    //      · 同一条内容存了两遍；
+    //      · 它全是**别处内容的摘要** —— 搜的时候会优先命中它、把原文盖掉，
+    //        等于用二手顶掉一手；
+    //      · 原文本来就都在归档里，摘要不提供新信息。
+    //
+    //    （dsh-world 是反过来的同一条原则：压缩时把会重新注入的东西
+    //      ——时间块、记忆块、世界提示词——排除在摘要之外。两边都在防
+    //      "同一份内容存两次、二手盖一手"。）
+    if (/^(This is an automatically generated checkpoint|以下是此前交流的摘要|以下是先前对话的摘要)/.test(x)) return false
     // 「只存用户说的话」—— 实测我的回复占了 94% 的体积。
     // 打开它归档会瘦掉九成，代价是查不到"我上次怎么说的"。
     // **默认关**：主动丢一半对话是个大决定，不该由插件替用户做。
