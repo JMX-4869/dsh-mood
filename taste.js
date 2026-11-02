@@ -797,6 +797,9 @@ export function renderForPrompt(t0, opts = {}) {
     const good = t.items.filter((x) => x.kind === 'good')
     const bad = t.items.filter((x) => x.kind === 'bad')
     L.push('### 例子 —— 最有用的就是这一段')
+    // ★ 只放**索引**（指代 + 一句话）。完整的"我当时怎么读 / 他什么反应 / 全文"
+    //   留在库里，要看用 `taste {action:"list"}` —— 每轮重发一遍曾占 7,339 字。
+    L.push('（目录，不是全文。要看某一条的完整分析，用 `taste {action:"list"}`。）')
     const group = (list, kindLabel) => {
       const his = list.filter(isHis)
       const mine = list.filter((x) => !isHis(x))
@@ -804,14 +807,14 @@ export function renderForPrompt(t0, opts = {}) {
         L.push('**' + (kindLabel === '正例' ? '主人认可的（正例）' : '主人不认可的（反例）') + '**')
         // ⚠️ 别用 slice(-maxI)：maxI=0 时 slice(-0) 就是 slice(0)，
         //    本想「一个都不取」，结果取了**全部**。
-        for (const x of (maxI ? his.slice(-maxI) : [])) L.push('- ' + fmtItem(x))
+        for (const x of (maxI ? his.slice(-maxI) : [])) L.push('- ' + fmtItem(x, { compact: true }))
       }
       if (mine.length) {
         // ⚠️ 原来这里写「主人还没确认，不是他的意见」—— 那个说法把判断挂在别人身上。
         //    2026-10-22 改：这个库记的是**我的**品味，`confirmed` 是**我自己认不认**，
         //    不是他表没表态。所以标签写「我判的」，不加括号里的免责声明。
         L.push('**我判的**（' + kindLabel + '）')
-        for (const x of (maxI ? mine.slice(-maxI) : [])) L.push('- ' + fmtItem(x))
+        for (const x of (maxI ? mine.slice(-maxI) : [])) L.push('- ' + fmtItem(x, { compact: true }))
       }
     }
     if (good.length) group(good, '正例')
@@ -932,7 +935,7 @@ export function renderForPrompt(t0, opts = {}) {
  *
  *   这是主人那句「品味是独立的，可以学习，不能模仿」落到最后一步的形状。
  */
-export function fmtItem(x) {
+export function fmtItem(x, opts = {}) {
   const tags = Object.entries(x.tags || {}).map(([k, v]) => (TAG_DIMS[k] || k) + '：' + v).join('，')
   const head = [x.ref]
   if (x.domain) head.push('[' + x.domain + ']')
@@ -955,6 +958,20 @@ export function fmtItem(x) {
   else if (x.reaction) lines.push('  · 后来的反应：「' + x.reaction + '」')
   if (x.reaction && x.said) lines.push('  · 完整反应：「' + x.reaction + '」')
   if (x.lesson) lines.push('  · **学到**：' + x.lesson)
+
+  // ────────────────────────────────────────────────────────
+  // ★ compact：**提示词里只留索引**（指代 + 一句话）。
+  //
+  //   完整的那几段（我的备注全文 / 我当时读的 / 他说 / 完整反应）是**存档**，
+  //   进 renderFull（面板、taste 工具）就够了 —— 每轮重发一遍等于把整本笔记抄进信封。
+  //   实测：45 条例子在提示词里占 7,339 字，是整个审美档案的 56%，
+  //   而真正在起作用的往往是 lesson 那一句（摘要已经把结论压过了）。
+  // ────────────────────────────────────────────────────────
+  if (opts.compact) {
+    const one = x.lesson || x.note || (x.myRead ? '我当时读的是：' + x.myRead : '')
+    const s = one ? String(one).replace(/\s+/g, ' ').slice(0, 70) : ''
+    return lines[0] + (s ? '\n  · ' + s : '')
+  }
   return lines.join('\n')
 }
 
