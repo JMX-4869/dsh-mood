@@ -882,6 +882,24 @@ function decayValues(values, opts = {}) {
   return out
 }
 
+/**
+ * 选注入点：**优先 context，退回 section**。
+ *
+ * - `section` 进系统提示词。内容一变，从这一节往后**整段前缀缓存作废**。
+ * - `context` 是每轮**追加一条、按增量计费**，前面的历史照样复用。
+ *
+ * 心情和会话索引都是每轮会变的东西，必须走 context；但老宿主、以及测试桩，
+ * 可能只有 `section` —— 所以这里退一步，别为了省缓存把注入直接弄丢。
+ * （实测：只写 context 之后 smoke 从 35 条掉到 34 条，就是那条桩抓不到它了。）
+ */
+function injectPoint(ctx) {
+  const sp = ctx && ctx.systemPrompt
+  if (!sp) return null
+  if (typeof sp.context === 'function') return sp.context.bind(sp)
+  if (typeof sp.section === 'function') return sp.section.bind(sp)
+  return null
+}
+
 function loadState() {
   try {
     const raw = JSON.parse(readFileSync(stateFile(), 'utf8'))
@@ -1324,8 +1342,15 @@ export function judgeMessage(text) {
 
   // 长消息 → 偏向专注（在认真说事）；很短 → 略疲惫
   const len = t.trim().length
-  if (len >= 80) { add('focused', 1.2); add('tired', 0.3) }
-  else if (len <= 6) { add('tired', 0.4); add('focused', -0.2) }
+  // ⚠️ 这里原来有两句按**长度**加减分的：
+  //      `len >= 80 → 专注 +1.2 / 疲惫 +0.3`
+  //      `len <= 6  → 疲惫 +0.4 / 专注 −0.2`
+  //    **删了。** 那不是读情绪，是数长度。
+  //    主人发的请求本来就长（贴截图、写需求），一天二十来条长消息 → 专注白拿 +24；
+  //    而周期判定每次只把它往基线拉 25%。稳态算下来 ≈ 65 分，别的情绪永远追不上 ——
+  //    实测 17 天没换过脸，专注从 51.5 一路爬到 68。
+  //    「字多 ≠ 情绪强」是这个库**第二次**栽在同一处：上一次是 NEGATIVE 词表吃长文档。
+  //    当时只修了词表，没往下游看到这句。
 
   // 全是感叹/问号这种情绪化短句
   if (len <= 12 && exc && !que) add('excited', 0.6)
@@ -1767,8 +1792,15 @@ export function apply(root, rawConfig) {
     //
     //    ⚠️ 全量内容**不进上下文** —— 实测一个会话纯文本就 7.84 MB
     //       （光用户消息 0.65 MB ≈ 20 万 token）。所以这里只给索引和摘要。
-    if (ctx.systemPrompt && typeof ctx.systemPrompt.section === 'function') {
-      ctx.effect(() => ctx.systemPrompt.section({
+    // ★ 走 **context**，不走 section。
+    //   section 进系统提示词：内容一变，从它往后整段前缀缓存作废（宿主源码原话）。
+    //   这一节读的索引文件是**另一个对话每轮都在写**的，所以它几乎每轮都变 ——
+    //   实测同样的对话，命中缓存 0.03~0.04 元/百万，没命中 0.21 元/百万，差 10 倍。
+    //   context 是**每轮追加一条、按增量计费**，前面那段历史照样能复用。
+    //   （这条是看 dsh-mood-system 1.1.0 学的，它 README 里把两种注入的计费差别写清楚了。）
+    const put = injectPoint(ctx)
+    if (put) {
+      ctx.effect(() => put({
         name: 'dsh-mood/sessions',
         // ⚠️ **905，不是 895。** 一开始我按"稳的在前"排了 895（品味 890 之后），
         //    而那是**想当然**：这一节只在**启动时**刷新一次，所以它自己很稳 ——
@@ -1798,9 +1830,9 @@ export function apply(root, rawConfig) {
       }), 'dsh-mood sessions section')
     }
 
-    // 2) 系统提示词一节：让模型随时知道自己什么心情
-    if (ctx.systemPrompt && typeof ctx.systemPrompt.section === 'function') {
-      ctx.effect(() => ctx.systemPrompt.section({
+    // 2) 让模型随时知道自己什么心情 —— 同上，也走 context
+    if (put) {
+      ctx.effect(() => put({
         name: 'dsh-mood/state',
         order: 900,
         interpolate: false,
