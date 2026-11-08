@@ -21,6 +21,13 @@ import * as PROC from './procedures.js'
  * 状态持久化在 $DSH_HOME/dsh-mood.json（默认 ~/.dsh/dsh-mood.json）。
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, statSync, readdirSync } from 'node:fs'
+// 新核心（三维 + 心情轴 + 耐心值）。纯数学在 core.js，提示词文案在 prompts.js。
+import {
+  CORE_DEFAULTS as CORE,
+  feelNudge, feelStep, feelBandOf,
+  patienceRecover, patienceBandOf, patienceAfter,
+  promptKeyOf, DIMENSIONS as CORE_DIMS, levelOf as coreLevelOf,
+} from './core.js'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
@@ -907,6 +914,21 @@ function blankState() {
     version: 1,
     current: 'calm',
     values: freshValues(),
+    // ── 新核心（dsh-mood-system 那一套）──
+    //
+    // ⚠️ 和上面那 33 个 values **并存**，不是替换：日记的 noteMood/noteSwitch、
+    //    面板的分值条、mood 工具都还挂在 `current` 上。
+    //    等换核心第 ①~⑥ 步都稳了，旧的再下线（见 dsh-mood-核心换法-v1.md）。
+    //
+    //    为什么必须并存：这套是"关系"（三维）+ "状态"（心情轴），
+    //    旧的是"33 个离散表情"，两者的消费方不同，硬切会断档。
+    dims: { affection: 0, disappointment: 0, selfEsteem: 0 },
+    /** 心情轴 −100..100：开心 ↔ 难过，独立于三维 */
+    feel: 0,
+    /** 带迟滞的档位：开心 / 平 / 难过 */
+    feelBand: '平',
+    /** 耐心值 0..100，按事件扣、每周期恢复 */
+    patience: 100,
     lastSwitchAt: 0,
     lastPeriodicAt: Date.now(),
     nextPeriodicMs: randPeriod(),
@@ -1654,6 +1676,14 @@ export function apply(root, rawConfig) {
     else if (activity.turns >= 3) { bump(st, 'focused', 2); bump(st, 'tired', 2) }
     // 工具老报错 → 烦躁
     if (activity.errors >= 3) { bump(st, 'annoyed', Math.min(6, activity.errors)); bump(st, 'calm', -3) }
+    // ── 新核心的周期那一半 ──
+    //    心情轴：向基线回落 + 随机扰动 + 聊得多就往「累」偏
+    //    耐心值：每周期恢复一点
+    try {
+      st.feel = feelStep(st.feel, { turns: activity.turns, cfg: CORE.feel })
+      st.feelBand = feelBandOf(st.feel, st.feelBand || '平', CORE.feel)
+      st.patience = patienceRecover(st.patience, CORE.patience)
+    } catch { /* 同上：别让新核心把周期判定带崩 */ }
     st.turns = 0
     st.toolErrors = 0
     st.lastPeriodicAt = now
@@ -2220,6 +2250,17 @@ export function apply(root, rawConfig) {
             }
             // 把用户那句话一起传进去 —— 切换时它会被记进"当时在干什么"（事实，不是因果）
             emit(changes, 'user-message', Date.now(), text)
+            // ── 新核心：心情轴按这条消息挪一点 ──
+            //    和上面 emit() 那套 33 心情**并存**：这条只碰 feel，不碰 values。
+            //    上限由 core.js 的 msgCap 管（默认 3），一句话翻不动。
+            try {
+              const dn = feelNudge(text, CORE.feel)
+              if (dn) {
+                state.feel = Math.max(-100, Math.min(100, (Number(state.feel) || 0) + dn))
+                state.feelBand = feelBandOf(state.feel, state.feelBand || '平', CORE.feel)
+                saveState(state)
+              }
+            } catch { /* 心情轴出错绝不许影响主流程 */ }
             // 每条消息后顺便看看周期判定/日记到点没（惰性，不依赖长驻定时器）
             periodicIfDue()
             diaryTick()
