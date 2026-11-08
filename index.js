@@ -2771,6 +2771,113 @@ export function apply(root, rawConfig) {
         })
         ctx.effect(() => tools.register(def), 'dsh-mood tool')
 
+        // ---- mood_score / mood_status：新核心的**唯一写入方** ----
+        //
+        // 为什么必须有：注入读的是 state.dims，而在这之前**没有任何东西去写它** ——
+        // 三个值永远是 0/0/0，档位就永远停在「中／中／中」。这条工具就是那个写入方。
+        //
+        // 为什么让模型自己报、而不是从词表推：词表只认字面，反讽和"这事其实很顺"都判不出来。
+        // 代价是模型会编 —— 所以两道闸：
+        //   ① 全部 clamp 到 ±100
+        //   ② 每次只**朝目标挪 modelWeight（0.3）**，不是直接赋值：
+        //      报一次挪 30%，报两次才 51%。一条消息翻不动，跟心情轴同一套防抖思路。
+        {
+          const scoreDef = defineTool({
+            name: 'mood_score',
+            description:
+              '记录本轮的三维评分（好感度 / 失望度 / 自我肯定），可附带心情轴和耐心事件。\n' +
+              '**这是心情系统的唯一写入口** —— 不调它，注入里的档位永远是「中／中／中」。\n' +
+              '范围都是 −100~100，0 = 没特别感觉。\n' +
+              '· 好感度：怎么看**对方**（−100 疏远 … 100 亲近）\n' +
+              '· 失望度：事情有没有按预期走（−100 顺 … 100 失望）\n' +
+              '· 自我肯定：对**自己**有没有信心（−100 没底 … 100 有底）\n' +
+              '每次只朝目标挪 30%，所以报得准比报得狠重要 —— 连续几轮同方向才真的挪过去。\n' +
+              '**不需要每轮都报**：状态有明显变化时再报。',
+            parameters: {
+              affection: { type: 'number', description: '好感度 −100~100' },
+              disappointment: { type: 'number', description: '失望度 −100~100' },
+              selfEsteem: { type: 'number', description: '自我肯定 −100~100' },
+              feel: { type: 'number', description: '可选。心情轴 −100~100：我自己开不开心' },
+              patienceEvent: {
+                type: 'string',
+                enum: ['none', 'unreasonable', 'repeat', 'attack', 'perfunctory'],
+                description: '可选。要扣耐心的事件：none=不扣 / unreasonable=要求不合理 / repeat=同一件事又说一遍 / attack=冲着人来的 / perfunctory=敷衍',
+              },
+              reason: { type: 'string', description: '可选。一句话说明这轮为什么这么打分（只看本轮的输入，不许替对方编）' },
+            },
+            execute: (args) => {
+              try {
+                const w = Number(CORE.feel.modelWeight) || 0.3
+                const cur = Object.assign({ affection: 0, disappointment: 0, selfEsteem: 0 }, state.dims || {})
+                const next = { ...cur }
+                for (const d of CORE_DIMS) {
+                  const v = Number(args && args[d.key])
+                  if (!Number.isFinite(v)) continue
+                  next[d.key] = Math.max(-100, Math.min(100, cur[d.key] + (v - cur[d.key]) * w))
+                }
+                state.dims = next
+                if (Number.isFinite(Number(args && args.feel))) {
+                  const fv = Math.max(-100, Math.min(100, Number(args.feel)))
+                  const cf = Number(state.feel) || 0
+                  state.feel = Math.max(-100, Math.min(100, cf + (fv - cf) * w))
+                  state.feelBand = feelBandOf(state.feel, state.feelBand || '平', CORE.feel)
+                }
+                if (args && args.patienceEvent) {
+                  state.patience = patienceAfter(state.patience, String(args.patienceEvent), CORE.patience)
+                }
+                if (args && args.reason) state.lastScoreReason = String(args.reason).slice(0, 200)
+                state.lastScoreAt = Date.now()
+                saveState(state)
+                const key = promptKeyOf(next, CORE.thresholds)
+                const combo = key.replace(/\//g, '／')
+                // `message` 不只是给人看的：冒烟脚本对每个工具都会调一次并检查这个字段，
+                // 没有它就会被判"没返回 message"（实测踩过：39 过 5 失）。
+                return { ok: true, message: '已记录。当前档位：' + combo, combo, patience: Math.round(Number(state.patience) || 0) }
+              } catch (err) {
+                return { ok: false, message: 'mood_score 出错：' + (err && err.message) }
+              }
+            },
+          })
+          ctx.effect(() => tools.register(scoreDef), 'dsh-mood mood_score tool')
+
+          const statusDef = defineTool({
+            name: 'mood_status',
+            description:
+              '看当前三维档位、那组的说法、心情轴、耐心档。\n' +
+              '**默认只给定性的东西**（组合键 + 三句话），不给数字 —— 数字一进对话就容易被拿来"报心情"。\n' +
+              '确实要数值时才传 raw=true。',
+            parameters: {
+              raw: { type: 'boolean', description: 'true 时连数值一起给（默认 false）' },
+            },
+            execute: (args) => {
+              try {
+                const dims = Object.assign({ affection: 0, disappointment: 0, selfEsteem: 0 }, state.dims || {})
+                const key = promptKeyOf(dims, CORE.thresholds)
+                const g = loadPromptSet()[key] || loadPromptSet()['中/中/中']
+                const out = {
+                  ok: true,
+                  combo: key.replace(/\//g, '／'),
+                  state: g.state,
+                  lang: g.lang,
+                  taboo: g.taboo,
+                  feelBand: state.feelBand || '平',
+                  patience: patienceBandOf(state.patience, CORE.patience),
+                }
+                out.message = `${out.combo} —— ${out.state}（耐心：${out.patience}）`
+                if (args && args.raw) {
+                  out.dims = dims
+                  out.feel = Math.round((Number(state.feel) || 0) * 10) / 10
+                  out.patienceValue = Math.round(Number(state.patience) || 0)
+                }
+                return out
+              } catch (err) {
+                return { ok: false, message: 'mood_status 出错：' + (err && err.message) }
+              }
+            },
+          })
+          ctx.effect(() => tools.register(statusDef), 'dsh-mood mood_status tool')
+        }
+
         // ---- diary 工具：读 + 门禁 + **写**（2026-10-18 起模型能写）----
         //
         // 为什么改：原来是"只读 + 门禁，模型不得代笔"。而模板拼出来的那篇
