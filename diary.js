@@ -356,6 +356,31 @@ export function noteSwitch(d, from, to, now = Date.now()) {
 }
 
 /**
+ * 记录一次**新核心**的状态快照（三维组合键 + 心情轴档）。
+ *
+ * 为什么另记一条，而不是改 `noteMood`：
+ *   `noteMood` 记的是那 33 种离散 id，旧引擎、面板、mood 工具还在用它；
+ *   新核心是「高／中／低 的组合键 + 一根轴」，两种东西塞不进同一个字段。
+ *   所以这里**只加字段、不动旧字段** —— 老日记条目照样读得出来。
+ *
+ * 同值不重复记：一天几百条一模一样的没有信息量，只留着"变了"的那些。
+ */
+export function noteCore(d, snap, now = Date.now()) {
+  const b = dayBucket(d, dateKey(new Date(now)))
+  if (!Array.isArray(b.coreSamples)) b.coreSamples = []
+  const combo = String((snap && snap.combo) || '')
+  const band = String((snap && snap.feelBand) || '平')
+  const last = b.coreSamples[b.coreSamples.length - 1]
+  if (!last || last.combo !== combo || last.band !== band) {
+    b.coreSamples.push({ at: now, combo, band })
+    // 上限 40：一天之内换 40 次已经够多了，再多也读不出来
+    if (b.coreSamples.length > 40) b.coreSamples = b.coreSamples.slice(-40)
+  }
+  b.lastCore = { combo, band }
+  return b
+}
+
+/**
  * 这一条是不是**被注入的框**，而不是人说的话。
  *
  * DSH 和插件自己都会往对话里塞东西（`<system-reminder>` 提醒、`<goal_round>` 续跑包装），

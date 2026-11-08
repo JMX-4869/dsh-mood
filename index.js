@@ -48,7 +48,7 @@ import {
   blankDiary, diaryKeyFile,
   dateKey, yesterdayKey, diaryDue,
   loadDiary, saveDiary,
-  noteMood, noteSwitch, noteActivity,
+  noteMood, noteSwitch, noteActivity, noteCore,
   ensureDiary, pruneDaily,
   // 给"当时在干什么"取高频词用（只读日记素材，不写）
   topWords as diaryTopWords,
@@ -1689,6 +1689,13 @@ export function apply(root, rawConfig) {
     const res = tryTransition(state, reason, now, aroundOf(diary, lastText, now))
     noteMood(diary, state.current, now)
     if (res.switched) noteSwitch(diary, before, res.to, now)
+    // 新核心的快照另记一条（只加字段、不动上面那两个 —— 老日记条目照样读得出来）
+    try {
+      noteCore(diary, {
+        combo: promptKeyOf(state.dims || {}, state.thresholds || CORE.thresholds).replace(/\//g, '／'),
+        feelBand: state.feelBand || '平',
+      }, now)
+    } catch { /* 记不进去不影响心情本身 */ }
     saveState(state)
     saveDiary(diary)
     return res
