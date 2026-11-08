@@ -1846,6 +1846,91 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * 参数 —— 心情怎么动，全在这几个数上。
+     *
+     * 这些值原来全写死在 index.js 的 CFG 里，改一个就得改代码、重打包、重启。
+     * 而"分值到底多少算多"恰恰是最需要边用边调的：上一轮 19 天不换脸，
+     * 根因就是一个写死的 +1.2。
+     *
+     * 存到 dsh-mood-config.json（和心情状态同目录），手改也行 ——
+     * 宿主那边会夹范围，写坏了当没有。
+     */
+    function ParamsPanel() {
+      const h = React.createElement
+      const [d, setD] = React.useState(null)
+      const [draft, setDraft] = React.useState(null)
+      const [err, setErr] = React.useState('')
+      const [busy, setBusy] = React.useState(false)
+      const [saved, setSaved] = React.useState('')
+
+      const load = React.useCallback(async () => {
+        try {
+          const j = await getJSON('/config')
+          setD(j); setDraft(j.config); setErr(''); setSaved('')
+        } catch (e) { setErr(String((e && e.message) || e)) }
+      }, [])
+      React.useEffect(() => { load() }, [load])
+
+      const save = async () => {
+        setBusy(true)
+        try {
+          const r = await fetch(API + '/config', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'application/json', 'x-dsh-mood': '1' },
+            body: JSON.stringify(draft || {}),
+          })
+          const j = await r.json()
+          if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + r.status))
+          setD(j); setDraft(j.config); setErr('')
+          setSaved(j.warning ? ('⚠️ ' + j.warning) : '已保存，下一轮生效')
+        } catch (e) { setErr(String((e && e.message) || e)) } finally { setBusy(false) }
+      }
+
+      if (err && !d) return h('div', { className: 'dshmood' }, h('div', { className: 'notice' }, '读不到参数：' + err))
+      if (!d || !draft) return h('div', { className: 'dshmood' }, h('div', { className: 'notice' }, '加载中…'))
+
+      const rows = Object.keys(d.tunables || {}).map((k) => {
+        const s = d.tunables[k]
+        const v = draft[k] === undefined ? d.config[k] : draft[k]
+        const was = d.config[k]
+        const moved = Math.abs(Number(v) - Number(was)) > 1e-9
+        return h('div', { key: k, style: { display: 'grid', gridTemplateColumns: '84px 1fr 84px', gap: 8, alignItems: 'center', margin: '6px 0' } },
+          h('span', { style: { fontSize: 12 } }, s.label),
+          h('input', {
+            type: 'range', min: s.min, max: s.max, step: s.step, value: v,
+            onChange: (e) => setDraft({ ...draft, [k]: Number(e.target.value) }),
+            style: { width: '100%' },
+          }),
+          h('span', { style: { fontSize: 12, textAlign: 'right', fontWeight: moved ? 600 : 400 } },
+            String(v) + (s.unit || '')),
+        )
+      })
+
+      const notes = Object.keys(d.tunables || {}).map((k) => {
+        const s = d.tunables[k]
+        if (!s.desc) return null
+        return h('div', { key: 'n' + k, style: { fontSize: 11, opacity: 0.7, margin: '-2px 0 6px 92px' } }, s.desc)
+      }).filter(Boolean)
+
+      return h('div', { className: 'dshmood' },
+        h('div', { className: 'page-hd' },
+          h('span', { className: 'page-title' }, '参数'),
+          h('span', { className: 'page-sub' }, '心情怎么动，全在这几个数上'),
+        ),
+        h('div', { className: 'tools' },
+          h('button', { onClick: save, disabled: busy }, busy ? '保存中…' : '保存'),
+          h('button', { onClick: () => { setDraft({ ...d.defaults }); setSaved('') }, disabled: busy }, '恢复默认'),
+          h('button', { onClick: load, disabled: busy }, '刷新'),
+          h('span', { className: 'pill' }, err ? ('❌ ' + err) : (saved || '拖完点保存')),
+        ),
+        h('div', {}, ...rows),
+        h('div', {}, ...notes),
+        h('div', { className: 'notice', style: { marginTop: 4 } },
+          '「切换余量」是候选要超出当前多少分才换脸；「单条上限」要**小于**它 —— 否则一句话就能翻。'),
+      )
+    }
+
+    /**
      * 主动开口。**默认关**，打开也是七道闸门全过才可能开口。
      *
      * 面板的重点不是那个开关，是**把那七道闸门逐条列出来** ——
@@ -2214,6 +2299,11 @@ window.__ModuleLoader__.load({
       slots.inject('settings.section', () => slots.register(
         { name: 'settings.section', id: 'news', order: 27, label: '时事' },
         () => React.createElement(MoodErrorBoundary, null, React.createElement(NewsPanel, { ctx })),
+      ))
+      // 参数：那几个数原来写死在代码里，现在给一个能拖的地方
+      slots.inject('settings.section', () => slots.register(
+        { name: 'settings.section', id: 'params', order: 24, label: '参数' },
+        () => React.createElement(MoodErrorBoundary, null, React.createElement(ParamsPanel, {})),
       ))
       // 品味：档案每轮都注入提示词，这个面板是给它"可改"的入口
       slots.inject('settings.section', () => slots.register(

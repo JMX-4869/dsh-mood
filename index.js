@@ -533,6 +533,74 @@ const CFG = {
   blendMax: 3,
 }
 
+/**
+ * 面板上能改的那几个参数 —— **白名单**，配置文件里写别的键一律不认。
+ *
+ * `mul`：界面上按「分 / 分钟 / 小时」显示，**存也存显示值**，用时乘回去。
+ * 这样 JSON 里是 60（分钟）而不是 3600000（毫秒）—— 手改的时候人能看懂。
+ *
+ * 为什么要有这张表：这些数原来全写死在 CFG 里，改一个就得改代码、重打包、重启。
+ * 而"分值太多还是太少"恰恰是最需要边用边调的东西。
+ */
+const TUNABLES = {
+  margin: { label: '切换余量', unit: '分', min: 1, max: 30, step: 0.5, desc: '候选要超出当前多少分才换脸' },
+  msgCap: { label: '单条上限', unit: '分', min: 1, max: 12, step: 0.5, desc: '一条消息最多推动多少分（正负各算）' },
+  decayRatio: { label: '回落比例', unit: '', min: 0.05, max: 0.8, step: 0.05, desc: '每个周期向自己的基线回落多少' },
+  noise: { label: '随机扰动', unit: '分', min: 0, max: 12, step: 1, desc: '每周期在基线上抖 ± 多少' },
+  minHoldMs: { label: '最短保持', unit: '分钟', min: 1, max: 240, step: 1, mul: 60000, desc: '两次换脸至少隔多久' },
+  periodMinMs: { label: '周期下限', unit: '小时', min: 0.5, max: 12, step: 0.5, mul: 3600000, desc: '多久判一次（短）' },
+  periodMaxMs: { label: '周期上限', unit: '小时', min: 0.5, max: 24, step: 0.5, mul: 3600000, desc: '多久判一次（长）' },
+}
+/** 出厂值（显示单位）。面板上「恢复默认」用它。 */
+const CFG_DEFAULTS = Object.fromEntries(Object.keys(TUNABLES).map((k) => [k, CFG[k]]))
+
+function configPath() {
+  try { return join(dirname(stateFile()), 'dsh-mood-config.json') } catch { return '' }
+}
+function cfgDefaultsShown() {
+  const o = {}
+  for (const k of Object.keys(TUNABLES)) o[k] = CFG_DEFAULTS[k] / (TUNABLES[k].mul || 1)
+  return o
+}
+function cfgShown() {
+  const o = {}
+  for (const k of Object.keys(TUNABLES)) o[k] = Math.round((CFG[k] / (TUNABLES[k].mul || 1)) * 1000) / 1000
+  return o
+}
+/** 把一份（显示单位的）配置夹进范围，写回 CFG。返回夹完后的显示值。 */
+function applyShownConfig(src) {
+  const out = {}
+  for (const [k, spec] of Object.entries(TUNABLES)) {
+    const v = Number(src && src[k])
+    if (!Number.isFinite(v)) continue
+    out[k] = Math.min(spec.max, Math.max(spec.min, v))
+  }
+  // 周期上限不能小于下限，否则 randPeriod() 会算出负数
+  if (out.periodMinMs !== undefined && out.periodMaxMs !== undefined && out.periodMaxMs < out.periodMinMs) {
+    out.periodMaxMs = out.periodMinMs
+  }
+  for (const [k, v] of Object.entries(out)) CFG[k] = v * (TUNABLES[k].mul || 1)
+  return cfgShown()
+}
+/**
+ * 启动时把存的那份套上。
+ *
+ * ⚠️ 配置文件是**能手改**的，所以这里必须夹范围：
+ *    margin 写成 0 = 每轮都在换脸；decayRatio 写成 2 = 每个周期来回跳。
+ *    读坏了就当没有（`try` 吞掉），绝不因为一个坏 JSON 让插件起不来。
+ */
+function loadStoredConfig() {
+  const f = configPath()
+  if (!f) return null
+  let raw = null
+  try { raw = JSON.parse(readFileSync(f, 'utf8')) } catch { return null }
+  try { return applyShownConfig(raw) } catch { return null }
+}
+
+// 导出给测试直接调 —— **别在测试里抄一份公式**，那测的是副本不是实现。
+export { TUNABLES, cfgShown, cfgDefaultsShown, applyShownConfig, loadStoredConfig }
+
+
 // ---------------------------------------------------------------- 关键词表
 
 // 每条命中给指定心情加分/减分。数字刻意小 —— 需要多条消息才推得动。
@@ -1699,6 +1767,9 @@ export function apply(root, rawConfig) {
   //      · 两遍的 ctx 都没有 webServer → HTTP 路由从没注册 → 设置页一直 404
   //    现在拆成两个各管一半的函数，各自只跑一次。
   const mountCore = (ctx) => {
+    // 面板上调过的参数，启动时套上 —— **必须在任何人读 CFG 之前**，
+    // 所以放在这个函数的第一行（定时器、监听、注入都在这之后才建）。
+    try { loadStoredConfig() } catch { /* 坏配置当没有，绝不因为一个 JSON 起不来 */ }
     // 启动时刷新会话索引 —— **后台跑，不挡启动**。
     // ⚠️ 全量扫一次实测 2 秒/会话（那个 53 MB 的有 28057 个 zstd 帧要逐个解）。
     //    所以：**先把上次存的索引拿来用**（上面那一节直接读盘），
@@ -3394,6 +3465,34 @@ export function apply(root, rawConfig) {
             const unreadableNow = dRaw === null
             if (unreadableNow) diaryUnreadable = true
             const d = dRaw || blankDiary()
+            // ── 参数：面板上调的那几个数 ──
+            //
+            // GET  → 现值 + 出厂值 + 每个参数的范围（界面靠它画滑块，不写死）
+            // POST → 写盘 + 当场生效（不用重启）
+            if (path === '/config') {
+              const snap = () => ({ ok: true, config: cfgShown(), defaults: cfgDefaultsShown(), tunables: TUNABLES })
+              if (req.method === 'POST') {
+                return readBody(req, (j, err) => {
+                  if (err || !j || typeof j !== 'object') return send({ ok: false, error: '请求体不是 JSON 对象' }, 400)
+                  let next
+                  try { next = applyShownConfig({ ...cfgShown(), ...j }) } catch (e) {
+                    return send({ ok: false, error: String((e && e.message) || e) }, 400)
+                  }
+                  const f = configPath()
+                  try {
+                    mkdirSync(dirname(f), { recursive: true })
+                    writeFileSync(f, JSON.stringify(next, null, 2), 'utf8')
+                  } catch (e) {
+                    // 写不进去不算失败 —— 内存里已经生效了，只是这次重启后回不去
+                    log('dsh-mood: 参数写盘失败 - ' + ((e && e.message) || e))
+                    return send({ ...snap(), ok: true, warning: '内存里已生效，但写盘失败：' + ((e && e.message) || e) })
+                  }
+                  log('dsh-mood: 参数已更新 ' + JSON.stringify(next))
+                  return send({ ...snap(), ok: true })
+                })
+              }
+              return send(snap())
+            }
             if (path === '/' || path === '/state') {
               const s = summary()
               // 门禁：没经模型同意，**正文一个字都不下发**（只给条数，好让界面说"有几篇但看不到"）。
