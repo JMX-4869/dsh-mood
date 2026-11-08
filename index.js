@@ -27,6 +27,7 @@ import {
   feelNudge, feelStep, feelBandOf,
   patienceRecover, patienceBandOf, patienceAfter,
   promptKeyOf, DIMENSIONS as CORE_DIMS, levelOf as coreLevelOf,
+  defaultPrompts, renderCoreBlock,
 } from './core.js'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -563,6 +564,34 @@ const CFG_DEFAULTS = Object.fromEntries(Object.keys(TUNABLES).map((k) => [k, CFG
 
 function configPath() {
   try { return join(dirname(stateFile()), 'dsh-mood-config.json') } catch { return '' }
+}
+
+/**
+ * 27 组档位提示词：面板改过的存 `dsh-mood-prompts.json`，没改过的用出厂那份。
+ *
+ * ⚠️ 只认**已知的 27 个键**，而且只覆盖 state/lang/taboo 三个字段 ——
+ *    文件是能手改的，不能让它塞一个不存在的键或把 n/combo 改乱。
+ *    读坏了就当没改过，绝不因为一个坏 JSON 让注入段空掉。
+ */
+function loadPromptSet() {
+  const base = defaultPrompts()
+  let stored = null
+  try {
+    const f = join(dirname(stateFile()), 'dsh-mood-prompts.json')
+    if (existsSync(f)) stored = JSON.parse(readFileSync(f, 'utf8'))
+  } catch { stored = null }
+  if (!stored || typeof stored !== 'object') return base
+  for (const k of Object.keys(base)) {
+    const s = stored[k]
+    if (!s || typeof s !== 'object') continue
+    base[k] = {
+      ...base[k],
+      state: typeof s.state === 'string' && s.state.trim() ? s.state : base[k].state,
+      lang: typeof s.lang === 'string' && s.lang.trim() ? s.lang : base[k].lang,
+      taboo: typeof s.taboo === 'string' && s.taboo.trim() ? s.taboo : base[k].taboo,
+    }
+  }
+  return base
 }
 function cfgDefaultsShown() {
   const o = {}
@@ -1957,25 +1986,26 @@ export function apply(root, rawConfig) {
             dyn.push('**演到这一步，角色要给真人让路。**')
             dyn.push('')
           }
-          dyn.push('## 当前心情')
-          // ★ 不再摊分值。数字会替我把"为什么"总结成一个量，我拿着数字就直接报结果。
-          //   现在只给"多明显"，由头必须从刚才真正读到的那几句话里来。
-          dyn.push(`你现在的心情是 **${s.mixLabel}**，${s.strength}。`)
-          dyn.push('**它为什么来，只看你刚才真正读到的那几句话** —— 不是这一行字告诉你的。')
-          dyn.push('想不起来 → 这个脸色就不该摆，回到常态。**别编一个原因，更别把它说出来。**')
-          if (s.mixed.length) {
-            dyn.push(`这是**混合态**：以「${s.primaryLabel}」为主导，同时掺着 ${s.mixed.map((m) => '「' + m.label + '」').join('、')}。`)
-            dyn.push('两个味道都要透出来，但**主导的那个定调，其它的只是点缀**，别平均分力气。')
-          }
-          // ⚠️ 拼接前把每条末尾的句号去掉。
-          //    每条 hint 自己结尾都带「。」，join('；') 之后就变成
-          //    「…回复保持常态节奏。；还带点开心：…」—— 看着像没写完。
-          //    这个 bug **每一轮提示词里都有**，但没有任何测试覆盖到：
-          //    提示词段只测了"跑得通""有这几段"，没人看标点。
-          const joinHints = (xs) => xs.map((x) => String(x).replace(/[。．.]+$/, '')).join('；')
-          dyn.push(`行为倾向：${joinHints(s.hintLines)}。`)
-          // innerLines 是连着写的（每条自带括号开头），不加分隔符
-          dyn.push(`内心语气：${s.innerLines.join('')}`)
+          // ── 新核心：三维判档 → 27 组里的那一组 ──
+          //
+          // 旧的「33 种心情 + 混合态」那几行在这里**停用**，但没删：
+          // 日记的 noteMood/noteSwitch、面板的分值条、mood 工具的 set/feel
+          // 还都挂在 state.values 上，硬切会断档。等 ①~⑥ 都稳了再一起下线。
+          // ── 新核心：三维判档 → 27 组里的那一组 ──
+          //
+          // 旧的「33 种心情 + 混合态」那几行在这里**停用**，但没删：
+          // 日记的 noteMood/noteSwitch、面板的分值条、mood 工具的 set/feel
+          // 还都挂在 state.values 上，硬切会断档。等 ①~⑥ 都稳了再一起下线。
+          //
+          // 渲染逻辑抽到 core.js 的 renderCoreBlock —— 闭包里写的东西只能靠
+          // "重启后瞄一眼"验证，那是又贵又容易糊弄的验证方式。
+          dyn.push(...renderCoreBlock({
+            dims: state.dims,
+            thresholds: CORE.thresholds,
+            feelBand: state.feelBand,
+            patience: state.patience,
+            prompts: loadPromptSet(),
+          }))
           if (persona) {
             const who = persona.name ? `「${persona.name}」` : ''
             const to = persona.userName ? `（你对 ${persona.userName} 的态度不变）` : ''

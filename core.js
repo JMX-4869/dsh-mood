@@ -7,9 +7,9 @@
 // 移植自 dsh-mood-system 1.1.0 的 `feel` / `patience` 两节（输出温度不要：
 // 对方 README 自己写着"没真的改采样温度"，搬过来只是一句空话）。
 
-import { DIMENSIONS, levelOf, promptKeyOf } from './prompts.js'
+import { DIMENSIONS, levelOf, promptKeyOf, defaultPrompts } from './prompts.js'
 
-export { DIMENSIONS, levelOf, promptKeyOf }
+export { DIMENSIONS, levelOf, promptKeyOf, defaultPrompts }
 
 /** 出厂参数。面板可改的走 dsh-mood-config.json，这里是不被覆盖时的值。 */
 export const CORE_DEFAULTS = {
@@ -128,8 +128,41 @@ export function patienceRecover(patience, cfg = CORE_DEFAULTS.patience) {
 
 /** 耐心值 → 那一档该怎么说话。 */
 export function patienceBandOf(patience, cfg = CORE_DEFAULTS.patience) {
-  const p = Number(patience)
+  // ⚠️ 没给值时必须落到**满耐心**，不能落到最低档 ——
+  //    Number(undefined) 是 NaN，NaN >= min 全 false，会一路掉到最后一档「只说这个我不接」。
+  //    （实测就这么撞过：老存档里没有 patience 字段，第一次渲染就摆出一副"不接了"的脸色。）
+  const raw = Number(patience)
+  const p = Number.isFinite(raw) ? raw : (Number(cfg && cfg.max) || 100)
   const list = cfg.bands || CORE_DEFAULTS.patience.bands
   for (const b of list) if (p >= b.min) return b.behavior
   return list[list.length - 1].behavior
+}
+
+// ── 注入渲染 ─────────────────────────────────────────────────────────
+
+/**
+ * 把当前状态渲染成注入的那几行。
+ *
+ * 为什么抽到这儿：注入段在 `apply()` 的闭包里，写在里面就只能靠"重启后看一眼"验证 ——
+ * 而那是最贵、最容易糊弄的一种验证。抽成纯函数之后测试能直接断言每一行。
+ *
+ * ⚠️ 不报数值（0.14.17 定的规矩）：给了数就直接报结果，不会去想由头。
+ */
+export function renderCoreBlock(opts = {}) {
+  const dims = Object.assign({ affection: 0, disappointment: 0, selfEsteem: 0 }, opts.dims || {})
+  const thresholds = opts.thresholds || CORE_DEFAULTS.thresholds
+  const set = opts.prompts || defaultPrompts()
+  const key = promptKeyOf(dims, thresholds)
+  const g = set[key] || set['中/中/中']
+  const lines = ['## 当前状态']
+  lines.push(`**${g.combo}** —— ${g.state}`)
+  lines.push(`语言：${g.lang}`)
+  lines.push(`禁忌：${g.taboo}`)
+  const band = opts.feelBand || '平'
+  if (band !== '平') {
+    lines.push(`心情轴：**${band}** —— 这跟上面那组是两回事：那组是"怎么跟他说"，这条是"我今天什么底色"，两个味道都要透出来，别混成一个。`)
+  }
+  lines.push(`耐心：${patienceBandOf(opts.patience, opts.patienceCfg)}`)
+  lines.push('**“为什么”只看你刚才真正读到的那几句话** —— 不是这几行字告诉你的。想不起来就别摆这个脸色。')
+  return lines
 }
