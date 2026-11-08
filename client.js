@@ -1846,6 +1846,128 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * 心情核心 —— 三维滑块 + 阈值 + 27 组可编辑。
+     *
+     * 为什么要有这一格：三维决定注入里那三句话，而在这之前**它只能靠 mood_score 写**，
+     * 人手上改不了。想验一句话的效果，就得反复让模型自己报分 —— 太绕。
+     */
+    function CorePanel() {
+      const h = React.createElement
+      const [d, setD] = React.useState(null)
+      const [draft, setDraft] = React.useState(null)
+      const [ps, setPs] = React.useState(null)
+      const [psk, setPsk] = React.useState('中/中/中')
+      const [err, setErr] = React.useState('')
+      const [busy, setBusy] = React.useState(false)
+      const [note, setNote] = React.useState('')
+
+      const load = React.useCallback(async () => {
+        try {
+          const [a, b] = await Promise.all([getJSON('/core'), getJSON('/prompts')])
+          setD(a)
+          setDraft({ ...a.dims, high: a.thresholds.high, low: a.thresholds.low })
+          setPs(b.prompts || {})
+          setErr('')
+        } catch (e) { setErr(String((e && e.message) || e)) }
+      }, [])
+      React.useEffect(() => { load() }, [load])
+
+      const post = async (path, body) => {
+        setBusy(true)
+        try {
+          const r = await fetch(API + path, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'application/json', 'x-dsh-mood': '1' },
+            body: JSON.stringify(body || {}),
+          })
+          const j = await r.json()
+          if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + r.status))
+          setErr('')
+          return j
+        } catch (e) { setErr(String((e && e.message) || e)); return null } finally { setBusy(false) }
+      }
+
+      if (err && !d) return h('div', { className: 'dshmood' }, h('div', { className: 'notice' }, '读不到核心状态：' + err))
+      if (!d || !draft) return h('div', { className: 'dshmood' }, h('div', { className: 'notice' }, '加载中…'))
+
+      const slider = (key, label, min, max) => h('div', { key, style: { display: 'grid', gridTemplateColumns: '84px 1fr 60px', gap: 8, alignItems: 'center', margin: '6px 0' } },
+        h('span', { style: { fontSize: 12 } }, label),
+        h('input', {
+          type: 'range', min, max, step: 1, value: draft[key],
+          onChange: (e) => setDraft({ ...draft, [key]: Number(e.target.value) }),
+          style: { width: '100%' },
+        }),
+        h('span', { style: { fontSize: 12, textAlign: 'right' } }, String(draft[key])),
+      )
+
+      const cur = (ps && ps[psk]) || { state: '', lang: '', taboo: '' }
+      const edit = (field) => h('textarea', {
+        key: field,
+        value: cur[field] || '',
+        rows: 2,
+        onChange: (e) => setPs({ ...ps, [psk]: { ...cur, [field]: e.target.value } }),
+        style: { width: '100%', marginBottom: 6, fontSize: 12, fontFamily: 'inherit' },
+      })
+
+      return h('div', { className: 'dshmood' },
+        h('div', { className: 'page-hd' },
+          h('span', { className: 'page-title' }, '心情核心'),
+          h('span', { className: 'page-sub' }, '三维决定"怎么跟他说"，心情轴决定"我今天什么底色"'),
+        ),
+        h('div', { className: 'tools' },
+          h('button', {
+            disabled: busy,
+            onClick: async () => {
+              const j = await post('/core', {
+                affection: draft.affection, disappointment: draft.disappointment, selfEsteem: draft.selfEsteem,
+                thresholds: { high: draft.high, low: draft.low },
+              })
+              if (j) { setD(j); setNote('已保存') }
+            },
+          }, busy ? '保存中…' : '保存三维/阈值'),
+          h('button', { onClick: load, disabled: busy }, '刷新'),
+          h('span', { className: 'pill' }, err ? ('❌ ' + err) : (note || ('当前档位 ' + d.combo))),
+          h('span', { className: 'pill' }, '心情轴 ' + d.feelBand),
+          h('span', { className: 'pill' }, '耐心 ' + d.patience),
+        ),
+        h('div', {},
+          slider('affection', '好感度', -100, 100),
+          slider('disappointment', '失望度', -100, 100),
+          slider('selfEsteem', '自我肯定', -100, 100),
+        ),
+        h('div', { style: { fontSize: 11, opacity: 0.7, margin: '2px 0 10px 92px' } },
+          '−100 疏远 / 事情不顺 / 没底　·　0 中性　·　+100 亲近 / 失望 / 有底'),
+        h('div', {}, slider('high', '高档阈值', 1, 100), slider('low', '低档阈值', -100, -1)),
+        h('div', { className: 'notice', style: { marginTop: 6 } },
+          '阈值改了只影响"哪一档算高"，27 组本身不变。心情轴和耐心这里不手调：',
+          '轴由每条消息和周期推，耐心由 mood_score 的 patienceEvent 扣。'),
+
+        h('div', { style: { marginTop: 14, fontSize: 13, fontWeight: 600 } }, '27 组档位提示词'),
+        h('div', { className: 'tools' },
+          h('select', {
+            value: psk,
+            onChange: (e) => setPsk(e.target.value),
+            style: { fontSize: 12 },
+          }, Object.keys(ps || {}).map((k) => h('option', { key: k, value: k }, (ps[k] && ps[k].combo) || k))),
+          h('button', {
+            disabled: busy,
+            onClick: async () => {
+              const j = await post('/prompts', ps)
+              if (j) { setPs(j.prompts); setNote('27 组已保存') }
+            },
+          }, busy ? '保存中…' : '保存这一组'),
+          h('span', { className: 'pill' }, '改完下一轮生效'),
+        ),
+        h('div', { style: { fontSize: 11, opacity: 0.7, marginBottom: 6 } }, '状态'),
+        edit('state'),
+        h('div', { style: { fontSize: 11, opacity: 0.7, marginBottom: 6 } }, '语言（真正干预输出的那句）'),
+        edit('lang'),
+        h('div', { style: { fontSize: 11, opacity: 0.7, marginBottom: 6 } }, '禁忌'),
+        edit('taboo'),
+      )
+    }
+
+    /**
      * 参数 —— 心情怎么动，全在这几个数上。
      *
      * 这些值原来全写死在 index.js 的 CFG 里，改一个就得改代码、重打包、重启。
@@ -2299,6 +2421,11 @@ window.__ModuleLoader__.load({
       slots.inject('settings.section', () => slots.register(
         { name: 'settings.section', id: 'news', order: 27, label: '时事' },
         () => React.createElement(MoodErrorBoundary, null, React.createElement(NewsPanel, { ctx })),
+      ))
+      // 心情核心：三维滑块 + 阈值 + 27 组可编辑（新引擎的入口）
+      slots.inject('settings.section', () => slots.register(
+        { name: 'settings.section', id: 'core', order: 23, label: '心情核心' },
+        () => React.createElement(MoodErrorBoundary, null, React.createElement(CorePanel, {})),
       ))
       // 参数：那几个数原来写死在代码里，现在给一个能拖的地方
       slots.inject('settings.section', () => slots.register(

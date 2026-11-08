@@ -1829,6 +1829,15 @@ export function apply(root, rawConfig) {
     // 面板上调过的参数，启动时套上 —— **必须在任何人读 CFG 之前**，
     // 所以放在这个函数的第一行（定时器、监听、注入都在这之后才建）。
     try { loadStoredConfig() } catch { /* 坏配置当没有，绝不因为一个 JSON 起不来 */ }
+    // 阈值不属于 CFG 白名单（它是三维判档用的），单独存在 state 里 —— 启动时同步回 CORE
+    try {
+      if (state.thresholds) {
+        CORE.thresholds = {
+          high: Number(state.thresholds.high) || 50,
+          low: Number(state.thresholds.low) || -50,
+        }
+      }
+    } catch { /* 同上一行：不许因为一个坏字段起不来 */ }
     // 启动时刷新会话索引 —— **后台跑，不挡启动**。
     // ⚠️ 全量扫一次实测 2 秒/会话（那个 53 MB 的有 28057 个 zstd 帧要逐个解）。
     //    所以：**先把上次存的索引拿来用**（上面那一节直接读盘），
@@ -3671,6 +3680,77 @@ export function apply(root, rawConfig) {
               }
               return send(snap())
             }
+            // ── 新核心：三维 / 阈值（面板上的滑块）──
+            const coreSnap = () => {
+              const dims = Object.assign({ affection: 0, disappointment: 0, selfEsteem: 0 }, state.dims || {})
+              const th = state.thresholds || CORE.thresholds
+              return {
+                ok: true,
+                dims,
+                thresholds: { high: Number(th.high), low: Number(th.low) },
+                feel: Math.round((Number(state.feel) || 0) * 10) / 10,
+                feelBand: state.feelBand || '平',
+                patience: Math.round(Number(state.patience) || 0),
+                patienceBand: patienceBandOf(state.patience, CORE.patience),
+                combo: promptKeyOf(dims, th).replace(/\//g, '／'),
+                dimensions: CORE_DIMS,
+              }
+            }
+            if (path === '/core') {
+              if (req.method === 'POST') {
+                return readBody(req, (j, err) => {
+                  if (err || !j || typeof j !== 'object') return send({ ok: false, error: '请求体不是 JSON 对象' }, 400)
+                  try {
+                    const dims = Object.assign({ affection: 0, disappointment: 0, selfEsteem: 0 }, state.dims || {})
+                    for (const d of CORE_DIMS) {
+                      const v = Number(j[d.key])
+                      if (Number.isFinite(v)) dims[d.key] = Math.max(-100, Math.min(100, v))
+                    }
+                    state.dims = dims
+                    if (j.thresholds && typeof j.thresholds === 'object') {
+                      const th = Object.assign({ high: 50, low: -50 }, state.thresholds || CORE.thresholds)
+                      const h = Number(j.thresholds.high)
+                      const l = Number(j.thresholds.low)
+                      // 阈值不许交叉，也不许贴到 0 边上（那样每轮都在换档）
+                      if (Number.isFinite(h)) th.high = Math.max(1, Math.min(100, h))
+                      if (Number.isFinite(l)) th.low = Math.min(-1, Math.max(-100, l))
+                      state.thresholds = th
+                      CORE.thresholds = { high: th.high, low: th.low }
+                    }
+                    saveState(state)
+                    return send(coreSnap())
+                  } catch (e) { return send({ ok: false, error: String((e && e.message) || e) }, 500) }
+                })
+              }
+              return send(coreSnap())
+            }
+
+            // ── 27 组提示词：读 + 改 ──
+            if (path === '/prompts') {
+              if (req.method === 'POST') {
+                return readBody(req, (j, err) => {
+                  if (err || !j || typeof j !== 'object') return send({ ok: false, error: '请求体不是 JSON 对象' }, 400)
+                  try {
+                    const base = loadPromptSet()
+                    const out = {}
+                    for (const k of Object.keys(base)) {
+                      const s = j[k]
+                      out[k] = {
+                        state: (s && typeof s.state === 'string' && s.state.trim()) ? s.state.slice(0, 400) : base[k].state,
+                        lang: (s && typeof s.lang === 'string' && s.lang.trim()) ? s.lang.slice(0, 400) : base[k].lang,
+                        taboo: (s && typeof s.taboo === 'string' && s.taboo.trim()) ? s.taboo.slice(0, 400) : base[k].taboo,
+                      }
+                    }
+                    const f = join(dirname(stateFile()), 'dsh-mood-prompts.json')
+                    mkdirSync(dirname(f), { recursive: true })
+                    writeFileSync(f, JSON.stringify(out, null, 2), 'utf8')
+                    return send({ ok: true, prompts: loadPromptSet(), saved: Object.keys(out).length })
+                  } catch (e) { return send({ ok: false, error: String((e && e.message) || e) }, 500) }
+                })
+              }
+              return send({ ok: true, prompts: loadPromptSet() })
+            }
+
             if (path === '/' || path === '/state') {
               const s = summary()
               // 门禁：没经模型同意，**正文一个字都不下发**（只给条数，好让界面说"有几篇但看不到"）。
